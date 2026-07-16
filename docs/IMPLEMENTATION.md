@@ -25,7 +25,7 @@ This is the living delivery plan and current-state record. It turns `docs/DESIGN
 - Toolchain: Homebrew OpenJDK 25.0.2 existed at `/opt/homebrew/opt/openjdk` but was not linked onto `PATH`; Maven and Gradle were absent; Docker 28.5.1 and Compose 2.40.3 were available.
 - Framework evidence: Spring Boot 4.0.6 is the requested baseline and was available from Spring Initializr/Maven Central; it manages Spring Framework 7.0.x.
 - Build decision: Maven Wrapper 3.3.4 with Apache Maven 3.9.16; see [ADR 0001](adr/0001-maven-reactor-and-module-boundaries.md).
-- Source request bundle: contained only the action text. The two exact named PDF attachments were absent, so no local lookalike was committed as a substitute; the blocker is in [the reference index](reference/README.md).
+- Revised source baseline: commit `84b2ff350639f537adddd2fc1695e09bae5375b4` supplied both exact PDFs. They are now normalized under `docs/reference/`, byte-compared with the source blobs, rendered for visual review, and indexed with SHA-256 provenance.
 - Read-only tooling source: Salus `main` at `fd9ffaf0d569ebaa232575d143e00488d31a2974`; no Salus file was changed.
 
 ## Bootstrap action: actual scope
@@ -33,7 +33,7 @@ This is the living delivery plan and current-state record. It turns `docs/DESIGN
 Foundation creates:
 
 - repository purpose, architecture, security, contribution, ADR, plan, and reference documentation;
-- a reference index with exact attachment metadata and normalized targets; immutable PDF copies and SHA-256 provenance remain blocked on the two missing inputs;
+- immutable source PDFs and a reference index with exact metadata, normalized paths, source-commit provenance, and verified SHA-256 values;
 - a Maven reactor with dependency-free `domain` and Spring Boot `control-plane` modules;
 - a committed wrapper, Java 25 / Spring Boot 4.0.6 baseline, and domain dependency guard;
 - Spring application context and health/readiness verification only;
@@ -46,8 +46,8 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 
 | Phase                                  | Status        | Evidence summary                                                                               |
 | -------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
-| 1. Foundation                          | `blocked`     | All non-PDF bootstrap gates are verified; the two exact source attachments remain unavailable. |
-| 2. Domain and operation lifecycle      | `not_started` | Only the plain module boundary exists.                                                         |
+| 1. Foundation                          | `verified`    | Source publications and the full foundation gate are verified; see the closed bootstrap plan. |
+| 2. Domain and operation lifecycle      | `in_progress` | The active Phase 2 plan owns exact quantities, lifecycle, idempotency, ports, and pure tests.   |
 | 3. Durable API and persistence         | `not_started` | No API/database dependency or contract exists.                                                 |
 | 4. Signing boundary                    | `not_started` | Design only; no signer code or keys.                                                           |
 | 5. Ethereum vertical slice             | `not_started` | No Web3j/Solidity/local-chain code.                                                            |
@@ -58,15 +58,15 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 
 ## Phase 1: Foundation
 
-**Deliverables:** repository policy; architecture and delivery docs; reference index; ADR/plan system; `.codex` operating model; Maven wrapper/reactor; plain domain boundary; Spring application; health/readiness; context and boundary tests. The exact reference PDF copies are the only blocked deliverables.
+**Deliverables:** repository policy; architecture and delivery docs; immutable source references and index; ADR/plan system; `.codex` operating model; Maven wrapper/reactor; plain domain boundary; Spring application; health/readiness; context and boundary tests.
 
 **Tests and validation:** wrapper version; reactor clean verify; targeted Spring tests; domain Enforcer rule; PDF SHA-256 and byte comparison; Markdown links; skill metadata/references; hooks JSON; stale-reference/secret search; diff and Git status checks.
 
 **Acceptance gate:** application context loads, `/actuator/health/readiness` is `UP`, only health is exposed, domain has no forbidden dependencies, exact supplied references are byte-identical when available, docs and status claims agree, and the active plan records fresh evidence.
 
-**Risks:** local JDK not on `PATH`; first wrapper run needs network; installed Codex discovers repo skills under `.agents/skills` rather than the requested `.codex/skills`; request attachment bundle omitted PDFs.
+**Risks:** local JDK not on `PATH`; first wrapper run needs network; installed Codex discovers repo skills under `.agents/skills` rather than the requested `.codex/skills`; immutable publication provenance must remain intact.
 
-**Disposition:** set `JAVA_HOME` explicitly; commit wrapper; expose `.codex/skills` through native discovery compatibility entries; do not substitute locally built PDFs for missing request attachments.
+**Disposition:** set `JAVA_HOME` explicitly; commit wrapper; expose `.codex/skills` through native discovery compatibility entries; preserve the supplied PDFs byte-for-byte under `docs/reference/`.
 
 **Deferred:** all business behavior and external infrastructure.
 
@@ -116,9 +116,9 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 
 ## Phase 5: Ethereum vertical slice
 
-**Dependency:** phases 2-4 verified. Build this before Solana or vice versa according to an ADR; do not build both simultaneously.
+**Dependency:** phases 2-4 verified. Build this first, then review the common ports before beginning Solana.
 
-**Deliverables:** Ethereum decision ADR; minimal audited/local token contract only if required; Solidity native tests; Web3j adapter; deterministic transaction encoding; nonce/replacement lineage; Anvil or equivalent local chain; event/receipt observation; independent read path; mint/burn happy, rejection, revert, timeout, ambiguity, replacement, and reorg/canonicality paths.
+**Deliverables:** execute [ADR 0002](adr/0002-evm-foundry-and-web3j.md); use Foundry (`forge`, `anvil`, `cast`, and scripts) as the sole contract toolchain; add a minimal reviewed Solidity token/authority contract only if required; add a Web3j adapter; prove deterministic encoding, nonce/replacement lineage, event/receipt observation, independent inquiry, and mint/burn happy, rejection, revert, timeout, ambiguity, replacement, and reorg/canonicality paths.
 
 **Tests:** golden encoding, chain ID/nonce/destination/amount binding, signer digest, submit-once, response loss, inquiry, replacement rules, failed receipt, event effect, canonicality change, duplicate request, and reconciliation evidence.
 
@@ -132,7 +132,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 
 **Dependency:** phases 2-4 verified and the first chain slice reviewed for common-port changes.
 
-**Deliverables:** Java SDK/program decision ADR; maintained Java client adapter; existing token-program integration or a narrowly justified Rust program; pinned Anchor/native toolchain if needed; local validator; recent-blockhash/durable-nonce and transaction-lifetime policy; instruction/account evidence; commitment observation; mint/burn happy and failure paths.
+**Deliverables:** execute [ADR 0003](adr/0003-native-solana-spl-token.md); run the bounded Sava evaluation; use native SVM semantics and classic SPL Token on a local validator; add a Java adapter only after the client gate passes; define recent-blockhash/durable-nonce and lifetime policy, instruction/account evidence, commitment observation, and mint/burn happy and failure paths. Add a pinned Rust/Anchor program only if existing programs cannot safely express required business logic. Neon is excluded from this baseline.
 
 **Tests:** deterministic message/instruction accounts, authority and amount binding, blockhash expiry, same-signed-transaction resend versus new-blockhash attempt, instruction error, signature/slot/commitment progression, provider disagreement, duplicate request, and reconciliation evidence.
 
@@ -141,6 +141,8 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 **Risks:** unmaintained SDK, unnecessary custom program, erasing Solana semantics to match EVM, upgrade authority ambiguity.
 
 **Deferred:** public clusters, production program deployment, vendor selection.
+
+Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CCTP cross-chain workflow requires its own operation semantics, evidence, and decision gate.
 
 ## Phase 7: Observation and reconciliation
 
@@ -180,11 +182,14 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 
 ## Plans and ADRs
 
-- Active bootstrap plan: [`docs/plans/active/BOOTSTRAP.md`](plans/active/BOOTSTRAP.md).
+- Closed foundation plan: [`docs/plans/active/BOOTSTRAP.md`](plans/active/BOOTSTRAP.md).
+- Active Phase 2 plan: [`docs/plans/active/DOMAIN_OPERATION_LIFECYCLE.md`](plans/active/DOMAIN_OPERATION_LIFECYCLE.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
 - Accepted build/module choice: [`ADR 0001`](adr/0001-maven-reactor-and-module-boundaries.md).
+- Accepted EVM approach: [`ADR 0002`](adr/0002-evm-foundry-and-web3j.md).
+- Accepted Solana approach: [`ADR 0003`](adr/0003-native-solana-spl-token.md).
 
-Create the next active plan before Phase 2 implementation. Create an ADR only when evidence requires an accepted material decision.
+Create or update an active plan before implementation. Create an ADR only when evidence requires an accepted material decision.
 
 ## Current validation commands
 
@@ -199,9 +204,9 @@ JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl domain enforcer:enforce
 
 Reference, documentation, skill/hook, stale-reference, diff, and Git commands are recorded with results in the active bootstrap plan. Add commands here only after they are stable contributor entry points.
 
-## Next recommended vertical slice
+## Current bounded vertical slice
 
-Action Request 02 should implement **Domain and Durable Operation Lifecycle** only:
+Action Request 02 implements **Domain and Operation Lifecycle** only:
 
 - exact asset/unit and token quantity types;
 - mint and burn commands;
@@ -212,4 +217,4 @@ Action Request 02 should implement **Domain and Durable Operation Lifecycle** on
 - provider-neutral chain and signer ports; and
 - pure Java tests proving invariants without Spring, persistence, Web3j, Solana SDKs, Solidity, Rust, or Compose.
 
-That slice should end with a review of whether the common ports preserve enough native-semantic room. It should not choose or implement either chain adapter.
+The slice ends with a review of whether the common ports preserve enough native-semantic room. It does not implement either chain adapter. After it is verified, Phase 3 durable API and persistence is the next recommended slice; chain work still waits for the Phase 4 signing boundary.

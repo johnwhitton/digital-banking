@@ -1,55 +1,56 @@
 # Reference publications
 
-These publications are contextual architecture inputs, not executable code specifications. [`docs/DESIGN.md`](../DESIGN.md), accepted [ADRs](../adr/README.md), API contracts, and tests govern implementation details.
+These user-supplied publications are immutable contextual architecture inputs, not executable code specifications. [`docs/DESIGN.md`](../DESIGN.md), accepted [ADRs](../adr/README.md), versioned contracts, and tests govern implementation details.
 
 Zelle is used only as a public case study. Neither the publications nor this repository claim to describe confidential or deployed Early Warning Services/Zelle architecture, vendors, data, controls, service levels, or implementation plans.
 
-## Attachment status: blocked
+## Integrity and review status
 
-The request attachment directory contained only `pasted-text.txt`. It did not contain either named PDF, so no locally built or similarly titled file is committed as a substitute. This follows the action request's explicit instruction not to invent replacements when the supplied attachment bytes are unavailable.
+Both files were supplied by the user at the repository `docs/` root in commit `84b2ff350639f537adddd2fc1695e09bae5375b4` and moved without content modification on 16 July 2026. The destination bytes compare equal to the source blobs in that commit. Both committed files have non-executable mode `0644`.
 
-The two exact missing inputs are:
-
-1. `zelle-digital-asset-settlement-executive-brief(1).pdf`
-2. `stablecoin-settlement-reference-architecture(5).pdf`
-
-When those exact files are supplied, copy them byte-for-byte to the normalized targets below, record source and destination SHA-256 values, and confirm binary equality with `cmp`. Do not regenerate, optimize, compress, annotate, or rewrite them.
-
-## Digital Asset Settlement for Zelle
-
-| Field | Value |
-| --- | --- |
-| Canonical title | *Digital Asset Settlement for Zelle: Executive Architecture Brief for Stablecoin and Cross-Border Settlement* |
-| Author | John Whitton |
-| Version | 1.0.0 |
-| Publication date | 16 July 2026 |
-| Requested attachment filename | `zelle-digital-asset-settlement-executive-brief(1).pdf` |
-| Normalized repository target | `docs/reference/digital-asset-settlement-executive-brief.pdf` |
-| SHA-256 | Blocked: exact source attachment unavailable |
-
-Role: concise executive framing for the architecture thesis, governable decisions, chain evaluation, bounded pilot, custody roles, Java/native boundary, evidence-gated roadmap, and principal risks.
+| Publication | Repository file | SHA-256 |
+| --- | --- | --- |
+| *Designing a Stablecoin Settlement Platform for Existing Real-Time Payment Networks* | [`stablecoin-settlement-reference-architecture.pdf`](stablecoin-settlement-reference-architecture.pdf) | `8a61ab83b427ef587d80edb59feb612a23a4af2497e7e0cda31a4ea30d201e77` |
+| *Digital Asset Settlement for Zelle* | [`zelle-digital-asset-settlement-executive-brief.pdf`](zelle-digital-asset-settlement-executive-brief.pdf) | `90b5e0b0ebaaae40dd43ce0adfdbfcd1d44a0cd9de45692428bfe7a990dbb6cd` |
 
 ## Stablecoin settlement reference architecture
 
 | Field | Value |
 | --- | --- |
-| Canonical title | *Designing a Stablecoin Settlement Platform for Existing Real-Time Payment Networks: A Reference Architecture Using Zelle as a Public Case Study* |
+| Full title | *Designing a Stablecoin Settlement Platform for Existing Real-Time Payment Networks: A Reference Architecture Using Zelle as a Public Case Study* |
 | Author | John Whitton |
-| Version | 1.0.0 |
-| Publication date | 13 July 2026 |
-| Requested attachment filename | `stablecoin-settlement-reference-architecture(5).pdf` |
-| Normalized repository target | `docs/reference/stablecoin-settlement-reference-architecture.pdf` |
-| SHA-256 | Blocked: exact source attachment unavailable |
+| Version | 1.0.1 |
+| Publication date | 16 July 2026 |
+| Source | Supplied directly by the user |
+| Review date | 16 July 2026 |
+| Purpose | Detailed reference architecture for obligation ownership, layered trust boundaries, authoritative ledger/state, failure containment, four finalities, signing, Java/native boundaries, technology evaluation, and evidence-gated delivery. |
 
-Role: detailed reference architecture for obligation ownership, layered trust boundaries, durable state, ledger and consistency, failure containment, four finalities, security and signing, Java/native boundaries, technology evaluation, delivery gates, and implementation-review appendices.
+Design traceability:
 
-## Integrity verification after attachment delivery
+- `docs/DESIGN.md` sections 3-6 use the publication's system-of-record, layered authority, and Java control-plane boundaries.
+- Sections 7-12 use its durable state machine, exact identity/evidence, ambiguity, adapter, and signer-control requirements.
+- Sections 16-21 use its transaction boundary, reconciliation, four-finality, error, security, audit, and recovery treatment.
+- Sections 22-24 use its evidence-gated topology, decisions/unknowns discipline, and publication traceability method.
 
-Run both SHA-256 and binary comparison against each exact supplied source before accepting the files:
+## Executive architecture brief
 
-```bash
-shasum -a 256 /path/to/exact/source.pdf docs/reference/normalized-target.pdf
-cmp /path/to/exact/source.pdf docs/reference/normalized-target.pdf
-```
+| Field | Value |
+| --- | --- |
+| Full title | *Digital Asset Settlement for Zelle: Executive Architecture Brief for Stablecoin and Cross-Border Settlement* |
+| Author | John Whitton |
+| Version | 1.0.1 |
+| Publication date | 16 July 2026 |
+| Source | Supplied directly by the user |
+| Review date | 16 July 2026 |
+| Purpose | Executive framing for the control-plane thesis, governable decisions, bounded pilot, custody roles, Java/native boundary, independent finalities, evidence-first roadmap, and principal risks. |
 
-Any checksum mismatch is a blocker, not a documentation edit.
+Design traceability:
+
+- `docs/DESIGN.md` sections 1-5 use the brief's public-case-study boundary, regulated control plane, and separation of business truth from the external rail.
+- Sections 11-14 use its adapter isolation, native semantic preservation, controlled signing, and Java/native execution boundary.
+- Sections 18-20 use its four independent finalities, ambiguity/duplicate prevention, evidence retention, and failure containment.
+- `docs/IMPLEMENTATION.md` uses its recommendation to expand evidence before scope and to change one asset/network/authority dimension at a time.
+
+## Interpretation boundary
+
+The publications support the durable control-plane, exactness, evidence, finality, signing, reconciliation, and native-language boundaries. They do not select Foundry, Sava, Neon, CCTP, a chain, issuer, custody vendor, or production deployment. Those repository decisions and evidence gates are recorded separately in ADRs and living plans.

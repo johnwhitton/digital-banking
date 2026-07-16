@@ -2,7 +2,7 @@
 
 ## 1. Purpose and authority
 
-This document is the canonical engineering design for a non-production reference implementation of a regulated digital-asset settlement control plane. It translates the publication requirements and contextual architecture review into implementable boundaries while keeping evidence, assumptions, and unresolved decisions explicit. The exact named PDF attachment bytes were unavailable during bootstrap; source-section traceability must be revalidated when they are supplied.
+This document is the canonical engineering design for a non-production reference implementation of a regulated digital-asset settlement control plane. It translates the verified [source publications](reference/README.md) and contextual architecture review into implementable boundaries while keeping evidence, assumptions, and unresolved decisions explicit.
 
 The publications are architecture inputs, not code specifications. Accepted ADRs, versioned API contracts, and tests refine this design. When they disagree, resolve the conflict explicitly and update this document; do not let implementation drift become an accidental decision.
 
@@ -121,7 +121,7 @@ flowchart LR
     solana -.-> rust
 ```
 
-Only `domain` and `control-plane` exist in the foundation. Future modules are added with their owning vertical slice. No module may depend on another chain adapter. The application layer can define domain-neutral ports, but adapter-specific native types stay within the adapter and its tests.
+The verified foundation contains `domain` and `control-plane`. Phase 2 adds `application`; later executable slices may add `adapters/persistence`, `adapters/signer-*`, `adapters/ethereum-web3j`, `adapters/solana-java`, `contracts/evm`, `programs/solana`, and `integration-tests`. These paths are an ownership map, not an instruction to create empty modules. No module may depend on another chain adapter. The application layer defines capability-aware ports, while adapter-specific native types stay within the adapter and its tests.
 
 ## 7. Mint and burn operation aggregate
 
@@ -211,7 +211,7 @@ Operation IDs are generated before any external interaction and are never reused
 - Persistence and native encoding validate magnitude before conversion. Overflow, truncation, scientific notation, non-canonical zero, negative quantities, and unsupported scale fail deterministically.
 - String serialization round-trips exactly and has golden tests across API, persistence, signer request, and adapter boundaries.
 
-The next slice will turn this design into concrete types and tests. The bootstrap does not prematurely select a database numeric column.
+Phase 2 turns this design into concrete types and tests without selecting a database numeric column.
 
 ## 11. Chain adapter capability contract
 
@@ -254,15 +254,15 @@ The signer independently reproduces or verifies critical constraints against the
 
 ## 13. Ethereum/Web3j boundary
 
-Web3j will be added only with the Ethereum slice. It belongs in an Ethereum adapter module and may provide typed JSON-RPC, deterministic encoding, contract wrappers, receipt/event decoding, and node interaction. Web3j types never cross the adapter boundary.
+The Ethereum-first chain slice uses Foundry as the only EVM contract toolchain: `forge` for build and native tests, `anvil` for the local chain, `cast` for diagnostics, and Foundry scripts for deployment when needed. Web3j belongs only in the Java Ethereum adapter and may provide typed JSON-RPC, deterministic encoding, generated bindings, receipt/event decoding, and node interaction. Foundry artifacts and Web3j types never cross the adapter boundary.
 
-Solidity is added only if a minimal local token or authority contract is required for the vertical slice. Contract choice, admin/upgrade model, mint/burn authorization, pause/denylist behavior, event schema, and library/version require an ADR and native security tests. A library name is not evidence of a safe governance model.
+Solidity is added only if the vertical slice needs a minimal local token or authority contract. Any external contract source is reference evidence until a reviewed commit/tag is pinned and its license and security posture are recorded. Contract choice, admin/upgrade model, mint/burn authorization, pause/denylist behavior, event schema, and dependency versions require native security tests and a decision update when they become concrete. See [ADR 0002](adr/0002-evm-foundry-and-web3j.md).
 
 ## 14. Solana Java-client and Rust-program boundary
 
-The Solana slice begins with an ADR selecting a maintained Java client and deciding whether existing token-program capabilities are sufficient. The Java adapter owns client-side RPC/message/instruction/account integration and translation to core outcomes.
+The Solana slice uses native SVM semantics and the classic SPL Token Program for its initial Circle-USDC-aligned local path. A bounded Sava spike must first prove Java 25 compatibility, required instruction/RPC coverage, deterministic message construction, maintained release provenance, and acceptable dependency/authentication mechanics. No SDK dependency is selected merely because it is listed by Solana documentation. The Java adapter owns RPC, message, instruction, account, lifetime, and commitment integration and translates only normalized outcomes across the port.
 
-Rust is introduced only where chain-native execution requires a new program. The ADR must choose Anchor or native Solana, pin toolchain/program dependencies, define account/PDA and upgrade authority, and establish formatter, linter, native tests, local validator, and client/program integration commands. Rust programs do not become Java libraries, and Java does not emulate program execution.
+Rust with Anchor is introduced only when required business logic cannot safely use an existing audited program. That later decision must pin toolchain/program dependencies, define accounts/PDAs and upgrade authority, and establish formatter, linter, native tests, local validator, and client/program integration commands. Neon is excluded from this native-SVM baseline; reconsideration requires a distinct EVM-compatibility requirement and a new ADR. Direct issuer-authority mint/burn is not CCTP: CCTP is a separate cross-chain burn, attestation, and destination-mint workflow. Official Circle and Solana repositories remain reference evidence until a reviewed dependency is explicitly consumed and pinned. See [ADR 0003](adr/0003-native-solana-spl-token.md).
 
 ## 15. API boundary
 
@@ -362,7 +362,7 @@ Later phases add components only as needed:
 
 1. relational database plus migrations and concurrency tests;
 2. deterministic development signer/test double;
-3. Anvil or equivalent local EVM chain for Ethereum;
+3. Anvil as the local EVM chain for Ethereum;
 4. local Solana validator for Solana;
 5. independent observer endpoints/processes;
 6. Compose orchestration after individual slices are deterministic; and
@@ -379,6 +379,10 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - Health/readiness is the only foundation endpoint.
 - Chain and signer dependencies are deferred until a tested slice.
 - The common domain/lifecycle slice precedes either chain slice.
+- Ethereum is the first chain slice; Foundry owns EVM contract development and Web3j stays in its Java adapter; see ADR 0002.
+- Solana uses native SVM semantics and classic SPL Token first; Sava must pass a bounded evaluation before selection; see ADR 0003.
+- Rust/Anchor is conditional on business logic that existing programs cannot safely supply; Neon is outside the baseline.
+- Direct authority mint/burn and CCTP are separate workflows.
 
 ### Assumptions to validate
 
@@ -390,8 +394,8 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 ### Unknowns requiring future evidence or ADRs
 
 - Issuer/asset, legal claim, mint/burn authority, reserve/redemption model, and permitted participants.
-- First chain and order of Ethereum versus Solana slices.
-- Maintained Solana Java SDK and whether a custom Rust program is needed.
+- Whether Sava passes the bounded Java-client evaluation and which exact release can be pinned.
+- Whether later Solana business requirements justify a custom Rust/Anchor program.
 - Custody/HSM/MPC provider and authorization interface details.
 - Database, workflow engine versus database-backed worker, OpenAPI versioning, and messaging topology.
 - Chain finality thresholds, replacement/expiry policies, limits, and reconciliation tolerances.
@@ -417,4 +421,4 @@ The table identifies conceptual inputs, not normative code requirements.
 | Ethereum/Solana differences | 5; 8 | 16.2-16.4; C |
 | Evidence-gated delivery and exit | 6; 9; 10; 11 | 18; 19; D |
 
-Full titles, versions, intended normalized paths, and the missing-attachment status are recorded in `docs/reference/README.md`. Checksums remain blocked until the exact supplied files are available.
+Full titles, publication versions, normalized paths, source-commit provenance, and verified SHA-256 checksums are recorded in [`docs/reference/README.md`](reference/README.md).

@@ -1,8 +1,8 @@
 # Digital Banking Reference Implementation Bootstrap Plan
 
-> **Execution rule:** Work through this checklist in order, preserve evidence in this file, and create one coherent final commit only after every unblocked acceptance check passes.
+> **Historical execution rule:** This foundation was delivered in commit `2c73658`. Action Request 02 later supplied and verified the publications, closing the only remaining gate.
 
-**Goal:** Establish the repository policy, architecture, AI-assisted engineering workflow, publication-input provenance, and smallest verified Java/Spring application foundation for later durable mint/burn vertical slices; keep missing exact source attachments explicit rather than substituting them.
+**Goal:** Establish the repository policy, architecture, AI-assisted engineering workflow, publication-input provenance, and smallest verified Java/Spring application foundation for later durable mint/burn vertical slices.
 
 **Architecture:** Use a Maven reactor with a dependency-free `domain` module and a Spring Boot `control-plane` module. The application exposes only Actuator health probes. Documentation owns the future operation lifecycle and adapter contracts; no chain SDK, signing implementation, persistence, business endpoint, or false settlement behavior is introduced in this action.
 
@@ -21,7 +21,7 @@
 - Do not configure mainnet, public testnets, real value, or production credentials.
 - Treat `/Users/johnwhitton/dev/jincubator/salus` and its worktrees as read-only.
 - Do not add Web3j, a Solana SDK, Solidity, Rust, Compose, persistence, or OpenAPI until a slice uses and tests it.
-- Use the single commit message `chore: bootstrap digital banking reference implementation` after final validation.
+- Preserve the original bootstrap commit `2c73658` (`chore: bootstrap digital banking reference implementation`); close the later publication gate through the authorized Action Request 02 architecture commit.
 
 ## Baseline evidence
 
@@ -36,7 +36,8 @@
 | Java | Homebrew OpenJDK `25.0.2`, available at `/opt/homebrew/opt/openjdk` but not linked onto `PATH` |
 | Build tools | Maven and Gradle absent from `PATH`; Docker 28.5.1 and Compose 2.40.3 available |
 | Codex | `codex-cli 0.142.1`; project config and hooks supported for trusted repositories |
-| Attachments | Request bundle contains only `pasted-text.txt`; neither exact named PDF is available, and locally built lookalikes are not accepted as substitutes |
+| Original attachments | The bootstrap request bundle lacked both exact PDFs, so no substitute was accepted. |
+| Revised baseline | Commit `84b2ff350639f537adddd2fc1695e09bae5375b4` supplied both exact publication files. |
 | Salus | Clean `main` at `fd9ffaf0d569ebaa232575d143e00488d31a2974`; inspected read-only |
 
 ## Salus `.codex` asset disposition
@@ -132,12 +133,13 @@ The readiness test must call `/actuator/health/readiness` and assert HTTP 200 pl
 
 **Files:**
 
-- Create by byte-for-byte copy: `docs/reference/digital-asset-settlement-executive-brief.pdf`
-- Create by byte-for-byte copy: `docs/reference/stablecoin-settlement-reference-architecture.pdf`
+- Move without content change: `docs/zelle-digital-asset-settlement-executive-brief.pdf` to `docs/reference/zelle-digital-asset-settlement-executive-brief.pdf`
+- Move without content change: `docs/stablecoin-settlement-reference-architecture.pdf` to `docs/reference/stablecoin-settlement-reference-architecture.pdf`
 
-- [ ] Copy the exact supplied attachments without rewriting or optimizing them. **Blocked:** neither named PDF exists in the request attachment directory.
-- [x] Record requested attachment filenames, canonical metadata, roles, normalized targets, and the exact missing-input blocker in `docs/reference/README.md`.
-- [ ] Compare each exact source and destination with both SHA-256 and `cmp`. **Blocked:** source attachments unavailable.
+- [x] Preserve the exact supplied bytes without rewriting or optimizing either PDF.
+- [x] Record source filenames, titles, versions, roles, normalized targets, source commit, and SHA-256 values in `docs/reference/README.md`.
+- [x] Compare each normalized file with its source blob from commit `84b2ff350639f537adddd2fc1695e09bae5375b4` using SHA-256 and `cmp`.
+- [x] Render and visually inspect every page: 112 pages in the reference architecture and 20 pages in the executive brief.
 
 ## Task 5: Repository hygiene and acceptance validation
 
@@ -149,7 +151,7 @@ The readiness test must call `/actuator/health/readiness` and assert HTTP 200 pl
 - Update: this plan with exact evidence and closeout state
 
 - [x] Run Git/worktree and live remote verification.
-- [ ] Run PDF source/copy SHA-256 and byte comparisons. **Blocked:** exact source attachments unavailable.
+- [x] Run PDF source/destination SHA-256 and byte comparisons.
 - [x] Run `JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw --version`.
 - [x] Run `JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw clean verify`.
 - [x] Run the targeted Spring context and readiness smoke tests.
@@ -158,8 +160,8 @@ The readiness test must call `/actuator/health/readiness` and assert HTTP 200 pl
 - [x] Search for stale Salus paths/names, trading/arbitrage language, obsolete commands, secret-like assignments, environment files, raw-key material, and mainnet configuration.
 - [x] Run `git diff --check` and `git status --short --branch`; the staged diff check passed and status contains only the intended bootstrap allowlist.
 - [x] Review the complete diff and requirement checklist; independent review findings were corrected and rechecked.
-- [ ] Commit with the required message.
-- [ ] Re-check live remote divergence and push without force only if the approved remote is still safe.
+- [x] Commit the original bootstrap with the required message as `2c73658`.
+- [x] Push the original bootstrap without force; the revised source commit `84b2ff3` subsequently became `origin/main`.
 
 ## Evidence log
 
@@ -169,7 +171,8 @@ This section is updated as commands are run. A command is never marked successfu
 | --- | --- | --- |
 | Preflight | `git status --short --branch` and related Git inspection | Clean `main`; complete details recorded above. |
 | Live remote | `git ls-remote --symref origin HEAD` | `origin/HEAD` is `main` at the starting SHA. |
-| PDF discovery | attachment search plus local-context review | Exact attachment bundle lacks both named PDFs. Locally built lookalikes were rejected as substitutes; PDF copy/hash/`cmp` gates remain blocked. |
+| PDF revised baseline | `git show --stat 84b2ff3`; `pdfinfo`; full text extraction and page rendering | Commit `84b2ff3` supplied the two exact PDFs. The 112-page and 20-page publications identify version 1.0.1 and 16 July 2026; all rendered pages were visually reviewed. |
+| PDF integrity | `shasum -a 256`; `git show 84b2ff3:<source> | cmp - <destination>` | Both byte comparisons passed. SHA-256 values are `8a61ab83b427ef587d80edb59feb612a23a4af2497e7e0cda31a4ea30d201e77` and `90b5e0b0ebaaae40dd43ce0adfdbfcd1d44a0cd9de45692428bfe7a990dbb6cd`. |
 | Java baseline | `/opt/homebrew/opt/openjdk/bin/java -version` | OpenJDK 25.0.2. |
 | Skill TDD | six read-only baseline scenarios followed by six forward tests | Every baseline exposed the intended workflow gap; every completed skill produced repository-correct guidance in its forward test. |
 | Skill packages | `quick_validate.py` for all six skills | All six valid; YAML metadata and referenced repository paths also checked. |
@@ -180,11 +183,11 @@ This section is updated as commands are run. A command is never marked successfu
 | Domain boundary | `JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl domain enforcer:enforce dependency:tree` | Direct Enforcer rule passed; dependency tree contains only the domain artifact and no dependencies. |
 | Wrapper | `JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw --version` | Apache Maven 3.9.16, Java 25.0.2; distribution URL and SHA-256 are pinned. |
 | Runtime smoke | executable JAR plus `curl --fail --silent http://localhost:8080/actuator/health/readiness` | Application started on port 8080, exposed one Actuator endpoint, returned `{"status":"UP"}`, and shut down gracefully. |
-| Documentation/tooling | Markdown link checker; JSON/TOML/YAML checks; hooks parse; official skill validators | 16 local links resolved; six skill packages valid; empty hooks valid; no TODO/TBD or dead repository paths. The only `/path/to` example is the explicitly blocked future PDF integrity command. |
+| Documentation/tooling | Markdown link checker; JSON/TOML/YAML checks; hooks parse; official skill validators | Original foundation links, skill packages, config, and empty hooks passed. Action Request 02 re-runs these checks after publication and architecture alignment. |
 | Safety sweeps | targeted `rg` and file searches | No runtime Salus/trading coupling, network/mainnet config, secret-like assignments, high-risk tokens, or environment/key files. Salus appears only in policy/provenance. |
-| Independent review | read-only full-diff review against the action request and `AGENTS.md` | Plan evidence, prompt semantics, README status/quickstart, HTTP dependency guard, and unintended recorder findings were resolved; exact PDFs remain the sole blocker. |
+| Independent review | read-only full-diff review against the bootstrap request and `AGENTS.md` | Plan evidence, prompt semantics, README status/quickstart, HTTP dependency guard, and unintended recorder findings were resolved. Publication verification later closed the only deferred gate. |
 | Staged tree | `git diff --cached --check`, `git status --short --branch`, staged stat/summary | Diff check passed; 44 intended files staged; symlink and wrapper executable modes correct; no unstaged or ignored residuals. |
 
 ## Closeout state
 
-`partial_complete` - all unblocked bootstrap deliverables and acceptance checks are complete, staged, and independently reviewed. The only blocked deliverables are the two exact supplied PDF copies and their source/destination hash/`cmp` evidence. The tree is ready for the required single commit and safe push after the final live-remote check; those post-freeze Git results belong in the final handoff.
+`complete` - the original foundation was committed as `2c73658`; the later revised baseline supplied the exact publications, and Action Request 02 verified their bytes, metadata, rendering, normalized locations, and design traceability. No foundation gate remains blocked.

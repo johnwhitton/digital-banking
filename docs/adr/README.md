@@ -50,3 +50,5 @@ Open questions remain in `docs/DESIGN.md` or `docs/IMPLEMENTATION.md` until evid
 ## Current records
 
 - [ADR 0001: Maven reactor and module boundaries](0001-maven-reactor-and-module-boundaries.md) - accepted.
+- [ADR 0002: EVM development with Foundry and Web3j](0002-evm-foundry-and-web3j.md) - accepted.
+- [ADR 0003: Native Solana integration with SPL Token](0003-native-solana-spl-token.md) - accepted.

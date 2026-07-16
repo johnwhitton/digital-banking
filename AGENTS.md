@@ -2,7 +2,7 @@
 
 ## Purpose and phase
 
-This repository is the **Digital Banking Reference Implementation**: non-production reference software for a regulated digital-asset settlement control plane. The current phase is foundation. It proves repository policy, architectural boundaries, a Maven reactor, a plain Java domain module, and a Spring Boot health/readiness application. It does not yet implement mint, burn, signing, persistence, chain adapters, or financial settlement.
+This repository is the **Digital Banking Reference Implementation**: non-production reference software for a regulated digital-asset settlement control plane. The foundation is verified; the current bounded phase implements the plain-Java domain and operation lifecycle. It does not expose mint/burn APIs or implement persistence, signing, chain adapters, or financial settlement.
 
 Zelle appears only in the supplied publications as a public case study. Never describe this repository as Early Warning Services or Zelle production architecture, confidential information, a selected vendor stack, or an announced implementation plan.
 
@@ -11,16 +11,18 @@ Zelle appears only in the supplied publications as a public case study. Never de
 Follow instructions in this order:
 
 1. The user's current request.
-2. The closest applicable `AGENTS.md`.
-3. Accepted ADRs under `docs/adr/`.
-4. `docs/DESIGN.md` for architecture and invariants.
-5. `docs/IMPLEMENTATION.md` for current state and delivery order.
-6. The active plan under `docs/plans/active/`.
-7. Repository-local skills when their trigger matches.
+2. Host, tool, sandbox, and organization restrictions.
+3. The closest applicable `AGENTS.md` and `SECURITY.md`.
+4. Accepted ADRs under `docs/adr/`.
+5. `docs/DESIGN.md` for architecture and invariants.
+6. `docs/IMPLEMENTATION.md` for current state and delivery order.
+7. The active plan under `docs/plans/active/`.
+8. `AUTONOMOUS_EXECUTION_POLICY.md` for bounded execution authority.
+9. Repository-local skills when their trigger matches.
 
 Chat history is not a source of truth. Put durable decisions, evidence, and deferrals in the repository.
 
-The named source PDFs are contextual architecture inputs, not code specifications. `docs/DESIGN.md`, accepted ADRs, API contracts, and executable tests govern implementation details. During bootstrap the exact attachment bytes were unavailable; do not substitute a similarly titled local build, and keep that blocker explicit until the supplied files can be copied and verified byte-for-byte.
+The source PDFs under `docs/reference/` are immutable contextual architecture inputs, not code specifications. Their verified checksums and traceability are recorded in `docs/reference/README.md`. `docs/DESIGN.md`, accepted ADRs, API contracts, and executable tests govern implementation details. Never edit, regenerate, optimize, or substitute the publication files.
 
 ## Required preflight before editing
 
