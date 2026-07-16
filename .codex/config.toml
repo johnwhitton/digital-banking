@@ -1,0 +1,6 @@
+# Repository-scoped Codex settings. These settings are applied only when the
+# repository has been explicitly trusted by the operator.
+project_doc_max_bytes = 32768
+
+[features]
+hooks = true

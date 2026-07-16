@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Execution"
+  short_description: "Execute active plans in restartable evidence-backed slices"
+  default_prompt: "Execute the next dependency-ready plan slice and keep progress, evidence, and docs current."

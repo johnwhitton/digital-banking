@@ -1,0 +1,14 @@
+spring:
+    application:
+        name: digital-banking-control-plane
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health
+    endpoint:
+        health:
+            show-details: never
+            probes:
+                enabled: true

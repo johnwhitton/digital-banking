@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chain Adapter Change"
+  short_description: "Preserve native EVM and Solana semantics behind adapters"
+  default_prompt: "Design or review one chain adapter without leaking native types or weakening retry and observation safety."

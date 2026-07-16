@@ -1,0 +1,4 @@
+interface:
+  display_name: "Digital Banking Doc Sync"
+  short_description: "Keep architecture, plans, ADRs, and status synchronized"
+  default_prompt: "Synchronize the repository living documents with the accepted implementation and evidence."

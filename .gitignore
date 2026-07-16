@@ -1,0 +1,17 @@
+.DS_Store
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+target/
+**/target/
+
+.env
+.env.*
+!.env.example
+
+tmp/
+graphify-out/

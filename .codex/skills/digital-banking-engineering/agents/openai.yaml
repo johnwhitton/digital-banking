@@ -1,0 +1,4 @@
+interface:
+  display_name: "Digital Banking Engineering"
+  short_description: "Coordinate substantial engineering work in this repository"
+  default_prompt: "Use the repository workflow, select matching local skills, and preserve settlement-control invariants."

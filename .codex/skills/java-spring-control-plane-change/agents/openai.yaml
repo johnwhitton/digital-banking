@@ -1,0 +1,4 @@
+interface:
+  display_name: "Java Spring Control Plane Change"
+  short_description: "Implement Java and Spring changes without leaking infrastructure"
+  default_prompt: "Make a test-first Java or Spring change within the repository module and settlement boundaries."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Financial State Invariants"
+  short_description: "Review exactness, identity, finality, ambiguity, and evidence"
+  default_prompt: "Review the change for financial and durable-state invariants without widening its approved scope."
