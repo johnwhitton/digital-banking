@@ -19,5 +19,7 @@ management:
                 enabled: true
 
 digital-banking:
+    transfer:
+        default-network: ETHEREUM
     delivery-worker:
         enabled: false

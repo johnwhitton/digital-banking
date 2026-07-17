@@ -39,20 +39,21 @@ Status vocabulary:
 | --- | --- | --- |
 | Foundation and source publications | `verified` | All three reference PDFs are byte-verified under `docs/reference/`; architecture, repository policy, Maven reactor, and health/readiness application are synchronized. |
 | Plain Java domain boundary | `verified` | Exact asset/unit quantities, stable IDs, guarded lifecycle, attempt lineage, append-only evidence, and four finalities pass the Phase 2 gate; `domain` has no runtime dependencies. |
-| Spring control-plane application | `verified` | `control-plane` composes the durable PostgreSQL adapter, exposes health/readiness plus three secured token-operation resources, and serves one design-first OpenAPI contract. Business resources deny requests until a future identity adapter supplies an authenticated `ParticipantPrincipal`. |
+| Spring control-plane application | `verified` | `control-plane` composes the durable PostgreSQL adapter, exposes health/readiness plus token-operation and transfer resources, and serves one design-first OpenAPI contract. Business resources deny requests until a future identity adapter supplies an authenticated `ParticipantPrincipal`. |
 | Mint and burn operation lifecycle | `verified` | Framework-free commands, canonical SHA-256 payloads, kind- and participant-scoped replay/conflict, lifecycle coordination, status lookup, and provider-neutral ports pass 269 domain/application tests. No signing or chain execution exists. |
 | Phase 3A durable acceptance and OpenAPI | `verified` | Explicit JDBC plus Flyway atomically records operation, hashed idempotency binding, audit evidence, four finalities, and one pending outbox event before HTTP 202. Real PostgreSQL tests cover rollback, concurrency, replay/conflict, restart, security, and read-back; the 302-test clean reactor gate passes. |
-| Phase 3B durable delivery worker | `verified` | Framework-free delivery contracts plus an opt-in Spring worker durably claim PostgreSQL outbox work, fence leases, record attempts/outcomes, retry bounded failures, and recover expiry; the 335-test offline reactor passes. Delivery is at least once; no production handler or business/chain effect is wired. |
+| Phase 3B durable delivery worker | `verified` | Framework-free delivery contracts plus an opt-in Spring worker durably claim PostgreSQL outbox work, fence leases, record attempts/outcomes, retry bounded failures, and recover expiry; the 335-test offline reactor passes. Phase 3C adds one transactional transfer-preparation handler, but no external business/chain effect is wired. |
+| Phase 3C transfer acceptance | `verified` | A chain-neutral parent durably owns five ordered effects, server-resolved wallet context, exact amount/currency, scoped replay/conflict, PostgreSQL V3 persistence, transfer APIs, a synthetic mock-bank contract/adapter, and a transactional handler inbox that can prepare only the first withdrawal; the 364-test offline reactor passes. No bank or blockchain effect executes. |
 
-The current business API is limited to `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, and participant-scoped `GET /v1/token-operations/{operationId}`. Durable acceptance is not minting, burning, transfer, settlement, or chain execution.
+The current business API includes `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Durable transfer acceptance and effect planning are not bank movement, minting, token transfer, burning, deposit, settlement, or chain execution.
 
 ## Designed, Not Executable
 
 - Provider-neutral signer and chain ports are implemented as framework-free contracts, but no HSM/MPC/custody signer, development signer, chain adapter, or key material exists.
-- Phase 3B delivery infrastructure exists, but the default worker is disabled and no production handler, consumer business transition/inbox, broker publication, or external effect exists. A future real handler must durably deduplicate the stable delivery ID with its bounded local effect.
+- Phase 3B delivery infrastructure exists and Phase 3C supplies a real transfer-accepted handler/inbox for one bounded internal preparation transition, but the default worker remains disabled and no external effect or broker publication exists.
 - Independent observation, reconciliation, cases, and four-finality authority models are designed, but only the domain records and Phase 3A persistence foundation exist.
 - Ethereum/Foundry/Web3j and native Solana/SPL Token approaches are accepted design directions; no contract, program, SDK, local chain, wallet, or deployment is present.
-- The bank-to-bank transfer aggregate and public transfer resource are `planned` in the [target demonstration specification](docs/TRANSFER_DEMO.md), not implemented.
+- The complete bank-to-bank workflow remains planned in the [target demonstration specification](docs/TRANSFER_DEMO.md); only parent acceptance, the five-effect plan, and first-withdrawal preparation are implemented.
 
 ## Target Demonstration
 
@@ -64,12 +65,11 @@ The planned [bank-to-bank stablecoin transfer demonstration](docs/TRANSFER_DEMO.
 4. burn the stablecoin from the recipient's settlement wallet; and
 5. mock deposit to the recipient's bank account.
 
-**This flow is future work.** The current token-operation acceptance API does not orchestrate transfers, call bank adapters, sign, submit to a chain, mint, burn, observe, reconcile, or settle.
+**Completing this flow is future work.** Phase 3C durably records the parent and all five planned effects and can transactionally prepare the first withdrawal. It does not call the mock-bank port at runtime, sign, submit to a chain, mint, transfer tokens, burn, deposit, observe, reconcile, or settle.
 
 ## Future Work
 
-- **Phase 3B consumer ownership:** define the first real bounded business transition and its transactional inbox/deduplication before enabling delivery; any future broker or enterprise workflow platform requires its own evidence spike and ADR.
-- **Transfer orchestration and mock bank adapters:** planned Phase 3C parent transfer aggregate, API/status, persistence, bank ports, and local mock adapters.
+- **Transfer workflow execution:** authorize attempts and execute/inquire each bank or token effect through later adapter slices; preserve ambiguity and evidence gates before advancing.
 - **HSM/MPC/custody signer implementations:** isolated local signer plus provider-neutral production authority integrations; raw production keys remain outside application memory.
 - **Ethereum/Foundry/Web3j local vertical slice:** authorized mint, ERC-20 transfer, burn, deployment, observation, ambiguity/replacement, and recovery on Anvil.
 - **Solana native-SVM/SPL Token local vertical slice:** mint/account setup, native mint/transfer/burn, lifetime/commitment, observation, and recovery on a local validator.
@@ -97,12 +97,12 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ├── domain/                    # Plain Java domain boundary
 ├── application/               # Framework-free use cases and ports
 ├── adapters/
-│   └── persistence-postgres/  # Explicit JDBC/Flyway acceptance and delivery leases
-├── control-plane/             # Spring API plus opt-in delivery-worker composition
+│   └── persistence-postgres/  # Explicit JDBC/Flyway operation, transfer, outbox, and inbox state
+├── control-plane/             # Spring APIs, reference route/wallet resolution, and opt-in worker
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
 │   ├── IMPLEMENTATION.md      # Living delivery plan and current state
-│   ├── TRANSFER_DEMO.md       # Planned bank-to-bank transfer capability contract
+│   ├── TRANSFER_DEMO.md       # Implemented acceptance mapping and remaining flow contract
 │   ├── adr/                   # Accepted architectural decisions
 │   ├── plans/active/          # Restartable execution plans and evidence
 │   └── reference/             # Three immutable publications and index
@@ -189,4 +189,4 @@ Graph queries, reports, plugin advice, and agent suggestions are navigation aids
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3A durable-acceptance and Phase 3B worker/recovery slices and their limits. The next bounded recommendation is the chain-neutral Phase 3C transfer aggregate and mock-bank boundary, not signing or chain deployment.
+[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3A acceptance, Phase 3B worker/recovery, and Phase 3C transfer-acceptance slices and their limits. The next bounded recommendation is the provider-neutral signing-authority boundary, not chain deployment or end-to-end transfer execution.

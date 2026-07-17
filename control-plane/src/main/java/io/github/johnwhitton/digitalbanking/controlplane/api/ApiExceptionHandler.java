@@ -5,8 +5,10 @@ import java.net.URI;
 import io.github.johnwhitton.digitalbanking.application.IdempotencyConflictException;
 import io.github.johnwhitton.digitalbanking.application.InvalidRequestException;
 import io.github.johnwhitton.digitalbanking.application.OperationNotFoundException;
+import io.github.johnwhitton.digitalbanking.application.TransferNotFoundException;
 import io.github.johnwhitton.digitalbanking.application.UnknownAssetUnitException;
 import io.github.johnwhitton.digitalbanking.application.UnsupportedRequestContractException;
+import io.github.johnwhitton.digitalbanking.application.UnsupportedTransferConfigurationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -61,14 +63,15 @@ public final class ApiExceptionHandler {
 
     @ExceptionHandler({
             UnknownAssetUnitException.class,
-            UnsupportedRequestContractException.class
+            UnsupportedRequestContractException.class,
+            UnsupportedTransferConfigurationException.class
     })
     ResponseEntity<ProblemDetail> unprocessable(RuntimeException ignored) {
         return problem(
                 HttpStatus.UNPROCESSABLE_CONTENT,
                 "unprocessable-request",
                 "Unprocessable request",
-                "The request uses an unsupported contract or asset unit.");
+                "The request uses an unsupported contract, asset unit, or transfer route.");
     }
 
     @ExceptionHandler(IdempotencyConflictException.class)
@@ -87,6 +90,15 @@ public final class ApiExceptionHandler {
                 "operation-not-found",
                 "Operation not found",
                 "The operation was not found.");
+    }
+
+    @ExceptionHandler(TransferNotFoundException.class)
+    ResponseEntity<ProblemDetail> transferNotFound(TransferNotFoundException ignored) {
+        return problem(
+                HttpStatus.NOT_FOUND,
+                "transfer-not-found",
+                "Transfer not found",
+                "The transfer was not found.");
     }
 
     @ExceptionHandler({DataAccessException.class, TransactionException.class})

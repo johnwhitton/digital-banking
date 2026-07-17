@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 public final class TokenOperationController {
 
     private static final String IDENTIFIER = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}";
-    private static final String QUANTITY = "^[1-9][0-9]*(\\.[0-9]*[1-9])?$";
+    private static final String QUANTITY = "^(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$";
 
     private final TokenOperationApplicationService operations;
 

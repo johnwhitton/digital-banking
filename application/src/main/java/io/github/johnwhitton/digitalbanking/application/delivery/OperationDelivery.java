@@ -5,10 +5,11 @@ import java.util.UUID;
 
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationId;
 
-/** A committed lease for one durable TokenOperationAccepted delivery. */
+/** A committed lease for one durable aggregate event delivery. */
 public record OperationDelivery(
         UUID deliveryId,
-        OperationId operationId,
+        UUID aggregateId,
+        String eventType,
         int eventVersion,
         int payloadSchemaVersion,
         UUID leaseId,
@@ -17,7 +18,8 @@ public record OperationDelivery(
 
     public OperationDelivery {
         Objects.requireNonNull(deliveryId, "deliveryId");
-        Objects.requireNonNull(operationId, "operationId");
+        Objects.requireNonNull(aggregateId, "aggregateId");
+        Objects.requireNonNull(eventType, "eventType");
         Objects.requireNonNull(leaseId, "leaseId");
         Objects.requireNonNull(workerId, "workerId");
         if (eventVersion < 1 || payloadSchemaVersion < 1 || attemptNumber < 1) {
@@ -28,5 +30,22 @@ public record OperationDelivery(
             throw new IllegalArgumentException(
                     "workerId must contain 1-128 visible US-ASCII characters");
         }
+    }
+
+    /** Compatibility constructor for the existing TokenOperationAccepted delivery contract. */
+    public OperationDelivery(
+            UUID deliveryId,
+            OperationId operationId,
+            int eventVersion,
+            int payloadSchemaVersion,
+            UUID leaseId,
+            String workerId,
+            int attemptNumber) {
+        this(deliveryId, operationId.value(), "TokenOperationAccepted",
+                eventVersion, payloadSchemaVersion, leaseId, workerId, attemptNumber);
+    }
+
+    public OperationId operationId() {
+        return new OperationId(aggregateId);
     }
 }

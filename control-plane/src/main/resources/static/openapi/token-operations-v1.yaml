@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
-  title: Digital Banking Durable Token Operations API
+  title: Digital Banking Durable Operations API
   version: 1.0.0
   description: >-
-    Records durable mint and burn operation requests. HTTP 202 means the local
-    acceptance transaction committed; it does not perform signing, submission, minting, burning,
-    reconciliation, settlement, or any external side effect.
+    Records durable mint and burn operation requests and chain-neutral transfer
+    acceptance. HTTP 202 means the local acceptance transaction committed; it does
+    not perform signing, submission, minting, burning, bank effects, reconciliation,
+    settlement, or any external side effect.
 paths:
   /v1/token-operations/mints:
     post:
@@ -121,6 +122,83 @@ paths:
           $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /v1/transfers:
+    post:
+      operationId: acceptTransfer
+      summary: Durably accept a chain-neutral transfer plan
+      description: >-
+        Commits one parent transfer, five ordered planned effects, immutable
+        server-resolved wallet context, initial history, idempotency, and one
+        TransferAccepted outbox event. It performs no bank or blockchain effect.
+      security:
+        - identityAdapter: []
+      x-required-authority: transfer:create
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferAcceptanceRequest'
+            example:
+              amount: '12.34'
+              currency: USD
+              sourceBankAccountReference: synthetic-bank:source-001
+              destinationBankAccountReference: synthetic-bank:destination-001
+              settlementNetwork: ETHEREUM
+      responses:
+        '202':
+          $ref: '#/components/responses/TransferAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/transfers/{transferId}:
+    get:
+      operationId: getTransfer
+      summary: Read a participant-scoped durable transfer plan
+      security:
+        - identityAdapter: []
+      x-required-authority: transfer:read
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Durable parent state, five effect states, and separate finalities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TransferNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /openapi/token-operations-v1.yaml:
     get:
       operationId: getTokenOperationsContract
@@ -205,6 +283,81 @@ components:
                   evidenceReferences: []
             evidenceReferences:
               - participant:acceptance:48ff09c2-0a2e-40c4-a122-190a66fc7444
+    TransferAccepted:
+      description: >-
+        The local parent, five planned effects, histories, idempotency, and
+        pending outbox event committed atomically. No financial effect started.
+      headers:
+        Location:
+          required: true
+          description: Stable participant-scoped transfer resource
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Transfer'
+          example:
+            transferId: 00000000-0000-0000-0000-000000000100
+            amount: '12.34'
+            currency: USD
+            sourceBankAccountReference: synthetic-bank:source-001
+            destinationBankAccountReference: synthetic-bank:destination-001
+            settlementNetwork: ETHEREUM
+            status: ACCEPTED
+            version: 0
+            createdAt: '2026-07-17T18:00:00.123456Z'
+            updatedAt: '2026-07-17T18:00:00.123456Z'
+            effects:
+              - effectId: 00000000-0000-0000-0000-000000000101
+                sequence: 1
+                kind: BANK_WITHDRAWAL
+                status: PLANNED
+                attemptCount: 0
+                evidenceReferences: []
+              - effectId: 00000000-0000-0000-0000-000000000102
+                sequence: 2
+                kind: TOKEN_MINT
+                status: PLANNED
+                attemptCount: 0
+                evidenceReferences: []
+              - effectId: 00000000-0000-0000-0000-000000000103
+                sequence: 3
+                kind: TOKEN_TRANSFER
+                status: PLANNED
+                attemptCount: 0
+                evidenceReferences: []
+              - effectId: 00000000-0000-0000-0000-000000000104
+                sequence: 4
+                kind: TOKEN_BURN
+                status: PLANNED
+                attemptCount: 0
+                evidenceReferences: []
+              - effectId: 00000000-0000-0000-0000-000000000105
+                sequence: 5
+                kind: BANK_DEPOSIT
+                status: PLANNED
+                attemptCount: 0
+                evidenceReferences: []
+            finalities:
+              blockchain:
+                - status: NOT_ASSESSED
+                  updatedAt: '1970-01-01T00:00:00Z'
+                  evidenceReferences: []
+              legal:
+                - status: NOT_ASSESSED
+                  updatedAt: '1970-01-01T00:00:00Z'
+                  evidenceReferences: []
+              customerVisible:
+                - status: NOT_ASSESSED
+                  updatedAt: '1970-01-01T00:00:00Z'
+                  evidenceReferences: []
+              accounting:
+                - status: NOT_ASSESSED
+                  updatedAt: '1970-01-01T00:00:00Z'
+                  evidenceReferences: []
+            evidenceReferences:
+              - participant:transfer:acceptance:00000000-0000-0000-0000-000000000100
     BadRequest:
       description: Malformed request or invalid bounded input
       content:
@@ -253,6 +406,20 @@ components:
             status: 404
             detail: The operation was not found.
             instance: urn:digital-banking:problem-instance:undisclosed
+    TransferNotFound:
+      description: >-
+        Transfer is unknown or outside the authenticated participant scope;
+        these cases are intentionally indistinguishable.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: urn:digital-banking:problem:transfer-not-found
+            title: Transfer not found
+            status: 404
+            detail: The transfer was not found.
+            instance: urn:digital-banking:problem-instance:undisclosed
     Conflict:
       description: The scoped idempotency key names a different canonical request
       content:
@@ -278,7 +445,7 @@ components:
             detail: Use application/json for this request.
             instance: urn:digital-banking:problem-instance:undisclosed
     Unprocessable:
-      description: Unsupported request contract or server-owned asset unit
+      description: Unsupported request contract, server-owned asset unit, or transfer route
       content:
         application/problem+json:
           schema:
@@ -287,7 +454,7 @@ components:
             type: urn:digital-banking:problem:unprocessable-request
             title: Unprocessable request
             status: 422
-            detail: The request uses an unsupported contract or asset unit.
+            detail: The request uses an unsupported contract, asset unit, or transfer route.
             instance: urn:digital-banking:problem-instance:undisclosed
     ServiceUnavailable:
       description: Durable acceptance or read-back is unavailable
@@ -318,7 +485,7 @@ components:
       type: string
       minLength: 1
       maxLength: 512
-      pattern: '^[1-9][0-9]*(\.[0-9]*[1-9])?$'
+      pattern: '^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$'
       description: Positive canonical decimal text; never a JSON number
       examples:
         - '12.34'
@@ -349,6 +516,32 @@ components:
           type: string
           minLength: 1
           maxLength: 128
+    TransferAcceptanceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - amount
+        - currency
+        - sourceBankAccountReference
+        - destinationBankAccountReference
+      properties:
+        amount:
+          $ref: '#/components/schemas/CanonicalQuantity'
+        currency:
+          type: string
+          pattern: '^[A-Z][A-Z0-9]{2,11}$'
+        sourceBankAccountReference:
+          $ref: '#/components/schemas/SyntheticBankAccountReference'
+        destinationBankAccountReference:
+          $ref: '#/components/schemas/SyntheticBankAccountReference'
+        settlementNetwork:
+          type: string
+          enum: [ETHEREUM, SOLANA]
+          description: Optional logical future-adapter route; defaults locally when absent
+    SyntheticBankAccountReference:
+      type: string
+      pattern: '^synthetic-bank:[A-Za-z0-9][A-Za-z0-9._:-]{0,111}$'
+      description: Opaque synthetic reference; never real account or routing data
     SafeIdentifier:
       type: string
       pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$'
@@ -494,6 +687,124 @@ components:
           description: Participant-safe opaque references only; internal evidence is omitted
           items:
             type: string
+    Transfer:
+      type: object
+      additionalProperties: false
+      required:
+        - transferId
+        - amount
+        - currency
+        - sourceBankAccountReference
+        - destinationBankAccountReference
+        - settlementNetwork
+        - status
+        - version
+        - createdAt
+        - updatedAt
+        - effects
+        - finalities
+        - evidenceReferences
+      properties:
+        transferId:
+          type: string
+          format: uuid
+        amount:
+          $ref: '#/components/schemas/CanonicalQuantity'
+        currency:
+          type: string
+        sourceBankAccountReference:
+          $ref: '#/components/schemas/SyntheticBankAccountReference'
+        destinationBankAccountReference:
+          $ref: '#/components/schemas/SyntheticBankAccountReference'
+        settlementNetwork:
+          type: string
+          enum: [ETHEREUM, SOLANA]
+        status:
+          type: string
+          enum: [ACCEPTED, IN_PROGRESS, MANUAL_REVIEW, COMPENSATION_REQUIRED, EFFECTS_APPLIED]
+          description: EFFECTS_APPLIED is not legal, accounting, customer, or settlement finality
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        effects:
+          type: array
+          minItems: 5
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/TransferEffect'
+        finalities:
+          $ref: '#/components/schemas/TransferFinalities'
+        evidenceReferences:
+          type: array
+          description: Participant-safe opaque references only
+          items:
+            type: string
+    TransferEffect:
+      type: object
+      additionalProperties: false
+      required: [effectId, sequence, kind, status, attemptCount, evidenceReferences]
+      properties:
+        effectId:
+          type: string
+          format: uuid
+        sequence:
+          type: integer
+          minimum: 1
+          maximum: 5
+        kind:
+          type: string
+          enum: [BANK_WITHDRAWAL, TOKEN_MINT, TOKEN_TRANSFER, TOKEN_BURN, BANK_DEPOSIT]
+        status:
+          type: string
+          enum: [PLANNED, PREPARED, ATTEMPT_PENDING, APPLIED, AMBIGUOUS, RETRYABLE_NO_EFFECT, TERMINAL_NO_EFFECT, MANUAL_REVIEW, COMPENSATION_REQUIRED]
+        attemptCount:
+          type: integer
+          minimum: 0
+        evidenceReferences:
+          type: array
+          description: Participant-safe opaque references only
+          items:
+            type: string
+    TransferFinalities:
+      type: object
+      additionalProperties: false
+      required: [blockchain, legal, customerVisible, accounting]
+      properties:
+        blockchain:
+          $ref: '#/components/schemas/TransferFinalityHistory'
+        legal:
+          $ref: '#/components/schemas/TransferFinalityHistory'
+        customerVisible:
+          $ref: '#/components/schemas/TransferFinalityHistory'
+        accounting:
+          $ref: '#/components/schemas/TransferFinalityHistory'
+    TransferFinalityHistory:
+      type: array
+      minItems: 1
+      items:
+        $ref: '#/components/schemas/TransferFinality'
+    TransferFinality:
+      type: object
+      additionalProperties: false
+      required: [status, updatedAt, evidenceReferences]
+      properties:
+        status:
+          type: string
+          enum: [NOT_ASSESSED, PENDING, REACHED, REJECTED]
+        updatedAt:
+          type: string
+          format: date-time
+        evidenceReferences:
+          type: array
+          items:
+            type: string
     Problem:
       type: object
       required: [type, title, status, detail]
@@ -506,6 +817,7 @@ components:
             - urn:digital-banking:problem:unauthenticated
             - urn:digital-banking:problem:unauthorized
             - urn:digital-banking:problem:operation-not-found
+            - urn:digital-banking:problem:transfer-not-found
             - urn:digital-banking:problem:idempotency-conflict
             - urn:digital-banking:problem:unsupported-media-type
             - urn:digital-banking:problem:unprocessable-request

@@ -1,10 +1,10 @@
-# Planned Bank-to-Bank Stablecoin Transfer Demonstration
+# Bank-to-Bank Stablecoin Transfer Demonstration Contract
 
 ## Purpose, audience, and status
 
-This document specifies a local-only, non-production proof of concept for bank-to-bank value movement using a stablecoin settlement rail. It is a proposed capability contract subordinate to accepted [ADRs](adr/README.md), the canonical [design](DESIGN.md), and future executable tests.
+This document specifies a local-only, non-production proof of concept for bank-to-bank value movement using a stablecoin settlement rail. It is a capability contract subordinate to accepted [ADRs](adr/README.md), the canonical [design](DESIGN.md), and executable tests.
 
-**Status:** `planned`. The repository does not currently implement the end-to-end flow, transfer resource, bank integration, settlement wallets, signing, chain effects, observation, or reconciliation. Phase 3A only durably accepts and reads back mint/burn operation requests; it does not process them.
+**Status:** `partially implemented`. Phase 3C implements the transfer resource, durable five-effect plan, server-resolved synthetic custody context, PostgreSQL acceptance/outbox/inbox state, mock-bank contract/test adapter, and first-withdrawal preparation. It does not execute the end-to-end flow, bank or token effects, signing, chain activity, observation, reconciliation, compensation, or settlement.
 
 Intended reviewers are application engineers, architects, smart-contract and program engineers, security and operations teams, and interview reviewers. This demonstration never implies production, legal, accounting, compliance, or operational readiness.
 
@@ -18,7 +18,7 @@ One caller-owned asynchronous transfer resource coordinates five internal effect
 4. burn the stablecoin from the recipient's settlement wallet; and
 5. mock deposit to the recipient's bank account.
 
-The planned public API is:
+The implemented acceptance/status API is:
 
 ```text
 POST /v1/transfers
@@ -31,9 +31,9 @@ GET  /v1/transfers/{transferId}
 - exact `amount` as a canonical decimal string and a configured `currency` identifier; and
 - an optional logical `settlementNetwork`, initially `ETHEREUM` or `SOLANA`.
 
-Participant/tenant scope comes only from the authenticated principal, never request JSON or an ad hoc tenant header. Creation requires the planned transfer-create authority; read-back requires the planned transfer-read authority. `GET` is participant-scoped, so an unknown transfer ID and another participant's transfer ID produce the same safe 404 response.
+Participant/tenant scope comes only from the authenticated principal, never request JSON or an ad hoc tenant header. Creation requires `transfer:create`; read-back requires `transfer:read`. `GET` is participant-scoped, so an unknown transfer ID and another participant's transfer ID produce the same safe 404 response.
 
-The server resolves currency scale, stablecoin asset/unit, settlement wallets, signer policy, chain endpoint, contract/program identity, finality thresholds, and route configuration. The network choice is not arbitrary infrastructure input: it is validated against an allowlisted, versioned local route configuration. Callers never provide RPC URLs, contract/program addresses, signer or key references, key material, or finality thresholds. If the field is absent, the server selects the configured local default.
+The server resolves currency scale, stablecoin asset/unit, sender and recipient wallet roles, and route configuration. Later slices also resolve signer, chain endpoint, contract/program identity, and finality thresholds. The network choice is not arbitrary infrastructure input: it is validated against an allowlisted, versioned local route configuration. Callers never provide sender, recipient, mint-authority, burn-authority, treasury, RPC, contract/program, signer/key, or finality configuration. If the network is absent, the server selects the configured local default.
 
 Acceptance returns HTTP 202 with a stable `TransferId`, a transfer representation, and `Location: /v1/transfers/{transferId}` only after durable local acceptance commits. `GET` returns the durable parent status, child summaries, distinct finalities, and explicitly allowlisted evidence summaries. It does not return raw idempotency keys, internal digests, private account data, policy facts, signer/provider details, signed bytes, or a single `settled` Boolean.
 
@@ -58,6 +58,14 @@ The parent records participant scope, canonical request version/hash, exact amou
 The same scoped idempotency key, canonicalization version, and request hash returns the original transfer. The same scope/key with a different canonical identity is a conflict. Duplicate delivery cannot create another parent, child operation, attempt, or external effect.
 
 Authorization, participant limits, currency/asset mapping, chain route, wallet roles, signer policy, approvals, and finality policy are server-owned, allowlisted, and versioned. A signing request binds exact bytes/digest to the parent transfer, child operation, attempt, purpose, route, asset, quantity, source/destination, fee/lifetime limits, policy, and approval evidence. Raw production keys never enter the Java application.
+
+### Phase 3C implementation mapping
+
+The current `Transfer` aggregate persists participant identity, canonical request and resolved-context digests, exact versioned asset/unit quantity, source/destination synthetic bank references, logical network, opaque sender/recipient wallet identities, route/wallet policy versions, five ordered effect identities/statuses, transitions/evidence, and four separate finalities. The public response omits wallet identities and policy versions.
+
+V3 commits the parent, hashed idempotency binding, effects, initial transition/evidence, finalities, and `TransferAccepted` outbox row atomically. The Phase 3B handler commits its inbox delivery identity with the single bounded transition from `BANK_WITHDRAWAL/PLANNED` to `PREPARED`; redelivery returns the stored duplicate result. It does not invoke the mock-bank port inside that transaction or mark withdrawal applied.
+
+The provider-neutral `MockBankPort` binds transfer/effect/participant/account, exact quantity, operation, idempotency and attempt identities, policy version, request time, and deadline. Its synthetic adapter proves applied/already-applied, rejected-no-effect, retryable-no-effect, and ambiguous classifications in tests, but it is not registered as a runtime fallback.
 
 ## Workflow and transaction boundary
 

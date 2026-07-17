@@ -47,6 +47,10 @@ public class SecurityConfiguration {
                         .hasAuthority("token:burn")
                         .requestMatchers(HttpMethod.GET, "/v1/token-operations/*")
                         .hasAuthority("token:read")
+                        .requestMatchers(HttpMethod.POST, "/v1/transfers")
+                        .hasAuthority("transfer:create")
+                        .requestMatchers(HttpMethod.GET, "/v1/transfers/*")
+                        .hasAuthority("transfer:read")
                         .anyRequest().denyAll())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, failure) ->

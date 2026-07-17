@@ -15,7 +15,6 @@ import javax.sql.DataSource;
 import io.github.johnwhitton.digitalbanking.application.delivery.DeliveryOutcome;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDelivery;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryQueue;
-import io.github.johnwhitton.digitalbanking.domain.operation.OperationId;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -61,8 +60,10 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
     private ClaimBatch claimInTransaction(
             String workerId, Instant claimedAt, Instant leaseExpiresAt, int limit) {
         List<Candidate> candidates = jdbc.sql("""
-                SELECT candidate.event_id, candidate.operation_id,
-                       candidate.event_version, candidate.payload_schema_version,
+                SELECT candidate.event_id,
+                       COALESCE(candidate.operation_id, candidate.transfer_id) AS aggregate_id,
+                       candidate.event_type, candidate.event_version,
+                       candidate.payload_schema_version,
                        candidate.delivery_attempt_count, candidate.lease_id
                 FROM operation_outbox candidate
                 WHERE ((candidate.status = 'PENDING'
@@ -72,7 +73,10 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                   AND NOT EXISTS (
                       SELECT 1
                       FROM operation_outbox prior
-                      WHERE prior.operation_id = candidate.operation_id
+                      WHERE ((prior.operation_id = candidate.operation_id
+                                AND candidate.operation_id IS NOT NULL)
+                            OR (prior.transfer_id = candidate.transfer_id
+                                AND candidate.transfer_id IS NOT NULL))
                         AND (prior.created_at, prior.event_id)
                             < (candidate.created_at, candidate.event_id)
                         AND prior.status IN ('PENDING', 'IN_PROGRESS'))
@@ -89,7 +93,8 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                 .param("limit", limit)
                 .query((row, rowNumber) -> new Candidate(
                         row.getObject("event_id", UUID.class),
-                        new OperationId(row.getObject("operation_id", UUID.class)),
+                        row.getObject("aggregate_id", UUID.class),
+                        row.getString("event_type"),
                         row.getInt("event_version"),
                         row.getInt("payload_schema_version"),
                         row.getInt("delivery_attempt_count"),
@@ -154,8 +159,9 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                     .param("leaseExpiresAt", utc(leaseExpiresAt))
                     .update();
             deliveries.add(new OperationDelivery(
-                    candidate.eventId(), candidate.operationId(), candidate.eventVersion(),
-                    candidate.payloadSchemaVersion(), leaseId, workerId, attemptNumber));
+                    candidate.eventId(), candidate.aggregateId(), candidate.eventType(),
+                    candidate.eventVersion(), candidate.payloadSchemaVersion(),
+                    leaseId, workerId, attemptNumber));
         }
         return new ClaimBatch(deliveries, recovered);
     }
@@ -323,7 +329,10 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                     AND candidate.lease_expires_at <= :now))
                           AND NOT EXISTS (
                               SELECT 1 FROM operation_outbox prior
-                              WHERE prior.operation_id = candidate.operation_id
+                              WHERE ((prior.operation_id = candidate.operation_id
+                                        AND candidate.operation_id IS NOT NULL)
+                                    OR (prior.transfer_id = candidate.transfer_id
+                                        AND candidate.transfer_id IS NOT NULL))
                                 AND (prior.created_at, prior.event_id)
                                     < (candidate.created_at, candidate.event_id)
                                 AND prior.status IN ('PENDING', 'IN_PROGRESS')))
@@ -382,7 +391,8 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
 
     private record Candidate(
             UUID eventId,
-            OperationId operationId,
+            UUID aggregateId,
+            String eventType,
             int eventVersion,
             int payloadSchemaVersion,
             int attemptCount,

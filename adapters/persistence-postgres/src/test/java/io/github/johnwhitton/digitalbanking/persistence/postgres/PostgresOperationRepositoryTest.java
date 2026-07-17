@@ -135,7 +135,7 @@ class PostgresOperationRepositoryTest {
                         ORDER BY indexname
                         """).query(String.class).list();
 
-        assertEquals(2, migrationCount);
+        assertEquals(3, migrationCount);
         assertEquals(9, tableCount);
         assertTrue(indexes.contains("idx_token_operation_participant"));
         assertTrue(indexes.contains("idx_operation_idempotency_lookup"));

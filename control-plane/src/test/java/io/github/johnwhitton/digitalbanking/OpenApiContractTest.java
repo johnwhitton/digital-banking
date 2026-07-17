@@ -16,6 +16,8 @@ import java.util.stream.Collectors;
 
 import io.github.johnwhitton.digitalbanking.controlplane.api.TokenOperationController;
 import io.github.johnwhitton.digitalbanking.controlplane.api.TokenOperationResponse;
+import io.github.johnwhitton.digitalbanking.controlplane.api.TransferController;
+import io.github.johnwhitton.digitalbanking.controlplane.api.TransferResponse;
 import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
 import io.github.johnwhitton.digitalbanking.domain.asset.TokenQuantity;
 import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
@@ -23,6 +25,15 @@ import io.github.johnwhitton.digitalbanking.domain.operation.OperationAcceptance
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationId;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationKind;
 import io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation;
+import io.github.johnwhitton.digitalbanking.domain.transfer.BankAccountReference;
+import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
+import io.github.johnwhitton.digitalbanking.domain.transfer.Transfer;
+import io.github.johnwhitton.digitalbanking.domain.transfer.TransferAcceptanceContext;
+import io.github.johnwhitton.digitalbanking.domain.transfer.TransferEffect;
+import io.github.johnwhitton.digitalbanking.domain.transfer.TransferId;
+import io.github.johnwhitton.digitalbanking.domain.transfer.TransferParticipant;
+import io.github.johnwhitton.digitalbanking.domain.transfer.TransferTransition;
+import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 import org.yaml.snakeyaml.Yaml;
@@ -51,6 +62,8 @@ class OpenApiContractTest {
         assertTrue(map(paths.get("/v1/token-operations/mints")).containsKey("post"));
         assertTrue(map(paths.get("/v1/token-operations/burns")).containsKey("post"));
         assertTrue(map(paths.get("/v1/token-operations/{operationId}")).containsKey("get"));
+        assertTrue(map(paths.get("/v1/transfers")).containsKey("post"));
+        assertTrue(map(paths.get("/v1/transfers/{transferId}")).containsKey("get"));
         assertTrue(map(paths.get("/openapi/token-operations-v1.yaml")).containsKey("get"));
         assertFalse(document.containsKey("servers"));
         assertFalse(text.contains("http://"));
@@ -70,6 +83,10 @@ class OpenApiContractTest {
         assertOperation(paths, "/v1/token-operations/burns", "post", "token:burn",
                 Set.of("202", "400", "401", "403", "409", "415", "422", "500", "503"));
         assertOperation(paths, "/v1/token-operations/{operationId}", "get", "token:read",
+                Set.of("200", "400", "401", "403", "404", "500", "503"));
+        assertOperation(paths, "/v1/transfers", "post", "transfer:create",
+                Set.of("202", "400", "401", "403", "409", "415", "422", "500", "503"));
+        assertOperation(paths, "/v1/transfers/{transferId}", "get", "transfer:read",
                 Set.of("200", "400", "401", "403", "404", "500", "503"));
 
         Map<String, Object> components = map(document.get("components"));
@@ -112,11 +129,25 @@ class OpenApiContractTest {
                 TokenOperationResponse.FinalityHistories.class);
         assertSchemaMatchesRecord(schemas, "FinalityRecord",
                 TokenOperationResponse.FinalityView.class);
+        assertEquals(recordComponents(TransferController.AcceptanceRequest.class),
+                map(map(schemas.get("TransferAcceptanceRequest")).get("properties")).keySet());
+        assertFalse(map(map(schemas.get("TransferAcceptanceRequest"))
+                .get("properties")).containsKey("senderWallet"));
+        assertFalse(map(map(schemas.get("TransferAcceptanceRequest"))
+                .get("properties")).containsKey("recipientWalletReference"));
+        assertEquals(recordComponents(TransferResponse.class),
+                map(map(schemas.get("Transfer")).get("properties")).keySet());
+        assertSchemaMatchesRecord(schemas, "TransferEffect", TransferResponse.EffectView.class);
+        assertSchemaMatchesRecord(schemas, "TransferFinalities",
+                TransferResponse.FinalityHistories.class);
+        assertSchemaMatchesRecord(schemas, "TransferFinality",
+                TransferResponse.FinalityView.class);
         assertEquals(Set.of(
                         "urn:digital-banking:problem:invalid-request",
                         "urn:digital-banking:problem:unauthenticated",
                         "urn:digital-banking:problem:unauthorized",
                         "urn:digital-banking:problem:operation-not-found",
+                        "urn:digital-banking:problem:transfer-not-found",
                         "urn:digital-banking:problem:idempotency-conflict",
                         "urn:digital-banking:problem:unsupported-media-type",
                         "urn:digital-banking:problem:unprocessable-request",
@@ -140,6 +171,19 @@ class OpenApiContractTest {
     }
 
     @Test
+    void transferAcceptedExampleMatchesTheExecutableSafeResponse() throws Exception {
+        Map<String, Object> document;
+        try (InputStream input = new ClassPathResource(CONTRACT).getInputStream()) {
+            document = map(new Yaml().load(input));
+        }
+        Map<String, Object> responses = map(map(document.get("components")).get("responses"));
+        Object example = map(map(map(responses.get("TransferAccepted")).get("content"))
+                .get("application/json")).get("example");
+
+        assertEquals(normalize(executableTransferResponse()), normalize(example));
+    }
+
+    @Test
     void quantityIsStringAndFourFinalitiesRemainDistinct() throws IOException {
         Map<String, Object> document;
         try (InputStream input = new ClassPathResource(CONTRACT).getInputStream()) {
@@ -151,7 +195,7 @@ class OpenApiContractTest {
                 .get("properties"));
 
         assertEquals("string", quantity.get("type"));
-        assertEquals("^[1-9][0-9]*(\\.[0-9]*[1-9])?$", quantity.get("pattern"));
+        assertEquals("^(0|[1-9][0-9]*)(\\.[0-9]*[1-9])?$", quantity.get("pattern"));
         assertNotNull(finalities.get("blockchain"));
         assertNotNull(finalities.get("legal"));
         assertNotNull(finalities.get("customerVisible"));
@@ -198,6 +242,33 @@ class OpenApiContractTest {
                 new EvidenceRef(
                         "participant:acceptance:48ff09c2-0a2e-40c4-a122-190a66fc7444"));
         return TokenOperationResponse.from(operation);
+    }
+
+    private static TransferResponse executableTransferResponse() {
+        Instant acceptedAt = Instant.parse("2026-07-17T18:00:00.123456Z");
+        AssetUnit unit = new AssetUnit(
+                "USD_STABLE", "USD", 1, 2, new BigInteger("1000000000000"));
+        List<TransferEffect.Id> effects = java.util.stream.IntStream.rangeClosed(101, 105)
+                .mapToObj(value -> new TransferEffect.Id(java.util.UUID.fromString(
+                        "00000000-0000-0000-0000-000000000" + value)))
+                .toList();
+        Transfer transfer = Transfer.accepted(
+                new TransferId(java.util.UUID.fromString(
+                        "00000000-0000-0000-0000-000000000100")),
+                new TransferParticipant("tenant-a", "participant-a"),
+                new TransferAcceptanceContext(
+                        new BankAccountReference("synthetic-bank:source-001"),
+                        new BankAccountReference("synthetic-bank:destination-001"),
+                        new WalletReference("synthetic-wallet:server-sender"),
+                        new WalletReference("synthetic-wallet:server-recipient"),
+                        SettlementNetwork.ETHEREUM, "USD", "route-v1", "wallet-v1",
+                        1, "a".repeat(64), 1, "b".repeat(64), "c".repeat(64)),
+                TokenQuantity.parse("12.34", unit), effects,
+                new TransferTransition.Id(java.util.UUID.fromString(
+                        "00000000-0000-0000-0000-000000000201")), acceptedAt,
+                new EvidenceRef(
+                        "participant:transfer:acceptance:00000000-0000-0000-0000-000000000100"));
+        return TransferResponse.from(transfer);
     }
 
     private static Object normalize(Object value) throws ReflectiveOperationException {

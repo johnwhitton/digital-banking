@@ -48,7 +48,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | -------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
 | 1. Foundation                          | `verified`    | Source publications and the full foundation gate are verified; see the closed bootstrap plan. |
 | 2. Domain and operation lifecycle      | `verified`    | Exact quantities, guarded lifecycle/finality histories, canonical commands, idempotent acceptance contracts, and bound ports passed 264 pure tests and the 266-test reactor. |
-| 3. Durable API and persistence         | `in_progress` | Phase 3A durable acceptance/read-back and Phase 3B PostgreSQL worker/recovery infrastructure are verified. The real consumer business transition and planned Phase 3C transfer orchestration remain absent. |
+| 3. Durable API and persistence         | `verified`    | Phase 3A acceptance/read-back, Phase 3B worker/recovery, and Phase 3C transfer acceptance/first deduplicated internal preparation pass the 364-test offline reactor. External workflow effects remain absent by scope. |
 | 4. Signing boundary                    | `not_started` | Design only; no signer code or keys.                                                           |
 | 5. Ethereum vertical slice             | `not_started` | No Web3j/Solidity/local-chain code.                                                            |
 | 6. Solana vertical slice               | `not_started` | No Java SDK/Rust/local-validator code.                                                         |
@@ -56,7 +56,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 8. Integrated local environment        | `not_started` | No Compose file.                                                                               |
 | 9. Hardening and publication readiness | `not_started` | No production-readiness claim.                                                                 |
 
-The current executable boundary is Phase 3B delivery infrastructure: durable local acceptance plus an opt-in at-least-once worker that has no production handler or business effect. The planned [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) does not change implementation status. Every future transfer-related slice requires its own focused active plan before code, dependency, schema, API, signer, adapter, contract/program, or environment work begins.
+The current executable boundary is Phase 3C transfer acceptance: durable parent/effect planning plus an opt-in at-least-once worker contract and one transactional transfer inbox that prepares the first withdrawal without calling an external service. The complete [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) remains future work. Every later effect/signing/chain slice requires its own focused active plan.
 
 ## Phase 1: Foundation
 
@@ -110,7 +110,7 @@ The current executable boundary is Phase 3B delivery infrastructure: durable loc
 
 The worker is disabled by default. Enabling requires an explicit visible-ASCII worker identity, a real `OperationDeliveryHandler`, and bounded durations of at least one microsecond to match database timestamp precision; startup fails rather than wiring a no-op consumer. It claims and commits durable delivery intent before invoking the handler and never holds the claim transaction across handler work.
 
-Delivery is at least once. Lease expiry or post-handler/pre-acknowledgement loss can redeliver the same stable outbox `event_id`. A future real consumer must persist that identity in the same local transaction as its bounded business effect. Because this slice defines no business transition, production adds no inbox or fake effect; a test-only PostgreSQL inbox/effect proves duplicate delivery returns the durable result without repeating the effect.
+Delivery is at least once. Lease expiry or post-handler/pre-acknowledgement loss can redeliver the same stable outbox `event_id`. Phase 3C applies this rule to `TransferAccepted`: its handler persists the delivery identity with the first-withdrawal preparation transition and returns the durable duplicate result on redelivery. Other future consumers must provide the same atomic inbox/effect proof.
 
 Explicit handler outcomes distinguish delivered, duplicate, retryable no-effect, terminal no-effect, and ambiguous acknowledgement. Unexpected exceptions are retained only as safe internal class diagnostics and a stable ambiguous failure code. Retries use durable deterministic bounded backoff; terminal/exhausted work and all attempt evidence are retained for manual review. Stale owners cannot overwrite a replacement lease, and earlier unresolved work blocks later work for the same operation without serializing unrelated operations.
 
@@ -124,21 +124,21 @@ The database-backed Java/Spring worker is the accepted self-contained baseline, 
 
 **Risks:** PostgreSQL-specific queue coupling, handler work exceeding its lease, incorrect future consumer deduplication, exactly-once overclaims, and configuration/SLO choices not yet production-tested. Expiry makes a late owner stale rather than authoritative; it does not cancel a possible handler effect.
 
-**Deferred:** the first real consumer/lifecycle transition and production inbox, broker/workflow topology, full ledger, transfer, signing, chain execution, observation, reconciliation, and settlement.
+**Deferred:** other consumer transitions, broker/workflow topology, full ledger, effect execution, signing, chain execution, observation, reconciliation, and settlement.
 
 ### Phase 3C: chain-neutral transfer aggregate and mock-bank boundary
 
 **Dependency:** Phase 3B worker/recovery mechanics are verified before this slice performs or coordinates any child effect.
 
-**Planned deliverables:** execute the chain-neutral portion of [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md): one durable `Transfer` parent aggregate; `POST /v1/transfers` and participant-scoped `GET /v1/transfers/{transferId}`; versioned canonical idempotency and exact amount/currency; normalized transfer/child/evidence/finality persistence; source- and destination-bank ports; local mock-bank adapters; route/wallet/asset/approval configuration contracts; and child token-operation correlation. Do not add a chain adapter or claim the five-step demonstration in this phase.
+**Verified deliverables:** one framework-free `Transfer` aggregate with five stable ordered effects; `POST /v1/transfers` and participant-scoped `GET /v1/transfers/{transferId}`; exact amount/currency and caller-command canonical idempotency; immutable server-resolved asset/unit, network, and opaque sender/recipient wallet context; normalized V3 parent/effect/history/finality/inbox persistence; `TransferAccepted` support in the existing outbox worker; a provider-neutral mock-bank port and deterministic synthetic test/local adapter; and a transactional handler that advances only the first withdrawal from `PLANNED` to `PREPARED`.
 
-**Future tests:** API contract/validation/security, exact amount and canonical hash, replay/conflict and concurrent duplicates, participant isolation, parent/child persistence and restart recovery, outbox/inbox delivery, bank-effect inquiry after timeout, mock withdrawal/deposit duplicate handling, append-only evidence/finality, and compensation as a new authorized effect.
+**Tests:** aggregate ordering/ambiguity guards/finality separation; route defaulting and allowlisting; server-owned wallet selection; mock-bank command/outcome/idempotency behavior; API/OpenAPI/security/minimization; exact replay/conflict and deterministic parallel duplicates; participant isolation; V1-V3 empty migration; parent/effect/history reconstruction through a fresh repository; outbox claim compatibility; inbox/preparation redelivery; and rollback of inbox plus transition/effect state.
 
-**Acceptance gate:** the parent and each bank effect have stable durable identities; duplicate delivery creates no duplicate transfer/effect; a lost bank-mock response is inquired before retry; no synchronous controller method or distributed transaction spans the workflow; chain children remain planned and no external value effect is claimed.
+**Acceptance gate:** the parent and every planned effect have stable durable identities; duplicate acceptance/delivery creates no duplicate transfer/effect/preparation; no external call occurs in acceptance or inbox transactions; caller fields cannot select custody wallets; chain children remain planned and no external value effect is claimed.
 
-**Risks:** hiding child ambiguity behind a parent status, caller-controlled infrastructure fields, treating mocks as production integrations, and beginning chain execution before signer/worker controls.
+**Risks:** future attempt/evidence persistence beyond the preparation transition, hiding child ambiguity behind a parent status, treating synthetic adapters as production integrations, and beginning chain execution before signer controls.
 
-**Deferred:** settlement-wallet provisioning, development/production signer implementations, native chain effects, independent observation/reconciliation, and the complete five-step demonstrations.
+**Deferred:** runtime mock-bank execution/inquiry, mint/transfer/burn/deposit execution, child token-operation acceptance, settlement-wallet provisioning, signer implementations, native chain effects, observation/reconciliation, compensation execution, and the complete five-step demonstrations.
 
 Phases 4-9 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Each future phase or bounded sub-slice requires a focused active plan before implementation; this roadmap does not authorize combining both chains in one action.
 
@@ -233,6 +233,7 @@ Publishing Volume II does not change executable phase status, replace a focused 
 - Completed Phase 2 plan: [`docs/plans/active/DOMAIN_OPERATION_LIFECYCLE.md`](plans/active/DOMAIN_OPERATION_LIFECYCLE.md).
 - Verified Phase 3A plan: [`docs/plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md`](plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md).
 - Active Phase 3B worker/recovery plan: [`docs/plans/active/PHASE_3B_DURABLE_WORKER_AND_RECOVERY.md`](plans/active/PHASE_3B_DURABLE_WORKER_AND_RECOVERY.md).
+- Active Phase 3C transfer plan: [`docs/plans/active/PHASE_3C_TRANSFER_AGGREGATE_AND_MOCK_BANK.md`](plans/active/PHASE_3C_TRANSFER_AGGREGATE_AND_MOCK_BANK.md).
 - Active Zelle share-readiness and transfer-roadmap plan: [`docs/plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
 - Accepted build/module choice: [`ADR 0001`](adr/0001-maven-reactor-and-module-boundaries.md).
@@ -289,7 +290,20 @@ The restartable RED-GREEN and validation record is [`docs/plans/active/PHASE_3A_
 
 ## Latest bounded vertical slice
 
-Action Request 09 implements **Phase 3B Durable Worker and Delivery Recovery**:
+Action Request 10 implements **Phase 3C Chain-Neutral Transfer Aggregate and Mock-Bank Boundary**:
+
+- one immutable parent with exact quantity, participant scope, server-resolved custody context, separate finalities, and five ordered stable effect identities;
+- one forward-only V3 migration for transfer/idempotency/effect/history/finality/inbox records plus transfer aggregate support in the existing outbox;
+- participant-scoped transfer POST/GET resources with separate authorities, safe 404 equivalence, minimized projections, and an authoritative OpenAPI contract that contains no wallet request fields;
+- database-authoritative replay/conflict, deterministic concurrent duplicate resolution, rollback, restart reconstruction, and exact V3 constraints;
+- a provider-neutral mock-bank port plus a deterministic synthetic adapter that is not runtime fallback infrastructure; and
+- a `TransferAccepted` handler that transactionally deduplicates the Phase 3B delivery identity and prepares only the first withdrawal.
+
+The final offline reactor passed 364 tests with zero failures, errors, or skips: 249 domain, 40 application, 38 real-PostgreSQL persistence, and 37 control-plane tests. The independent review has no unresolved Critical or Important findings.
+
+This slice performs no bank, signer, RPC, mint, token-transfer, burn, deposit, observation, reconciliation, compensation, or settlement effect. The server chooses institution-controlled wallet roles; callers supply only amount/currency, source/destination synthetic bank references, and an optional allowlisted logical network. The next bounded recommendation is Phase 4's provider-neutral signing-authority boundary; any attempt to execute the five-effect flow still needs separate bank/chain plans and evidence.
+
+The previously verified Action Request 09 implements **Phase 3B Durable Worker and Delivery Recovery**:
 
 - framework-free application delivery identity, outcomes, handler/queue ports, retry policy, and worker orchestration;
 - one forward-only delivery-state/attempt-history migration and a separate explicit JDBC queue adapter;
@@ -298,7 +312,7 @@ Action Request 09 implements **Phase 3B Durable Worker and Delivery Recovery**:
 - existing Micrometer counters/gauges with bounded, non-sensitive dimensions; and
 - deterministic pure tests plus real PostgreSQL failure-window tests, including transactional consumer deduplication in test scope.
 
-This is at-least-once delivery infrastructure only. It does not change a token-operation state, provide a production inbox/handler, or perform signing, chain submission, minting, burning, bank movement, transfer orchestration, observation, reconciliation, or settlement. The next bounded recommendation is Phase 3C's chain-neutral transfer aggregate and mock-bank boundary; chain work still waits for signing authority and its own focused plan.
+Phase 3B remains at-least-once delivery infrastructure. Phase 3C now consumes it only for the bounded internal first-withdrawal preparation; the default worker is still disabled and no external effect is performed.
 
 The previously verified Phase 3A slice supplies:
 
@@ -325,4 +339,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The planned transfer aggregate, API, bank ports, signer/chain effects, and two end-to-end demonstrations are specified in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). They do not change the current capability claim or dependency order. Phase 3C's chain-neutral transfer aggregate and mock-bank boundary is the next recommended bounded implementation action.
+The implemented transfer acceptance boundary and the remaining bank/signer/chain effects and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Phase 4's signing boundary is the next recommended bounded action; it must not be combined with an external bank or chain effect without its own approved slice.
