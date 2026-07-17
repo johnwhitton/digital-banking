@@ -12,7 +12,7 @@ The architecture and executive files were supplied by the user at the repository
 | --- | --- | --- |
 | *Designing a Stablecoin Settlement Platform for Existing Real-Time Payment Networks* | [`stablecoin-settlement-reference-architecture.pdf`](stablecoin-settlement-reference-architecture.pdf) | `8a61ab83b427ef587d80edb59feb612a23a4af2497e7e0cda31a4ea30d201e77` |
 | *Digital Asset Settlement for Zelle* | [`zelle-digital-asset-settlement-executive-brief.pdf`](zelle-digital-asset-settlement-executive-brief.pdf) | `90b5e0b0ebaaae40dd43ce0adfdbfcd1d44a0cd9de45692428bfe7a990dbb6cd` |
-| *Digital Banking Engineering Companion* | [`digital-banking-engineering-companion.pdf`](digital-banking-engineering-companion.pdf) | `f535a9e2a7b80737c90423218594f277fc4e49f6be8b1453d9bfe79c1d2733e4` |
+| *Digital Banking Engineering Companion* | [`digital-banking-engineering-companion.pdf`](digital-banking-engineering-companion.pdf) | `9448c01a27810a4d15d59c7bf8ef4e56246c5719abb4b9567f178dd2abec9223` |
 
 ## Stablecoin settlement reference architecture
 

@@ -125,7 +125,8 @@ class PostgresOperationRepositoryTest {
                             'token_operation', 'operation_idempotency',
                             'operation_transition', 'operation_transition_evidence',
                             'operation_attempt', 'operation_finality',
-                            'operation_finality_evidence', 'operation_outbox')
+                            'operation_finality_evidence', 'operation_outbox',
+                            'operation_delivery_attempt')
                         """).query(Integer.class).single();
         List<String> indexes = jdbc.sql("""
                         SELECT indexname
@@ -134,11 +135,12 @@ class PostgresOperationRepositoryTest {
                         ORDER BY indexname
                         """).query(String.class).list();
 
-        assertEquals(1, migrationCount);
-        assertEquals(8, tableCount);
+        assertEquals(2, migrationCount);
+        assertEquals(9, tableCount);
         assertTrue(indexes.contains("idx_token_operation_participant"));
         assertTrue(indexes.contains("idx_operation_idempotency_lookup"));
-        assertTrue(indexes.contains("idx_operation_outbox_pending"));
+        assertTrue(indexes.contains("idx_operation_outbox_eligible"));
+        assertTrue(indexes.contains("idx_operation_delivery_attempt_event"));
     }
 
     @Test

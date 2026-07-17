@@ -297,14 +297,15 @@ public final class PostgresOperationRepository implements OperationRepository {
         jdbc.sql("""
                         INSERT INTO operation_outbox (
                             event_id, operation_id, event_type, event_version,
-                            payload_schema_version, payload, status, created_at, available_at)
+                            payload_schema_version, payload, status, created_at, available_at,
+                            updated_at)
                         VALUES (
                             :eventId, :operationId, 'TokenOperationAccepted', :eventVersion,
                             1, jsonb_build_object(
                                 'operationId', CAST(:operationId AS text),
                                 'operationKind', :operationKind,
                                 'aggregateVersion', 0),
-                            'PENDING', :createdAt, :availableAt)
+                            'PENDING', :createdAt, :availableAt, :updatedAt)
                         """)
                 .param("eventId", UUID.randomUUID())
                 .param("operationId", operation.operationId().value())
@@ -312,6 +313,7 @@ public final class PostgresOperationRepository implements OperationRepository {
                 .param("operationKind", operation.kind().name())
                 .param("createdAt", utc(operation.createdAt()))
                 .param("availableAt", utc(operation.createdAt()))
+                .param("updatedAt", utc(operation.createdAt()))
                 .update();
     }
 

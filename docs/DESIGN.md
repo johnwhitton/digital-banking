@@ -31,7 +31,7 @@ Zelle is only a public case study in the publications. This repository is organi
 
 ### Current implementation boundary
 
-The current repository contains documentation, a plain-Java domain module with exact quantity and operation invariants, a framework-free application module with command/use-case/port contracts, one PostgreSQL persistence adapter, and a Spring Boot control plane. Phase 3A durably accepts participant-scoped mint/burn requests, supports scoped operation read-back, serves one OpenAPI 3.1 contract, and records a pending acceptance outbox event. The default configuration deliberately has no identity adapter, so business resources deny unauthenticated requests. There is no worker, outbox publication, transfer aggregate/API, bank adapter, settlement wallet, signer implementation, chain adapter, contract/program, Compose environment, external effect, or business settlement claim. The [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) is a planned POC contract only.
+The current repository contains documentation, a plain-Java domain module with exact quantity and operation invariants, a framework-free application module with command/use-case/delivery contracts, one PostgreSQL persistence adapter, and a Spring Boot control plane. Phase 3A durably accepts participant-scoped mint/burn requests, supports scoped operation read-back, serves one OpenAPI 3.1 contract, and records an acceptance outbox event. Phase 3B adds at-least-once PostgreSQL claim/lease/outcome/retry/recovery infrastructure and an opt-in Spring polling lifecycle. The default configuration deliberately has no identity adapter or delivery handler: business resources deny unauthenticated requests and the worker remains disabled. There is no production consumer transition/inbox, broker publication, transfer aggregate/API, bank adapter, settlement wallet, signer implementation, chain adapter, contract/program, Compose environment, external effect, or business settlement claim. The [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) is a planned POC contract only.
 
 ## 3. Terminology
 
@@ -119,7 +119,7 @@ Spring owns composition and operational interfaces. Java application/domain code
 
 Spring annotations, controllers, repositories, transactions, and serialization are delivery/infrastructure concerns. Domain objects remain usable in pure tests without a Spring context.
 
-The process manager is a logical application capability. A database-backed Java worker or an approved enterprise BPM/durable-workflow platform may execute it, but either implementation must call domain/application contracts and preserve state versioning, idempotency, durable timers, recovery, audit/export, and evidence. Messaging transports do not become process or financial-state authority.
+The process manager is a logical application capability. ADR 0005 selects the database-backed Java/Spring worker as the current self-contained delivery baseline; an approved enterprise BPM/durable-workflow platform may be introduced only by a later evidence spike and ADR. Either runtime must call domain/application contracts and preserve state versioning, idempotency, durable timers, recovery, audit/export, and evidence. Messaging transports do not become process or financial-state authority.
 
 ## 6. Proposed modules and dependency direction
 
@@ -349,11 +349,13 @@ HTTP 202 and `Location` mean the parent transfer request was durably accepted, n
 
 ## 16. Persistence, transactions, outbox/inbox, and concurrency
 
-Phase 3A uses PostgreSQL, explicit Spring JDBC `JdbcClient`, HikariCP, and one forward-only Flyway migration; see [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md). Normalized tables store token operations and immutable acceptance context, hashed scoped idempotency bindings, ordered transitions/evidence, attempt lineage, four ordered finality/evidence histories, and pending outbox events. Exact quantities are constrained integer atomic units rather than floating-point or opaque aggregate JSON.
+Phase 3 uses PostgreSQL, explicit Spring JDBC `JdbcClient`, HikariCP, and two forward-only Flyway migrations; see [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md) and [ADR 0005](adr/0005-postgresql-operation-delivery-worker.md). Normalized tables store token operations and immutable acceptance context, hashed scoped idempotency bindings, ordered transitions/evidence, attempt lineage, four ordered finality/evidence histories, outbox state, and append-only delivery attempts. Exact quantities are constrained integer atomic units rather than floating-point or opaque aggregate JSON.
 
 One explicit `READ_COMMITTED` local transaction accepts the hashed idempotency binding, operation aggregate, initial transition/audit evidence, four initial `NOT_ASSESSED` finalities, and one versioned pending outbox message. PostgreSQL uniqueness plus `INSERT ... ON CONFLICT DO NOTHING` resolves concurrent scoped-key races without a process lock or a rollback-only loser path. Same canonical identity replays the committed operation; a different command digest conflicts without partial records. Acceptance timestamps are canonicalized to PostgreSQL microsecond precision before aggregate creation, keeping original and replay responses byte-stable. Optimistic aggregate version updates protect later append-only events.
 
-External signing/submission never occurs inside a database transaction. The outbox transports future commands/events; it is not business authority and Phase 3A does not poll or publish it. Bounded leases, compare-and-set claiming, publication, recovery, retries, and inbox/deduplication remain Phase 3B and require their own tests before any processing claim.
+External signing/submission never occurs inside a database transaction. The outbox transports commands/events; it is not business authority. When explicitly enabled with a real handler, Phase 3B claims eligible rows in short `READ_COMMITTED` transactions using `FOR UPDATE SKIP LOCKED`, commits a fresh lease/worker identity and attempt number, then invokes the handler without holding the claim transaction. Event/lease/worker/expiry fencing rejects stale acknowledgement, retry, or manual-review updates. Expired leases retain history and are redelivered under a new identity; retry availability and bounded exponential backoff are durable. Lease/backoff/poll durations have a one-microsecond minimum matching the database precision. Earlier unresolved events block later events for the same operation while different operations remain concurrent.
+
+Delivery is at least once, not exactly once. The durable outbox `event_id` is the handler's deduplication identity. A real consumer must commit that identity in the same transaction as its bounded business effect and return the original durable outcome on redelivery. This slice defines no production business transition, so it adds no production inbox or no-op handler; deterministic PostgreSQL tests use test-only inbox/effect tables to prove the boundary. Expected outcomes remain explicit, unexpected handler exceptions become ambiguous acknowledgement with a stable safe code, and terminal/exhausted work remains in `MANUAL_REVIEW` with its actual outcome and separate review reason.
 
 Attempt creation, authorization evidence, and canonical digest are durable before signing/submission. Submission classification is recorded after the call; process death at that boundary produces inquiry, not automatic resubmission.
 
@@ -434,7 +436,7 @@ Business audit is durable, complete, append-only evidence for authorization and 
 
 ## 22. Local development and test topology
 
-Phase 3A runtime topology is one Spring Boot process plus a private/local PostgreSQL 17 database. Integration tests start the pinned `postgres:17.10-alpine3.23` Docker Official Image through Testcontainers, run Flyway from an empty schema, and verify rollback, two-thread concurrency, restart read-back, API, and security behavior. No reusable/cloud container, Compose service, public database endpoint, or embedded database is configured.
+Phase 3B runtime topology remains one Spring Boot process plus a private/local PostgreSQL 17 database. Integration tests start the pinned `postgres:17.10-alpine3.23` Docker Official Image through Testcontainers, run both Flyway migrations from an empty schema, and verify rollback, two-worker concurrency, claim-lock release, lease replacement, retry timing, deduplication, restart recovery, API, and security behavior. The typed, single-thread, non-overlapping Spring polling lifecycle is disabled by default and requires a real handler and explicit worker identity when enabled. No reusable/cloud container, Compose service, public database endpoint, embedded database, broker, or workflow platform is configured.
 
 Later phases add components only as needed:
 
@@ -465,12 +467,13 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - Canonical command encoding version 1 uses length-prefixed UTF-8 fields and SHA-256; JSON property order is outside the digest contract.
 - Canonical command version 1 rejects malformed Unicode and normalizes business correlation to NFC before hashing.
 - PostgreSQL is the Phase 3 behavioral store; explicit Spring JDBC, HikariCP, Flyway, atomic hashed idempotency/operation/audit/finality/outbox acceptance, and real PostgreSQL Testcontainers are accepted in ADR 0004.
+- PostgreSQL `SKIP LOCKED` claims, opaque expiring leases, fenced outcome updates, durable retry/manual-review evidence, at-least-once handler delivery, and the opt-in Spring worker lifecycle are accepted in ADR 0005.
 - The single design-first OpenAPI 3.1 YAML resource is authoritative; no runtime documentation generator or UI is added.
 - Spring Security is stateless and deny-by-default: tests inject fixture principals/authorities, while production configuration contains no identity-provider endpoint or credential.
 
 ### Planned coordination-technology posture
 
-- The self-contained reference-implementation baseline is a database-backed Java/Spring worker unless a later evidence spike and ADR select another durable-workflow runtime.
+- The self-contained reference-implementation baseline is the database-backed Java/Spring worker accepted in ADR 0005; a later evidence spike and ADR may select another durable-workflow runtime behind the same application contracts.
 - Action Request 05 supplies an inference from a job description that an application-owned Java/Spring state machine with Oracle persistence and Kafka/JMS/TIBCO EMS messaging is the most plausible organizational pattern. This is not a discovered Zelle/EWS implementation fact.
 - Kafka, JMS, and TIBCO EMS are transports, not BPM engines, domain-state owners, ledgers, or finality authorities.
 - TIBCO BusinessWorks/BPM Enterprise, MuleSoft, and SAP integration products remain possible integration/process boundaries only if organizational evidence establishes their use.
@@ -489,7 +492,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - Whether Sava passes the bounded Java-client evaluation and which exact release can be pinned.
 - Whether later Solana business requirements justify a custom Rust/Anchor program.
 - Custody/HSM/MPC provider and authorization interface details.
-- Phase 3B worker leasing/publication/recovery mechanics, workflow engine versus database-backed worker, and messaging topology.
+- The first real Phase 3B consumer transition and transactional inbox, plus any future broker/messaging topology.
 - Exact Phase 3C transfer states, bank-port inquiry contracts, persistence schema, route/wallet configuration, and safe compensation policy.
 - Whether an approved enterprise BPM/durable-workflow platform exists organizationally and satisfies the domain/evidence contract; no vendor is currently selected.
 - Chain finality thresholds, replacement/expiry policies, limits, and reconciliation tolerances.
@@ -497,7 +500,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 
 ### Deferred
 
-Production readiness, outbox publication/worker recovery, transfer implementation, bank adapters, wallet provisioning, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker/workflow topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain deferred. Each future executable slice requires a focused active plan; [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md) defines the proposed transfer acceptance target.
+Production readiness, a real outbox consumer/business transition, transfer implementation, bank adapters, wallet provisioning, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker/workflow topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain deferred. Each future executable slice requires a focused active plan; [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md) defines the proposed transfer acceptance target.
 
 ## 24. Traceability to the source publications
 

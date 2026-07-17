@@ -8,6 +8,7 @@ import javax.sql.DataSource;
 
 import io.github.johnwhitton.digitalbanking.application.TokenOperationApplicationService;
 import io.github.johnwhitton.digitalbanking.application.TokenOperationService;
+import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.application.port.AssetUnitCatalog;
 import io.github.johnwhitton.digitalbanking.application.port.ClockPort;
 import io.github.johnwhitton.digitalbanking.application.port.EvidenceReferencePort;
@@ -16,6 +17,7 @@ import io.github.johnwhitton.digitalbanking.application.port.OperationRepository
 import io.github.johnwhitton.digitalbanking.domain.operation.AttemptId;
 import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationId;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,6 +28,11 @@ public class ApplicationConfiguration {
     @Bean
     OperationRepository operationRepository(DataSource dataSource) {
         return new PostgresOperationRepository(dataSource);
+    }
+
+    @Bean
+    OperationDeliveryQueue operationDeliveryQueue(DataSource dataSource) {
+        return new PostgresOperationDeliveryQueue(dataSource);
     }
 
     @Bean

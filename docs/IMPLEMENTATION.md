@@ -48,7 +48,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | -------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
 | 1. Foundation                          | `verified`    | Source publications and the full foundation gate are verified; see the closed bootstrap plan. |
 | 2. Domain and operation lifecycle      | `verified`    | Exact quantities, guarded lifecycle/finality histories, canonical commands, idempotent acceptance contracts, and bound ports passed 264 pure tests and the 266-test reactor. |
-| 3. Durable API and persistence         | `in_progress` | Phase 3A durable acceptance/read-back is verified; its participant response and internal-failure boundaries are corrected under Action Request 07. Phase 3B worker/recovery and planned Phase 3C transfer orchestration remain absent. |
+| 3. Durable API and persistence         | `in_progress` | Phase 3A durable acceptance/read-back and Phase 3B PostgreSQL worker/recovery infrastructure are verified. The real consumer business transition and planned Phase 3C transfer orchestration remain absent. |
 | 4. Signing boundary                    | `not_started` | Design only; no signer code or keys.                                                           |
 | 5. Ethereum vertical slice             | `not_started` | No Web3j/Solidity/local-chain code.                                                            |
 | 6. Solana vertical slice               | `not_started` | No Java SDK/Rust/local-validator code.                                                         |
@@ -56,7 +56,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 8. Integrated local environment        | `not_started` | No Compose file.                                                                               |
 | 9. Hardening and publication readiness | `not_started` | No production-readiness claim.                                                                 |
 
-The current executable boundary remains Phase 3A. The planned [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) does not change any implementation status. Every future transfer-related slice requires its own focused active plan before code, dependency, schema, API, signer, adapter, contract/program, or environment work begins.
+The current executable boundary is Phase 3B delivery infrastructure: durable local acceptance plus an opt-in at-least-once worker that has no production handler or business effect. The planned [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) does not change implementation status. Every future transfer-related slice requires its own focused active plan before code, dependency, schema, API, signer, adapter, contract/program, or environment work begins.
 
 ## Phase 1: Foundation
 
@@ -106,26 +106,25 @@ The current executable boundary remains Phase 3A. The planned [bank-to-bank tran
 
 ### Phase 3B: asynchronous worker and delivery recovery
 
-**Deferred deliverables:** outbox claiming/leasing, publication or local worker handoff, compare-and-set lifecycle progression, retries/backoff, inbox/deduplication, crash recovery, durable timers, and operator evidence. These remain unimplemented; a pending outbox row proves only durable local acceptance.
+**Verified deliverables:** framework-free delivery identity/outcome/queue/handler contracts, deterministic bounded retry policy, and a non-overlapping worker use case; one forward-only `V2` migration for outbox delivery state and append-only attempt history; explicit PostgreSQL `READ_COMMITTED`/`FOR UPDATE SKIP LOCKED` claim, lease, fenced acknowledgement/retry/manual-review, measurement, and expired-lease recovery mechanics; and a typed Spring-managed polling lifecycle with existing Micrometer observability. See [ADR 0005](adr/0005-postgresql-operation-delivery-worker.md).
 
-This slice supplies the worker, timer, delivery, and recovery contracts required by the planned [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md) workflow; it does not implement that transfer or any bank/chain effect.
+The worker is disabled by default. Enabling requires an explicit visible-ASCII worker identity, a real `OperationDeliveryHandler`, and bounded durations of at least one microsecond to match database timestamp precision; startup fails rather than wiring a no-op consumer. It claims and commits durable delivery intent before invoking the handler and never holds the claim transaction across handler work.
 
-The focused Phase 3B plan must evaluate two bounded execution approaches against the same domain-owned state/version, idempotency, durable-timer, retry, recovery, audit/export, availability, and evidence contracts:
+Delivery is at least once. Lease expiry or post-handler/pre-acknowledgement loss can redeliver the same stable outbox `event_id`. A future real consumer must persist that identity in the same local transaction as its bounded business effect. Because this slice defines no business transition, production adds no inbox or fake effect; a test-only PostgreSQL inbox/effect proves duplicate delivery returns the durable result without repeating the effect.
 
-1. **Database-backed Java/Spring worker** - the self-contained reference-implementation baseline, using PostgreSQL outbox/inbox state, leases, compare-and-set progression, and durable recovery.
-2. **Approved enterprise BPM/durable-workflow platform** - permitted only when organizational evidence establishes an approved platform and an evidence spike proves it can coordinate the same domain contracts without becoming the ledger, policy authority, signer, observer, or reconciliation record.
+Explicit handler outcomes distinguish delivered, duplicate, retryable no-effect, terminal no-effect, and ambiguous acknowledgement. Unexpected exceptions are retained only as safe internal class diagnostics and a stable ambiguous failure code. Retries use durable deterministic bounded backoff; terminal/exhausted work and all attempt evidence are retained for manual review. Stale owners cannot overwrite a replacement lease, and earlier unresolved work blocks later work for the same operation without serializing unrelated operations.
 
-Camunda 8 and Temporal are representative future evaluation candidates, not selected dependencies or current recommendations. A comparison must cover state ownership, deterministic/versioned behavior, idempotency, durable timers, ambiguous-effect recovery, human tasks, audit/export, HA/DR, security, operational ownership, deployment constraints, licensing, and exit/migration strategy. Temporal's Java/Spring SDK experience does not make its server a Java runtime.
+Implemented measurements are eligible work, active leases, oldest eligible age, claims, deliveries, duplicates/redeliveries, retries, manual review/exhaustion, lease recovery, stale updates, and overlap suppression. They have no operation/participant/idempotency/address/payload/error labels. Handler/business latency, full audit export, alerts, and production SLOs remain future work.
 
-Action Request 05 supplies an inference from a job description that an application-owned Java/Spring state machine with Oracle persistence and Kafka/JMS/TIBCO EMS messaging is the most plausible organizational pattern; it is not a discovered Zelle/EWS implementation fact. Kafka, JMS, and TIBCO EMS remain transports. TIBCO BusinessWorks/BPM Enterprise, MuleSoft, and SAP integration products remain integration/process boundaries unless organizational evidence and an ADR justify broader ownership.
+The database-backed Java/Spring worker is the accepted self-contained baseline, not a selection of an enterprise messaging or workflow product. Camunda, Temporal, Kafka, JMS, TIBCO EMS/BusinessWorks/BPM Enterprise, MuleSoft, and SAP remain unselected; any later dependency requires organizational evidence, a focused spike, and a superseding/additional ADR while preserving the application-owned contracts.
 
-**Future tests:** worker concurrency, lease expiry/recovery, duplicate delivery, monotonic transition guards, poison/failure handling, process death at every delivery boundary, and no blind external-effect retry.
+**Tests:** deterministic retry/backoff/exhaustion and unexpected-exception ambiguity; scheduler overlap/config/lifecycle/metrics; real PostgreSQL two-worker exclusion, commit-before-handler lock release, success/no-redelivery, lease expiry, post-handler/pre-ack deduplication, durable retry eligibility, exhaustion, stale-owner fencing, cross-operation concurrency, same-operation ordering, forced rollback, fresh-pool restart recovery, empty migration, and existing API/readiness/security/redaction behavior.
 
-**Acceptance gate:** one selected Phase 3B implementation passes the same deterministic delivery/recovery contract. Any new workflow-platform dependency requires a focused evidence spike and ADR before implementation; no vendor is selected by this roadmap.
+**Acceptance gate:** the PostgreSQL baseline passes its deterministic delivery/recovery contract without adding a handler business effect, broker, workflow platform, signer, chain, transfer, or public network. Any real consumer must prove transactional deduplication for its own effect.
 
-**Risks:** database-specific coupling, workflow-platform state leakage, exactly-once overclaims, and future worker/recovery semantics. Phase 3A explicitly enforces `READ_COMMITTED`, canonical microsecond timestamps, and participant-safe evidence filtering; later response fields must preserve those controls.
+**Risks:** PostgreSQL-specific queue coupling, handler work exceeding its lease, incorrect future consumer deduplication, exactly-once overclaims, and configuration/SLO choices not yet production-tested. Expiry makes a late owner stale rather than authoritative; it does not cancel a possible handler effect.
 
-**Deferred beyond Phase 3:** broker topology selection, full ledger, signing, and chain execution.
+**Deferred:** the first real consumer/lifecycle transition and production inbox, broker/workflow topology, full ledger, transfer, signing, chain execution, observation, reconciliation, and settlement.
 
 ### Phase 3C: chain-neutral transfer aggregate and mock-bank boundary
 
@@ -233,12 +232,14 @@ Publishing Volume II does not change executable phase status, replace a focused 
 - Closed foundation plan: [`docs/plans/active/BOOTSTRAP.md`](plans/active/BOOTSTRAP.md).
 - Completed Phase 2 plan: [`docs/plans/active/DOMAIN_OPERATION_LIFECYCLE.md`](plans/active/DOMAIN_OPERATION_LIFECYCLE.md).
 - Verified Phase 3A plan: [`docs/plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md`](plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md).
+- Active Phase 3B worker/recovery plan: [`docs/plans/active/PHASE_3B_DURABLE_WORKER_AND_RECOVERY.md`](plans/active/PHASE_3B_DURABLE_WORKER_AND_RECOVERY.md).
 - Active Zelle share-readiness and transfer-roadmap plan: [`docs/plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
 - Accepted build/module choice: [`ADR 0001`](adr/0001-maven-reactor-and-module-boundaries.md).
 - Accepted EVM approach: [`ADR 0002`](adr/0002-evm-foundry-and-web3j.md).
 - Accepted Solana approach: [`ADR 0003`](adr/0003-native-solana-spl-token.md).
 - Accepted PostgreSQL/JDBC/Flyway/atomic-outbox approach: [`ADR 0004`](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md).
+- Accepted PostgreSQL delivery-worker/lease-recovery approach: [`ADR 0005`](adr/0005-postgresql-operation-delivery-worker.md).
 
 Create or update an active plan before implementation. Create an ADR only when evidence requires an accepted material decision.
 
@@ -254,7 +255,7 @@ Contributor setup, reviewed update commands, exact hook-trust behavior, and evid
 
 [`docs/IMPLEMENTATION_STANDARDS.md`](IMPLEMENTATION_STANDARDS.md) is the detailed normative authority for Java, Spring, persistence, API, asynchronous workflow, signer, chain, and test implementation. It requires inward dependency direction, immutable validated domain types, exact quantities, constructor injection, principal-derived scope, explicit participant-safe response projections, classified safe problems, parameterized JDBC, atomic acceptance and outbox, database-authoritative concurrency, attempt-before-effect sequencing, native adapter semantics, deterministic failure-path tests, and an executable present need for every dependency or abstraction.
 
-The completed Phase 3A baseline was reviewed against those rules in [`docs/reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md`](reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md). Action Request 07 resolves its two required pre-Phase-3B findings: I-01 minimizes and recursively verifies the participant projection/OpenAPI example, and I-02 gives caller-owned validation an explicit classification while unexpected `IllegalArgumentException` and `IllegalStateException` invariant failures reach a stable redacted HTTP 500 boundary with server diagnostics. Phase 3B remains unimplemented and requires its own focused plan.
+The completed Phase 3A baseline was reviewed against those rules in [`docs/reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md`](reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md). Action Request 07 resolves its two required pre-Phase-3B findings. Action Request 09 then implements the database-authoritative claim/lease/retry/recovery boundary under the focused Phase 3B plan and ADR 0005 without changing the standards, API, domain lifecycle, dependency set, or external-effect boundary.
 
 ## Current validation commands
 
@@ -288,7 +289,18 @@ The restartable RED-GREEN and validation record is [`docs/plans/active/PHASE_3A_
 
 ## Latest bounded vertical slice
 
-Action Request 04 implements **Phase 3A Durable API and Persistence**:
+Action Request 09 implements **Phase 3B Durable Worker and Delivery Recovery**:
+
+- framework-free application delivery identity, outcomes, handler/queue ports, retry policy, and worker orchestration;
+- one forward-only delivery-state/attempt-history migration and a separate explicit JDBC queue adapter;
+- PostgreSQL multi-worker exclusion, ordered claims, expiring leases, stale-owner fencing, durable retries, manual review, and restart recovery;
+- a disabled-by-default, typed, Spring-managed single-thread polling lifecycle that requires a real handler when enabled;
+- existing Micrometer counters/gauges with bounded, non-sensitive dimensions; and
+- deterministic pure tests plus real PostgreSQL failure-window tests, including transactional consumer deduplication in test scope.
+
+This is at-least-once delivery infrastructure only. It does not change a token-operation state, provide a production inbox/handler, or perform signing, chain submission, minting, burning, bank movement, transfer orchestration, observation, reconciliation, or settlement. The next bounded recommendation is Phase 3C's chain-neutral transfer aggregate and mock-bank boundary; chain work still waits for signing authority and its own focused plan.
+
+The previously verified Phase 3A slice supplies:
 
 - one `adapters/persistence-postgres` module using explicit Spring JDBC, HikariCP, Flyway, and the PostgreSQL driver;
 - one normalized migration for operations, hashed idempotency bindings, ordered transitions/evidence, attempt lineage, four finality/evidence histories, and pending outbox events;
@@ -298,7 +310,7 @@ Action Request 04 implements **Phase 3A Durable API and Persistence**:
 - one authoritative OpenAPI 3.1 YAML resource plus executable conformance tests; and
 - real pinned PostgreSQL integration/API tests for migrations, exact quantities, rollback, concurrency, restart, safe failures, authorization, and data exposure.
 
-The slice durably accepts and records requests only. It does not poll or publish the outbox, process operations, sign, submit, mint, burn, reconcile, settle, or claim exactly-once external effects. Phase 3B worker and delivery recovery is the next recommended bounded slice; chain work still waits for the signing boundary.
+The Phase 3A acceptance transaction durably records requests only; it does not poll the outbox or perform an external effect. Phase 3B adds the separate delivery boundary described above without changing that acceptance claim.
 
 The previously verified Phase 2 slice supplies:
 
@@ -313,4 +325,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The planned transfer aggregate, API, bank ports, signer/chain effects, and two end-to-end demonstrations are specified in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). They do not change the current capability claim or dependency order. Phase 3B worker and delivery recovery remains the next recommended bounded implementation action.
+The planned transfer aggregate, API, bank ports, signer/chain effects, and two end-to-end demonstrations are specified in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). They do not change the current capability claim or dependency order. Phase 3C's chain-neutral transfer aggregate and mock-bank boundary is the next recommended bounded implementation action.

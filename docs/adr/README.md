@@ -53,3 +53,4 @@ Open questions remain in `docs/DESIGN.md` or `docs/IMPLEMENTATION.md` until evid
 - [ADR 0002: EVM development with Foundry and Web3j](0002-evm-foundry-and-web3j.md) - accepted.
 - [ADR 0003: Native Solana integration with SPL Token](0003-native-solana-spl-token.md) - accepted.
 - [ADR 0004: PostgreSQL, explicit JDBC, Flyway, and atomic acceptance outbox](0004-postgresql-jdbc-flyway-atomic-outbox.md) - accepted.
+- [ADR 0005: PostgreSQL operation delivery worker and lease recovery](0005-postgresql-operation-delivery-worker.md) - accepted.

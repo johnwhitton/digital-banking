@@ -17,3 +17,7 @@ management:
             show-details: never
             probes:
                 enabled: true
+
+digital-banking:
+    delivery-worker:
+        enabled: false
