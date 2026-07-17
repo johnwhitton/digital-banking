@@ -48,7 +48,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | -------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
 | 1. Foundation                          | `verified`    | Source publications and the full foundation gate are verified; see the closed bootstrap plan. |
 | 2. Domain and operation lifecycle      | `verified`    | Exact quantities, guarded lifecycle/finality histories, canonical commands, idempotent acceptance contracts, and bound ports passed 264 pure tests and the 266-test reactor. |
-| 3. Durable API and persistence         | `in_progress` | Phase 3A durable acceptance/read-back is `verified` by the 302-test clean reactor gate; Phase 3B worker/recovery and planned Phase 3C transfer orchestration remain absent. |
+| 3. Durable API and persistence         | `in_progress` | Phase 3A durable acceptance/read-back is verified; its participant response and internal-failure boundaries are corrected under Action Request 07. Phase 3B worker/recovery and planned Phase 3C transfer orchestration remain absent. |
 | 4. Signing boundary                    | `not_started` | Design only; no signer code or keys.                                                           |
 | 5. Ethereum vertical slice             | `not_started` | No Web3j/Solidity/local-chain code.                                                            |
 | 6. Solana vertical slice               | `not_started` | No Java SDK/Rust/local-validator code.                                                         |
@@ -96,9 +96,9 @@ The current executable boundary remains Phase 3A. The planned [bank-to-bank tran
 
 ### Phase 3A: durable acceptance and read-back
 
-**Implemented deliverables:** one design-first OpenAPI 3.1 contract; secured Spring mint/burn create and participant-scoped operation-status resources; stateless deny-by-default security and safe RFC 9457 problems; PostgreSQL schema/Flyway migration; explicit JDBC repository; durable hashed idempotency; optimistic concurrency; normalized operation/attempt/transition/finality/evidence storage; one atomic pending acceptance-outbox record; and production composition with no in-memory fallback. See [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md).
+**Implemented deliverables:** one design-first OpenAPI 3.1 contract; secured Spring mint/burn create and participant-scoped operation-status resources; a versioned participant projection that omits internal transition actor/reason and finality authority/policy strings; stateless deny-by-default security and safe RFC 9457 problems including a redacted internal-error boundary; PostgreSQL schema/Flyway migration; explicit JDBC repository; durable hashed idempotency; optimistic concurrency; normalized operation/attempt/transition/finality/evidence storage; one atomic pending acceptance-outbox record; and production composition with no in-memory fallback. See [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md).
 
-**Tests:** OpenAPI parsing/conformance, 401/403 boundaries, HTTP validation, 202/Location behavior, replay/conflict, participant non-disclosure, safe database failure, empty migration, schema/index/quantity constraints, complete aggregate replay, optimistic conflict, parallel duplicate/conflicting requests without retries, rollback, uniqueness, outbox atomicity, process restart, and sensitive-field absence.
+**Tests:** OpenAPI parsing, recursive nested-record conformance, and executable accepted-example equality; 401/403 boundaries; HTTP validation and expected problem classification; 202/Location behavior; replay/conflict; principal-derived participant scope despite request-controlled participant fields/parameters/headers; missing/cross-participant 404 equivalence; participant-status field minimization; safe internal invariant and database failures; empty migration; schema/index/quantity constraints; complete aggregate replay; optimistic conflict; parallel duplicate/conflicting requests without retries; rollback; uniqueness; outbox atomicity; process restart; and sensitive-field absence.
 
 **Acceptance gate:** an accepted command is committed before HTTP 202; duplicates cannot create a second operation or outbox row; conflicts leave no partial state; no external effect occurs inside the acceptance transaction; and real PostgreSQL restart/concurrency tests prove durable read-back.
 
@@ -256,7 +256,7 @@ Contributor setup, reviewed update commands, exact hook-trust behavior, and evid
 
 [`docs/IMPLEMENTATION_STANDARDS.md`](IMPLEMENTATION_STANDARDS.md) is the detailed normative authority for Java, Spring, persistence, API, asynchronous workflow, signer, chain, and test implementation. It requires inward dependency direction, immutable validated domain types, exact quantities, constructor injection, principal-derived scope, explicit participant-safe response projections, classified safe problems, parameterized JDBC, atomic acceptance and outbox, database-authoritative concurrency, attempt-before-effect sequencing, native adapter semantics, deterministic failure-path tests, and an executable present need for every dependency or abstraction.
 
-The completed Phase 3A baseline was reviewed against those rules in [`docs/reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md`](reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md). Its bounded corrections are follow-up actions, not changes to the current executable baseline. Phase 3B planning and implementation must disposition the review's required pre-Phase-3B items before worker or participant-status behavior expands.
+The completed Phase 3A baseline was reviewed against those rules in [`docs/reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md`](reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md). Action Request 07 resolves its two required pre-Phase-3B findings: I-01 minimizes and recursively verifies the participant projection/OpenAPI example, and I-02 gives caller-owned validation an explicit classification while unexpected `IllegalArgumentException` and `IllegalStateException` invariant failures reach a stable redacted HTTP 500 boundary with server diagnostics. Phase 3B remains unimplemented and requires its own focused plan.
 
 ## Current validation commands
 
@@ -276,6 +276,17 @@ jq -e '.hooks.PreToolUse[] | select(.matcher == "^Bash$")' .codex/hooks.json
 ```
 
 Reference, documentation, skill/hook, stale-reference, diff, and Git commands are recorded with results in the active bootstrap plan. Add commands here only after they are stable contributor entry points.
+
+## Latest bounded corrective slice
+
+Action Request 07 corrects the Phase 3A API boundary without adding capability:
+
+- participant responses no longer copy internal transition actor/reason or finality authority/policy values;
+- the OpenAPI status schemas and accepted example match an executable response and nested record shapes recursively;
+- caller-owned operation-ID, idempotency-key, quantity, and command validation uses an explicit application failure, while internal invariant failures are not reclassified as HTTP 400; and
+- focused tests preserve acceptance, replay, conflict, distinct authorities, principal-derived scope, safe 404 equivalence, redaction, and durable read-back.
+
+The restartable RED-GREEN and validation record is [`docs/plans/active/PHASE_3A_API_BOUNDARY_CORRECTIONS.md`](plans/active/PHASE_3A_API_BOUNDARY_CORRECTIONS.md). This correction adds no endpoint, dependency, migration, runtime configuration, worker, external effect, signer, chain adapter, or production-readiness claim.
 
 ## Latest bounded vertical slice
 

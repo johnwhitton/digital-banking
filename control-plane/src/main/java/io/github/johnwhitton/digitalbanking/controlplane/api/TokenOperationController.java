@@ -2,6 +2,7 @@ package io.github.johnwhitton.digitalbanking.controlplane.api;
 
 import java.net.URI;
 
+import io.github.johnwhitton.digitalbanking.application.InvalidRequestException;
 import io.github.johnwhitton.digitalbanking.application.OperationAcceptance;
 import io.github.johnwhitton.digitalbanking.application.TokenOperationApplicationService;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyKey;
@@ -56,7 +57,7 @@ public final class TokenOperationController {
             @AuthenticationPrincipal ParticipantPrincipal participant,
             @PathVariable String operationId) {
         return TokenOperationResponse.from(operations.find(
-                OperationId.from(operationId), requireParticipant(participant).scope()));
+                parseOperationId(operationId), requireParticipant(participant).scope()));
     }
 
     private ResponseEntity<TokenOperationResponse> accept(
@@ -68,7 +69,7 @@ public final class TokenOperationController {
                 kind,
                 requireParticipant(participant).scope(),
                 request.toApplicationRequest(),
-                IdempotencyKey.of(idempotencyKey));
+                parseIdempotencyKey(idempotencyKey));
         TokenOperationResponse response = TokenOperationResponse.from(accepted.operation());
         return ResponseEntity.accepted()
                 .location(URI.create("/v1/token-operations/" + response.operationId()))
@@ -80,6 +81,22 @@ public final class TokenOperationController {
             throw new UnauthenticatedPrincipalException();
         }
         return principal;
+    }
+
+    private static OperationId parseOperationId(String value) {
+        try {
+            return OperationId.from(value);
+        } catch (IllegalArgumentException failure) {
+            throw new InvalidRequestException(failure);
+        }
+    }
+
+    private static IdempotencyKey parseIdempotencyKey(String value) {
+        try {
+            return IdempotencyKey.of(value);
+        } catch (IllegalArgumentException failure) {
+            throw new InvalidRequestException(failure);
+        }
     }
 
     public record AcceptanceRequest(

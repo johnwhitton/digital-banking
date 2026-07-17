@@ -2,8 +2,13 @@ package io.github.johnwhitton.digitalbanking;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.RecordComponent;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -11,6 +16,13 @@ import java.util.stream.Collectors;
 
 import io.github.johnwhitton.digitalbanking.controlplane.api.TokenOperationController;
 import io.github.johnwhitton.digitalbanking.controlplane.api.TokenOperationResponse;
+import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
+import io.github.johnwhitton.digitalbanking.domain.asset.TokenQuantity;
+import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationAcceptanceContext;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationId;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationKind;
+import io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 import org.yaml.snakeyaml.Yaml;
@@ -54,11 +66,11 @@ class OpenApiContractTest {
         }
         Map<String, Object> paths = map(document.get("paths"));
         assertOperation(paths, "/v1/token-operations/mints", "post", "token:mint",
-                Set.of("202", "400", "401", "403", "409", "415", "422", "503"));
+                Set.of("202", "400", "401", "403", "409", "415", "422", "500", "503"));
         assertOperation(paths, "/v1/token-operations/burns", "post", "token:burn",
-                Set.of("202", "400", "401", "403", "409", "415", "422", "503"));
+                Set.of("202", "400", "401", "403", "409", "415", "422", "500", "503"));
         assertOperation(paths, "/v1/token-operations/{operationId}", "get", "token:read",
-                Set.of("200", "400", "401", "403", "404", "503"));
+                Set.of("200", "400", "401", "403", "404", "500", "503"));
 
         Map<String, Object> components = map(document.get("components"));
         Map<String, Object> parameters = map(components.get("parameters"));
@@ -78,6 +90,7 @@ class OpenApiContractTest {
                 "Conflict", "urn:digital-banking:problem:idempotency-conflict",
                 "UnsupportedMediaType", "urn:digital-banking:problem:unsupported-media-type",
                 "Unprocessable", "urn:digital-banking:problem:unprocessable-request",
+                "InternalError", "urn:digital-banking:problem:internal-error",
                 "ServiceUnavailable", "urn:digital-banking:problem:service-unavailable");
         for (Map.Entry<String, String> problem : problemTypes.entrySet()) {
             Map<String, Object> mediaType = map(map(
@@ -91,6 +104,14 @@ class OpenApiContractTest {
                 map(map(schemas.get("AcceptanceRequest")).get("properties")).keySet());
         assertEquals(recordComponents(TokenOperationResponse.class),
                 map(map(schemas.get("TokenOperation")).get("properties")).keySet());
+        assertSchemaMatchesRecord(schemas, "AssetUnit", TokenOperationResponse.AssetView.class);
+        assertSchemaMatchesRecord(schemas, "Attempt", TokenOperationResponse.AttemptView.class);
+        assertSchemaMatchesRecord(schemas, "Transition",
+                TokenOperationResponse.TransitionView.class);
+        assertSchemaMatchesRecord(schemas, "FinalityHistories",
+                TokenOperationResponse.FinalityHistories.class);
+        assertSchemaMatchesRecord(schemas, "FinalityRecord",
+                TokenOperationResponse.FinalityView.class);
         assertEquals(Set.of(
                         "urn:digital-banking:problem:invalid-request",
                         "urn:digital-banking:problem:unauthenticated",
@@ -99,9 +120,23 @@ class OpenApiContractTest {
                         "urn:digital-banking:problem:idempotency-conflict",
                         "urn:digital-banking:problem:unsupported-media-type",
                         "urn:digital-banking:problem:unprocessable-request",
+                        "urn:digital-banking:problem:internal-error",
                         "urn:digital-banking:problem:service-unavailable"),
                 Set.copyOf(list(map(map(map(schemas.get("Problem")).get("properties"))
                         .get("type")), "enum")));
+    }
+
+    @Test
+    void acceptedExampleMatchesTheExecutableParticipantResponse() throws Exception {
+        Map<String, Object> document;
+        try (InputStream input = new ClassPathResource(CONTRACT).getInputStream()) {
+            document = map(new Yaml().load(input));
+        }
+        Map<String, Object> responses = map(map(document.get("components")).get("responses"));
+        Object example = map(map(map(responses.get("Accepted")).get("content"))
+                .get("application/json")).get("example");
+
+        assertEquals(normalize(executableAcceptedResponse()), normalize(example));
     }
 
     @Test
@@ -137,6 +172,68 @@ class OpenApiContractTest {
         return Arrays.stream(recordType.getRecordComponents())
                 .map(component -> component.getName())
                 .collect(Collectors.toSet());
+    }
+
+    private static void assertSchemaMatchesRecord(
+            Map<String, Object> schemas, String schemaName, Class<?> recordType) {
+        Map<String, Object> schema = map(schemas.get(schemaName));
+        Set<String> components = recordComponents(recordType);
+        assertEquals(components, map(schema.get("properties")).keySet());
+        assertEquals(components, Set.copyOf(list(schema, "required")));
+    }
+
+    private static TokenOperationResponse executableAcceptedResponse() {
+        Instant acceptedAt = Instant.parse("2026-07-16T23:00:00.123456Z");
+        AssetUnit unit = new AssetUnit(
+                "REFERENCE_ASSET", "REFERENCE_UNIT", 3, 2,
+                new BigInteger("100000000"));
+        TokenOperation operation = TokenOperation.requested(
+                OperationId.from("8c5f0a89-9317-4f30-a7ca-f18a395293ce"),
+                new OperationAcceptanceContext(
+                        "tenant-a", "participant-a", "TOKEN_OPERATION", "a".repeat(64),
+                        1, 1, "b".repeat(64), "corr-001"),
+                OperationKind.MINT,
+                TokenQuantity.parse("12.34", unit),
+                acceptedAt,
+                new EvidenceRef(
+                        "participant:acceptance:48ff09c2-0a2e-40c4-a122-190a66fc7444"));
+        return TokenOperationResponse.from(operation);
+    }
+
+    private static Object normalize(Object value) throws ReflectiveOperationException {
+        if (value == null || value instanceof String || value instanceof Boolean) {
+            return value;
+        }
+        if (value instanceof Number number) {
+            return new BigDecimal(number.toString()).stripTrailingZeros();
+        }
+        if (value instanceof Instant instant) {
+            return instant.toString();
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(item -> {
+                try {
+                    return normalize(item);
+                } catch (ReflectiveOperationException exception) {
+                    throw new IllegalStateException(exception);
+                }
+            }).toList();
+        }
+        if (value instanceof Map<?, ?> source) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : source.entrySet()) {
+                normalized.put(entry.getKey().toString(), normalize(entry.getValue()));
+            }
+            return normalized;
+        }
+        if (value.getClass().isRecord()) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            for (RecordComponent component : value.getClass().getRecordComponents()) {
+                normalized.put(component.getName(), normalize(component.getAccessor().invoke(value)));
+            }
+            return normalized;
+        }
+        throw new IllegalArgumentException("unsupported example value type: " + value.getClass());
     }
 
     private static void assertOperation(

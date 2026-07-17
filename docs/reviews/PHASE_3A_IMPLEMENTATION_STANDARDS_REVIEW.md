@@ -56,7 +56,7 @@ Limitations:
 
 ## 4. Standards checklist
 
-Status vocabulary: `pass` means the bounded baseline supplies direct supporting evidence; `partial` means important evidence exists but the area is incomplete; `finding` links to a specific issue below; `not_applicable` means the executable capability is absent.
+Status vocabulary: `pass` means the bounded baseline supplies direct supporting evidence; `partial` means important evidence exists but the area is incomplete; `finding` links to a specific issue below; `not_applicable` means the executable capability is absent. This checklist records the audited baseline; the finding dispositions record the later, separately approved Action Request 07 corrections.
 
 | Standards area | Status | Evidence and disposition |
 | --- | --- | --- |
@@ -116,6 +116,8 @@ Status vocabulary: `pass` means the bounded baseline supplies direct supporting 
 
 **Bounded recommendation.** Before Phase 3B expands status, define a versioned participant-safe status projection. Remove these fields from the participant API or map them through explicit safe enums/allowlists; retain the full values only in durable internal evidence. Update the accepted example to match an executable response and add recursive nested-schema/example conformance plus negative tests using deliberately sensitive internal actor/reason/authority/policy values. This requires a separately approved code/test/OpenAPI action.
 
+**Disposition (Action Request 07).** Resolved. The versioned participant response and OpenAPI schemas omit transition `actor`/`reason` and finality `authority`/`policyVersion`; the full values remain unchanged in the internal domain and PostgreSQL model. A negative projection test populates deliberately sensitive values and proves they are absent while `participant:` evidence remains. OpenAPI tests now compare every nested response record's properties and required fields and compare the complete accepted example with an executable production response, including `Instant.EPOCH` for initial finalities. The existing principal-derived scope, distinct authorities, and indistinguishable missing/cross-participant 404 behavior remain covered by the focused API gate.
+
 ### Important I-02: broad `IllegalArgumentException` mapping misclassifies internal invariant failures as caller errors
 
 **Evidence.** [`ApiExceptionHandler.java`](../../control-plane/src/main/java/io/github/johnwhitton/digitalbanking/controlplane/api/ApiExceptionHandler.java) maps every `IllegalArgumentException` to the stable 400 problem (lines 25-36). Caller validation uses this exception, but domain construction and PostgreSQL aggregate rehydration also throw it for invalid internal state. Existing API tests prove malformed/caller input and database-unavailable paths, not an invariant/mapping failure reached behind the transport boundary.
@@ -123,6 +125,8 @@ Status vocabulary: `pass` means the bounded baseline supplies direct supporting 
 **Impact.** Corrupt or incompatible persisted data, a mapper defect, or another internal invariant breach can be reported as a client mistake. That classification can conceal a service integrity/recovery problem, mislead clients and operations, and bypass the intended stable internal-failure behavior. This review found no raw detail leakage and no observed corrupt row; the risk is classification and recovery, not a demonstrated data-loss defect.
 
 **Bounded recommendation.** Introduce a specific caller-validation failure at the transport/application boundary, narrow the 400 handler to caller-owned failures, and map unexpected internal/invariant failures to a safe stable 5xx problem while preserving internal diagnostics. Add controller tests that distinguish invalid request data from a simulated internal aggregate/mapper failure, and synchronize OpenAPI. This requires a separately approved code/test/OpenAPI action.
+
+**Disposition (Action Request 07).** Resolved. `InvalidRequestException` now identifies only caller-owned operation-ID, idempotency-key, quantity, and command-construction validation. The application catch ends before lifecycle/repository execution, and a regression test proves the original synthetic persistence `IllegalArgumentException` is not reclassified. The API maps unexpected `IllegalArgumentException` and `IllegalStateException` invariant failures to the documented `urn:digital-banking:problem:internal-error` HTTP 500 body, returns no exception class or diagnostic marker, and logs the original failure for server diagnostics. Existing explicit 400/401/403/404/409/415/422/503 classifications remain unchanged.
 
 ### Advisory A-01: the PostgreSQL repository has crossed a useful extraction boundary
 
@@ -167,7 +171,7 @@ The test design is strong for the implemented scope:
 
 No arbitrary sleep appears in the test sources. Concurrency tests use barriers, latches, and explicit timeouts. Persistence assertions compare the whole reconstructed aggregate rather than selected getters. Fixtures are synthetic and use explicit fixture-only credentials for local containers.
 
-The material gaps are narrow and tied to I-01 and I-02: response tests do not reject internal actor/reason/authority/policy output, OpenAPI tests do not recursively validate nested response records or the accepted example, and API tests do not distinguish caller `IllegalArgumentException` from internal invariant/mapping failure. The full Maven run also emitted one test-compilation deprecation warning for `TokenOperationApiIntegrationTest`; the build does not identify the deprecated symbol under current compiler settings. A focused lint evaluation is reasonable during the next relevant test/build action, but this review does not justify installing a new lint plugin.
+At the audited baseline, the material gaps were narrow and tied to I-01 and I-02: response tests did not reject internal actor/reason/authority/policy output, OpenAPI tests did not recursively validate nested response records or the accepted example, and API tests did not distinguish caller `IllegalArgumentException` from internal invariant/mapping failure. Action Request 07 adds each missing boundary test and its bounded correction; the final focused post-audit gate ran 25 selected tests across application and control-plane (5 + 20) with zero failures, errors, or skips. The audit's full Maven run also emitted one test-compilation deprecation warning for `TokenOperationApiIntegrationTest`; the build does not identify the deprecated symbol under current compiler settings. A focused lint evaluation remains a separate advisory and does not justify installing a new lint plugin.
 
 ## 9. Dependency and framework-leakage assessment
 
@@ -183,7 +187,7 @@ JDBC row objects, Spring transactions, HTTP `ProblemDetail`, security principals
 
 ## 10. Security, API, SQL, transaction, idempotency, outbox, and concurrency assessment
 
-Security and API behavior pass for the implemented acceptance/read-back slice except I-01 and I-02. Principal-derived scope, distinct authorities, deny-by-default paths, safe 404 equivalence, key/digest redaction, no default identity credential, and no public-network configuration are supported by source and tests. The participant projection requires a narrower future allowlist, and unexpected internal failures require a different stable classification.
+At the audited baseline, security and API behavior passed for the implemented acceptance/read-back slice except I-01 and I-02. Action Request 07 resolves both: principal-derived scope, distinct authorities, deny-by-default paths, safe 404 equivalence, key/digest redaction, no default identity credential, and no public-network configuration remain supported, while the participant projection is minimized and unexpected internal invariant failures receive a distinct safe 500 classification.
 
 SQL and transaction behavior pass. Statements use parameters and explicit mappings; the only dynamic table-name SQL appears in a test helper with a hardcoded allowlist. The repository's dynamic participant predicate is a fixed internal SQL fragment, not untrusted input. There is no `SELECT *`. Acceptance and outbox insertion share one explicit `READ_COMMITTED` transaction; no network, signing, messaging, or chain call occurs inside it.
 
@@ -193,22 +197,22 @@ The outbox is correctly described as pending scaffolding for at-least-once deliv
 
 ## 11. Documentation and implementation consistency
 
-README, `docs/DESIGN.md`, and `docs/IMPLEMENTATION.md` accurately distinguish the verified Phase 3A API from scaffolded ports and planned Phase 3B/later work. The documented 302-test gate matches the fresh offline run. The module map, PostgreSQL/JDBC/Flyway choice, security default, participant-scoped resources, pending outbox, four finalities, absence of external effects, and non-production limitations match source and tests. I-01 records the narrower OpenAPI accepted-example drift and nested projection gap.
+At the audited baseline, README, `docs/DESIGN.md`, and `docs/IMPLEMENTATION.md` accurately distinguished the verified Phase 3A API from scaffolded ports and planned Phase 3B/later work. The documented 302-test gate matched that audit's fresh offline run. The module map, PostgreSQL/JDBC/Flyway choice, security default, participant-scoped resources, pending outbox, four finalities, absence of external effects, and non-production limitations matched source and tests; I-01 recorded the narrower OpenAPI accepted-example drift and nested projection gap.
 
 Accepted ADRs 0001-0004 match the reactor, chain deferrals, and persistence approach. No undocumented dependency or architectural decision was found. The implementation does not claim that acceptance, outbox insertion, signer/chain port presence, or a native identity constitutes processing or settlement.
 
-Documentation consistency issues are I-01's accepted-example drift and Advisory A-03's stale closeout rows. Neither alters the current capability boundary; both require the bounded follow-ups described above.
+Action Request 07 resolves I-01's accepted-example drift without altering the capability boundary. Advisory A-03's stale closeout rows remain a separate documentation-only follow-up.
 
 ## 12. Conclusion and ordered follow-up actions
 
-The bounded audit found **0 Critical, 2 Important, and 3 Advisory** findings. Architecture, core modeling, exactness, persistence transactions, idempotency, outbox atomicity, deterministic concurrency, dependency direction, and most API/security behavior have strong direct evidence. The result is not a certification; the two Important boundary issues must be resolved before Phase 3B expands the affected API and workflow surface.
+The bounded audit found **0 Critical, 2 Important, and 3 Advisory** findings. Architecture, core modeling, exactness, persistence transactions, idempotency, outbox atomicity, deterministic concurrency, dependency direction, and most API/security behavior had strong direct evidence. The result is not a certification. Action Request 07 resolves both Important boundary findings before Phase 3B; the three Advisory findings remain scoped as below.
 
-### Required corrections before Phase 3B
+### Completed corrections before Phase 3B
 
-1. **Participant-safe status projection and conformance (I-01).** Decide and test the allowlisted participant representation before worker actors, reasons, policies, and finality authorities become populated; synchronize the accepted example and recursively test nested OpenAPI response shape.
-2. **Internal-versus-client failure classification (I-02).** Narrow caller validation handling and add a stable safe unexpected/internal failure contract and tests.
+1. **Participant-safe status projection and conformance (I-01) - resolved by Action Request 07.** The participant representation omits internal actor/reason/authority/policy values; the accepted example and recursive nested OpenAPI shape are executable tests.
+2. **Internal-versus-client failure classification (I-02) - resolved by Action Request 07.** Caller validation is explicit, persistence/application invariant failure remains unexpected, and the stable redacted internal-error contract is tested.
 
-These are separate bounded code/test/OpenAPI actions and were deliberately not implemented by this audit.
+The audit itself made no executable change; the separately approved [`PHASE_3A_API_BOUNDARY_CORRECTIONS.md`](../plans/active/PHASE_3A_API_BOUNDARY_CORRECTIONS.md) action owns their RED-GREEN implementation and verification evidence.
 
 ### Improvements that may accompany Phase 3B
 

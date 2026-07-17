@@ -47,6 +47,8 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /v1/token-operations/burns:
@@ -82,6 +84,8 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /v1/token-operations/{operationId}:
@@ -113,6 +117,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
   /openapi/token-operations-v1.yaml:
@@ -183,27 +189,19 @@ components:
             finalities:
               blockchain:
                 - status: NOT_ASSESSED
-                  authority: phase-3a-bootstrap
-                  policyVersion: phase-3a-v1
-                  updatedAt: '2026-07-16T23:00:00.123456Z'
+                  updatedAt: '1970-01-01T00:00:00Z'
                   evidenceReferences: []
               legal:
                 - status: NOT_ASSESSED
-                  authority: phase-3a-bootstrap
-                  policyVersion: phase-3a-v1
-                  updatedAt: '2026-07-16T23:00:00.123456Z'
+                  updatedAt: '1970-01-01T00:00:00Z'
                   evidenceReferences: []
               customerVisible:
                 - status: NOT_ASSESSED
-                  authority: phase-3a-bootstrap
-                  policyVersion: phase-3a-v1
-                  updatedAt: '2026-07-16T23:00:00.123456Z'
+                  updatedAt: '1970-01-01T00:00:00Z'
                   evidenceReferences: []
               accounting:
                 - status: NOT_ASSESSED
-                  authority: phase-3a-bootstrap
-                  policyVersion: phase-3a-v1
-                  updatedAt: '2026-07-16T23:00:00.123456Z'
+                  updatedAt: '1970-01-01T00:00:00Z'
                   evidenceReferences: []
             evidenceReferences:
               - participant:acceptance:48ff09c2-0a2e-40c4-a122-190a66fc7444
@@ -302,6 +300,18 @@ components:
             title: Service unavailable
             status: 503
             detail: Durable acceptance is temporarily unavailable.
+            instance: urn:digital-banking:problem-instance:undisclosed
+    InternalError:
+      description: Unexpected internal invariant or mapping failure
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: urn:digital-banking:problem:internal-error
+            title: Internal server error
+            status: 500
+            detail: An unexpected internal error occurred.
             instance: urn:digital-banking:problem-instance:undisclosed
   schemas:
     CanonicalQuantity:
@@ -433,7 +443,7 @@ components:
     Transition:
       type: object
       additionalProperties: false
-      required: [version, from, to, actor, reason, occurredAt, evidenceReferences]
+      required: [version, from, to, occurredAt, evidenceReferences]
       properties:
         version:
           type: integer
@@ -441,10 +451,6 @@ components:
         from:
           type: string
         to:
-          type: string
-        actor:
-          type: string
-        reason:
           type: string
         occurredAt:
           type: string
@@ -475,15 +481,11 @@ components:
     FinalityRecord:
       type: object
       additionalProperties: false
-      required: [status, authority, policyVersion, updatedAt, evidenceReferences]
+      required: [status, updatedAt, evidenceReferences]
       properties:
         status:
           type: string
           enum: [NOT_ASSESSED, PENDING, REACHED, REJECTED]
-        authority:
-          type: string
-        policyVersion:
-          type: string
         updatedAt:
           type: string
           format: date-time
@@ -507,6 +509,7 @@ components:
             - urn:digital-banking:problem:idempotency-conflict
             - urn:digital-banking:problem:unsupported-media-type
             - urn:digital-banking:problem:unprocessable-request
+            - urn:digital-banking:problem:internal-error
             - urn:digital-banking:problem:service-unavailable
         title:
           type: string

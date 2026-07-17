@@ -52,15 +52,20 @@ public final class TokenOperationApplicationService {
         AssetUnit unit = assets.find(
                         request.assetId(), request.unitId(), request.unitVersion())
                 .orElseThrow(UnknownAssetUnitException::new);
-        TokenQuantity quantity = TokenQuantity.parse(request.quantity(), unit);
-        TokenOperationCommand command = switch (kind) {
-            case MINT -> new MintCommand(
-                    request.contractVersion(), participant, quantity,
-                    request.businessCorrelation());
-            case BURN -> new BurnCommand(
-                    request.contractVersion(), participant, quantity,
-                    request.businessCorrelation());
-        };
+        TokenOperationCommand command;
+        try {
+            TokenQuantity quantity = TokenQuantity.parse(request.quantity(), unit);
+            command = switch (kind) {
+                case MINT -> new MintCommand(
+                        request.contractVersion(), participant, quantity,
+                        request.businessCorrelation());
+                case BURN -> new BurnCommand(
+                        request.contractVersion(), participant, quantity,
+                        request.businessCorrelation());
+            };
+        } catch (IllegalArgumentException failure) {
+            throw new InvalidRequestException(failure);
+        }
         return lifecycle.accept(command, idempotencyKey);
     }
 

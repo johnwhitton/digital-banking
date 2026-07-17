@@ -3,9 +3,12 @@ package io.github.johnwhitton.digitalbanking.controlplane.api;
 import java.net.URI;
 
 import io.github.johnwhitton.digitalbanking.application.IdempotencyConflictException;
+import io.github.johnwhitton.digitalbanking.application.InvalidRequestException;
 import io.github.johnwhitton.digitalbanking.application.OperationNotFoundException;
 import io.github.johnwhitton.digitalbanking.application.UnknownAssetUnitException;
 import io.github.johnwhitton.digitalbanking.application.UnsupportedRequestContractException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -15,18 +18,20 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.transaction.TransactionException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 
 @RestControllerAdvice
 public final class ApiExceptionHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
     @ExceptionHandler({
             MethodArgumentNotValidException.class,
             MissingRequestHeaderException.class,
             HttpMessageNotReadableException.class,
-            IllegalArgumentException.class
+            InvalidRequestException.class
     })
     ResponseEntity<ProblemDetail> badRequest(Exception ignored) {
         return problem(
@@ -91,6 +96,16 @@ public final class ApiExceptionHandler {
                 "service-unavailable",
                 "Service unavailable",
                 "Durable acceptance is temporarily unavailable.");
+    }
+
+    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
+    ResponseEntity<ProblemDetail> internalError(RuntimeException failure) {
+        LOGGER.error("Unexpected internal invariant failure", failure);
+        return problem(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "internal-error",
+                "Internal server error",
+                "An unexpected internal error occurred.");
     }
 
     private static ResponseEntity<ProblemDetail> problem(

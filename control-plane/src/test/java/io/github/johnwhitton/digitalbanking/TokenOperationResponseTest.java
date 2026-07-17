@@ -19,6 +19,7 @@ import io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class TokenOperationResponseTest {
 
@@ -37,14 +38,16 @@ class TokenOperationResponseTest {
                 acceptedAt,
                 new EvidenceRef("evidence:internal-acceptance"));
         operation = operation.transition(
-                operation.version(), OperationState.VALIDATED, "validation-worker", "accepted",
+                operation.version(), OperationState.VALIDATED,
+                "internal-actor-sensitive", "internal-reason-sensitive",
                 acceptedAt.plusSeconds(1), List.of(
                         new EvidenceRef("evidence:internal-transition"),
                         new EvidenceRef("participant:transition:safe")));
         operation = operation.recordFinality(
                 operation.version(), FinalityRecord.assessed(
-                        FinalityType.BLOCKCHAIN, FinalityStatus.PENDING, "chain-policy",
-                        "confirmations-v1", acceptedAt.plusSeconds(2), List.of(
+                        FinalityType.BLOCKCHAIN, FinalityStatus.PENDING,
+                        "internal-authority-sensitive", "internal-policy-sensitive",
+                        acceptedAt.plusSeconds(2), List.of(
                                 new EvidenceRef("evidence:internal-finality"),
                                 new EvidenceRef("participant:finality:safe"))));
 
@@ -57,5 +60,10 @@ class TokenOperationResponseTest {
                 response.transitions().getFirst().evidenceReferences());
         assertEquals(List.of("participant:finality:safe"),
                 response.finalities().blockchain().getLast().evidenceReferences());
+        String participantRepresentation = response.toString();
+        assertFalse(participantRepresentation.contains("internal-actor-sensitive"));
+        assertFalse(participantRepresentation.contains("internal-reason-sensitive"));
+        assertFalse(participantRepresentation.contains("internal-authority-sensitive"));
+        assertFalse(participantRepresentation.contains("internal-policy-sensitive"));
     }
 }

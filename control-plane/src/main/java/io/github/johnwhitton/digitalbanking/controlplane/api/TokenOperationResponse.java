@@ -102,15 +102,13 @@ public record TokenOperationResponse(
             long version,
             String from,
             String to,
-            String actor,
-            String reason,
             Instant occurredAt,
             List<String> evidenceReferences) {
 
         private static TransitionView from(OperationTransition transition) {
             return new TransitionView(
                     transition.version(), transition.from().name(), transition.to().name(),
-                    transition.actor(), transition.reason(), transition.occurredAt(),
+                    transition.occurredAt(),
                     participantSafeEvidence(transition.evidenceRefs()));
         }
     }
@@ -124,15 +122,13 @@ public record TokenOperationResponse(
 
     public record FinalityView(
             String status,
-            String authority,
-            String policyVersion,
             Instant updatedAt,
             List<String> evidenceReferences) {
 
         private static FinalityView from(FinalityRecord finality) {
             return new FinalityView(
-                    finality.status().name(), finality.authority(), finality.policyVersion(),
-                    finality.updatedAt(), participantSafeEvidence(finality.evidenceRefs()));
+                    finality.status().name(), finality.updatedAt(),
+                    participantSafeEvidence(finality.evidenceRefs()));
         }
     }
 }

@@ -183,6 +183,11 @@ class TokenOperationApiIntegrationTest extends PostgresApiIntegrationSupport {
                         "\"businessCorrelation\": \"corr-001\"",
                         "\"businessCorrelation\": \"corr-001\", \"chainId\": 1"))
                 .andExpect(status().isBadRequest());
+        accept("mints", "token:mint", "participant-field",
+                VALID_REQUEST.replace(
+                        "\"businessCorrelation\": \"corr-001\"",
+                        "\"businessCorrelation\": \"corr-001\", \"participantId\": \"participant-b\""))
+                .andExpect(status().isBadRequest());
         assertEquals(0L, count("token_operation"));
     }
 
@@ -288,6 +293,8 @@ class TokenOperationApiIntegrationTest extends PostgresApiIntegrationSupport {
                         .value("NOT_ASSESSED"))
                 .andExpect(jsonPath("$.finalities.accounting[0].status")
                         .value("NOT_ASSESSED"))
+                .andExpect(jsonPath("$.finalities.blockchain[0].authority").doesNotExist())
+                .andExpect(jsonPath("$.finalities.blockchain[0].policyVersion").doesNotExist())
                 .andExpect(jsonPath("$.attempts").isArray())
                 .andExpect(jsonPath("$.evidenceReferences[0]").isString());
     }
@@ -299,6 +306,8 @@ class TokenOperationApiIntegrationTest extends PostgresApiIntegrationSupport {
                 .andExpect(status().isAccepted()).andReturn());
         MvcResult otherParticipant = mvc.perform(
                         get("/v1/token-operations/{operationId}", operationId)
+                                .queryParam("participantId", "participant-a")
+                                .header("X-Participant-Id", "participant-a")
                                 .with(participant(
                                         "tenant-a", "participant-b", "token:read")))
                 .andExpect(status().isNotFound()).andReturn();

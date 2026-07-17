@@ -25,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TokenOperationApplicationServiceTest {
@@ -90,8 +91,11 @@ class TokenOperationApplicationServiceTest {
         AcceptanceRequest request = new AcceptanceRequest(
                 1, "REFERENCE_ASSET", "REFERENCE_UNIT", 3, "1.0", "corr-001");
 
-        assertThrows(IllegalArgumentException.class, () -> service.accept(
+        InvalidRequestException failure = assertThrows(InvalidRequestException.class,
+                () -> service.accept(
                 OperationKind.BURN, PARTICIPANT, request, IdempotencyKey.of("request-004")));
+
+        assertEquals(IllegalArgumentException.class, failure.getCause().getClass());
         assertEquals(0, repository.size());
     }
 
@@ -109,6 +113,24 @@ class TokenOperationApplicationServiceTest {
                 () -> service.find(operation.operationId(), OTHER_PARTICIPANT));
         assertThrows(OperationNotFoundException.class,
                 () -> service.find(new OperationId(new UUID(9, 9)), PARTICIPANT));
+    }
+
+    @Test
+    void internalPersistenceFailureIsNotReclassifiedAsCallerValidation() {
+        IllegalArgumentException internalFailure =
+                new IllegalArgumentException("synthetic persistence invariant failure");
+        repository.acceptFailure = internalFailure;
+
+        IllegalArgumentException observed = assertThrows(IllegalArgumentException.class,
+                () -> service.accept(
+                        OperationKind.MINT,
+                        PARTICIPANT,
+                        new AcceptanceRequest(
+                                1, "REFERENCE_ASSET", "REFERENCE_UNIT", 3,
+                                "1", "corr-001"),
+                        IdempotencyKey.of("request-internal-failure")));
+
+        assertSame(internalFailure, observed);
     }
 
     private static final class SequentialIds
@@ -130,6 +152,7 @@ class TokenOperationApplicationServiceTest {
     private static final class InMemoryRepository implements OperationRepository {
         private final Map<ScopedKey, StoredAcceptance> acceptances = new HashMap<>();
         private final Map<OperationId, TokenOperation> operations = new HashMap<>();
+        private RuntimeException acceptFailure;
 
         @Override
         public synchronized OperationAcceptance accept(
@@ -137,6 +160,9 @@ class TokenOperationApplicationServiceTest {
                 IdempotencyKey key,
                 CanonicalCommandMetadata canonicalCommand,
                 Supplier<TokenOperation> operationFactory) {
+            if (acceptFailure != null) {
+                throw acceptFailure;
+            }
             ScopedKey scopedKey = new ScopedKey(scope, key);
             StoredAcceptance existing = acceptances.get(scopedKey);
             if (existing != null) {
