@@ -1,5 +1,7 @@
 package io.github.johnwhitton.digitalbanking.application;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 
@@ -55,7 +57,7 @@ public final class TokenOperationService {
                                 canonical.canonicalizationVersion(),
                                 canonical.sha256(),
                                 command.businessCorrelation()),
-                        command.kind(), command.quantity(), clock.now(),
+                        command.kind(), command.quantity(), now(),
                         evidence.registerAcceptance(canonical, command.participantScope())));
     }
 
@@ -69,8 +71,13 @@ public final class TokenOperationService {
         TokenOperation current = operations.findById(operationId)
                 .orElseThrow(() -> new IllegalArgumentException("operation was not found"));
         TokenOperation changed = current.transition(
-                expectedVersion, target, actor, reason, clock.now(), List.of(evidenceReference));
+                expectedVersion, target, actor, reason, now(), List.of(evidenceReference));
         operations.save(changed, expectedVersion);
         return changed;
+    }
+
+    private Instant now() {
+        return Objects.requireNonNull(clock.now(), "clock result")
+                .truncatedTo(ChronoUnit.MICROS);
     }
 }

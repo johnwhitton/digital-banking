@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.johnwhitton</groupId>
+        <artifactId>digital-banking-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>digital-banking-persistence-postgres</artifactId>
+    <name>Digital Banking PostgreSQL Persistence Adapter</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.johnwhitton</groupId>
+            <artifactId>digital-banking-application</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <configuration>
+                    <rules>
+                        <bannedDependencies>
+                            <searchTransitive>true</searchTransitive>
+                            <excludes>
+                                <exclude>jakarta.persistence:*</exclude>
+                                <exclude>org.hibernate.orm:*</exclude>
+                                <exclude>org.springframework.data:*</exclude>
+                                <exclude>org.jooq:*</exclude>
+                                <exclude>io.r2dbc:*</exclude>
+                                <exclude>org.web3j:*</exclude>
+                                <exclude>org.p2p.solanaj:*</exclude>
+                                <exclude>software.sava:*</exclude>
+                                <exclude>org.apache.kafka:*</exclude>
+                                <exclude>com.rabbitmq:*</exclude>
+                            </excludes>
+                            <message>The PostgreSQL adapter must use explicit JDBC and remain independent of ORM, reactive persistence, messaging, and chain SDKs.</message>
+                        </bannedDependencies>
+                    </rules>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>enforce-explicit-postgres-adapter</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

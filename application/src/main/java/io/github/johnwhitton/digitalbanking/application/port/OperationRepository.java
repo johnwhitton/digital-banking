@@ -7,6 +7,7 @@ import io.github.johnwhitton.digitalbanking.application.OperationAcceptance;
 import io.github.johnwhitton.digitalbanking.application.command.CanonicalCommandMetadata;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyKey;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyScope;
+import io.github.johnwhitton.digitalbanking.application.command.ParticipantScope;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationId;
 import io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation;
 
@@ -23,6 +24,9 @@ public interface OperationRepository {
             Supplier<TokenOperation> operationFactory);
 
     Optional<TokenOperation> findById(OperationId operationId);
+
+    /** Participant-scoped read that must not disclose another participant's operation. */
+    Optional<TokenOperation> findById(OperationId operationId, ParticipantScope participant);
 
     void save(TokenOperation operation, long expectedVersion);
 }

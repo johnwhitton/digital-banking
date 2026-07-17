@@ -1,6 +1,11 @@
 spring:
     application:
         name: digital-banking-control-plane
+    flyway:
+        clean-disabled: true
+    jackson:
+        deserialization:
+            fail-on-unknown-properties: true
 
 management:
     endpoints:

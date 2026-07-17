@@ -1,14 +1,19 @@
 package io.github.johnwhitton.digitalbanking;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DigitalBankingApplicationTests {
+@SpringBootTest
+class DigitalBankingApplicationTests extends PostgresApiIntegrationSupport {
+
+    @Autowired
+    private ConfigurableApplicationContext context;
 
     @Test
     void applicationEntryPointLoadsASpringContext() throws ClassNotFoundException {
@@ -17,11 +22,6 @@ class DigitalBankingApplicationTests {
 
         assertNotNull(applicationClass.getAnnotation(SpringBootApplication.class));
 
-        try (ConfigurableApplicationContext context = SpringApplication.run(
-                applicationClass,
-                "--spring.main.banner-mode=off",
-                "--server.port=0")) {
-            assertTrue(context.isActive());
-        }
+        assertTrue(context.isRunning());
     }
 }

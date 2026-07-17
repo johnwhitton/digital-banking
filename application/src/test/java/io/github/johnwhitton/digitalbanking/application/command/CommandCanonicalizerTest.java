@@ -88,8 +88,10 @@ class CommandCanonicalizerTest {
     }
 
     @Test
-    void rejectsMalformedUnicodeIdempotencyKeysBeforeAuditHashing() {
+    void acceptsOnlyBoundedVisibleAsciiIdempotencyKeysBeforeAuditHashing() {
         assertThrows(IllegalArgumentException.class, () -> IdempotencyKey.of("\uD800"));
+        assertThrows(IllegalArgumentException.class, () -> IdempotencyKey.of("contains space"));
+        assertThrows(IllegalArgumentException.class, () -> IdempotencyKey.of("\u00e9"));
         assertEquals("?", IdempotencyKey.of("?").value());
     }
 

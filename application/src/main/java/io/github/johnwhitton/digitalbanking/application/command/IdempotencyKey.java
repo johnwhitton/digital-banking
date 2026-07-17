@@ -4,14 +4,16 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.regex.Pattern;
 
 public record IdempotencyKey(String value) {
 
+    private static final Pattern VISIBLE_ASCII = Pattern.compile("[!-~]{1,128}");
+
     public IdempotencyKey {
-        if (value == null || value.isBlank() || value.length() > 128
-                || !isWellFormedUtf16(value)) {
+        if (value == null || !VISIBLE_ASCII.matcher(value).matches()) {
             throw new IllegalArgumentException(
-                    "idempotency key must be non-blank, well-formed, and at most 128 characters");
+                    "idempotency key must contain 1 to 128 visible ASCII characters");
         }
     }
 
@@ -27,20 +29,6 @@ public record IdempotencyKey(String value) {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
-    }
-
-    private static boolean isWellFormedUtf16(String text) {
-        for (int index = 0; index < text.length(); index++) {
-            char current = text.charAt(index);
-            if (Character.isHighSurrogate(current)) {
-                if (++index >= text.length() || !Character.isLowSurrogate(text.charAt(index))) {
-                    return false;
-                }
-            } else if (Character.isLowSurrogate(current)) {
-                return false;
-            }
-        }
-        return true;
     }
 
     @Override

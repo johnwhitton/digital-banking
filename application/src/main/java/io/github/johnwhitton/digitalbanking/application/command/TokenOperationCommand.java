@@ -19,7 +19,8 @@ public sealed interface TokenOperationCommand permits MintCommand, BurnCommand {
     OperationKind kind();
 
     default IdempotencyScope idempotencyScope() {
-        return new IdempotencyScope(participantScope(), IdempotencyResource.TOKEN_OPERATION);
+        return new IdempotencyScope(
+                participantScope(), IdempotencyResource.TOKEN_OPERATION, kind());
     }
 
     static String validateAndNormalize(

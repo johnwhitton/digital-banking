@@ -1,41 +1,47 @@
 package io.github.johnwhitton.digitalbanking;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.util.Set;
 
+import org.springframework.boot.actuate.endpoint.web.WebEndpointsSupplier;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.SpringApplication;
-import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class HealthReadinessSmokeTests {
+@SpringBootTest
+@AutoConfigureMockMvc
+class HealthReadinessSmokeTests extends PostgresApiIntegrationSupport {
+
+    @Autowired
+    private MockMvc mvc;
+
+    @Autowired
+    private WebEndpointsSupplier webEndpoints;
 
     @Test
-    void readinessEndpointReportsUp()
-            throws ClassNotFoundException, IOException, InterruptedException {
-        Class<?> applicationClass = Class.forName(
-                "io.github.johnwhitton.digitalbanking.DigitalBankingApplication");
+    void readinessEndpointReportsUpWithoutAuthentication() throws Exception {
+        mvc.perform(get("/actuator/health/readiness"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(
+                        MediaType.parseMediaType("application/*+json")))
+                .andExpect(jsonPath("$.status").value("UP"));
+    }
 
-        try (ConfigurableApplicationContext context = SpringApplication.run(
-                applicationClass,
-                "--spring.main.banner-mode=off",
-                "--server.port=0")) {
-            int port = context.getEnvironment()
-                    .getRequiredProperty("local.server.port", Integer.class);
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("http://127.0.0.1:" + port + "/actuator/health/readiness"))
-                    .GET()
-                    .build();
-            HttpResponse<String> response = HttpClient.newHttpClient()
-                    .send(request, HttpResponse.BodyHandlers.ofString());
+    @Test
+    void unexposedActuatorEndpointsAreUnavailable() throws Exception {
+        mvc.perform(get("/actuator/env"))
+                .andExpect(status().isUnauthorized());
 
-            assertEquals(200, response.statusCode());
-            assertTrue(response.body().contains("\"status\":\"UP\""));
-        }
+        assertEquals(Set.of("health"), webEndpoints.getEndpoints().stream()
+                .map(endpoint -> endpoint.getEndpointId().toString())
+                .collect(java.util.stream.Collectors.toSet()));
     }
 }

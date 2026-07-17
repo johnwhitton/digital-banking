@@ -4,7 +4,16 @@
 
 This repository is non-production research and reference software. It is not approved for real funds, production settlement, regulated operations, or compliance reliance. It makes no warranty or claim of legal, regulatory, security, custody, or operational certification.
 
-Do not use this repository with mainnet, public testnets, production RPC providers, production custody/HSM/MPC systems, or real-value accounts. Network and signing integrations are absent from the foundation by design.
+Do not use this repository with mainnet, public testnets, production RPC providers, production custody/HSM/MPC systems, or real-value accounts. Signing and chain integrations remain absent by design.
+
+## Durable API boundary
+
+- The default application configures no identity provider, token decoder, local user, password, static bearer token, issuer, or JWK endpoint. Health/readiness and the OpenAPI description are anonymous; business resources deny by default until an identity adapter supplies a validated participant principal and authority.
+- Participant scope comes from the authenticated principal, never request JSON or an ad hoc tenant header. Cross-participant and unknown operation IDs have indistinguishable not-found responses.
+- Raw idempotency keys are restricted to 1–128 visible US-ASCII characters, hashed before persistence, excluded from API responses, and redacted by their application value type. Stable problems do not echo request values, SQL, provider details, class names, or stack traces.
+- Participant-facing evidence is deny-by-default: only opaque references with the explicit `participant:` prefix are returned. Internal command digests, authorization evidence, transition/finality evidence, and provider details remain omitted.
+- PostgreSQL credentials and endpoints are runtime configuration only. No public database, embedded durable fallback, or committed credential is provided.
+- A pending outbox record proves only durable local acceptance. It does not prove processing, signing, submission, minting, burning, reconciliation, settlement, or exactly-once external effect.
 
 ## Reporting a vulnerability or accidental secret
 

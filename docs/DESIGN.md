@@ -27,9 +27,9 @@ Zelle is only a public case study in the publications. This repository is organi
 - A consumer wallet, custom bridge, full cross-border product, or complete double-entry ledger in the first slices.
 - Making Ethereum and Solana identical behind a lowest-common-denominator API.
 
-### Current foundation
+### Current implementation boundary
 
-The current repository contains documentation, a plain-Java domain module with exact quantity and operation invariants, a framework-free application module with command/use-case/port contracts, and a Spring Boot control-plane application that exposes health/readiness only. There is no mint/burn API, database, signer implementation, chain adapter, contract/program, OpenAPI document, Compose environment, or business settlement claim.
+The current repository contains documentation, a plain-Java domain module with exact quantity and operation invariants, a framework-free application module with command/use-case/port contracts, one PostgreSQL persistence adapter, and a Spring Boot control plane. Phase 3A durably accepts participant-scoped mint/burn requests, supports scoped operation read-back, serves one OpenAPI 3.1 contract, and records a pending acceptance outbox event. The default configuration deliberately has no identity adapter, so business resources deny unauthenticated requests. There is no worker, outbox publication, signer implementation, chain adapter, contract/program, Compose environment, external effect, or business settlement claim.
 
 ## 3. Terminology
 
@@ -121,7 +121,7 @@ flowchart LR
     solana -.-> rust
 ```
 
-The current reactor contains `domain`, `application`, and `control-plane`; dependencies point inward in that order. Later executable slices may add `adapters/persistence`, `adapters/signer-*`, `adapters/ethereum-web3j`, `adapters/solana-java`, `contracts/evm`, `programs/solana`, and `integration-tests`. These paths are an ownership map, not an instruction to create empty modules. No module may depend on another chain adapter. The application layer defines capability-aware ports, while adapter-specific native types stay within the adapter and its tests.
+The current reactor contains `domain`, `application`, `adapters/persistence-postgres`, and `control-plane`. Its concrete direction is `domain <- application <- persistence-postgres <- control-plane`; the adapter implements application-owned ports and no framework/database type enters domain/application signatures. Later executable slices may add `adapters/signer-*`, `adapters/ethereum-web3j`, `adapters/solana-java`, `contracts/evm`, `programs/solana`, and `integration-tests`. These paths are an ownership map, not an instruction to create empty modules. No module may depend on another chain adapter. The application layer defines capability-aware ports, while adapter-specific native types stay within the adapter and its tests.
 
 ## 7. Mint and burn operation aggregate
 
@@ -142,7 +142,7 @@ A token operation is the business aggregate. Its minimum durable fields are:
 
 A chain attempt contains `attemptId`, `operationId`, adapter/route version, desired effect, signer request/decision evidence, canonical-bytes digest, native identity when known, submission classification, retry-safety classification, native evidence references, and observation history.
 
-Phase 2 retains the accepted participant scope, resource kind, safe idempotency-key digest, request and canonicalization versions, command digest, business correlation, operation kind, asset/unit, and exact quantity in an immutable aggregate context. Route/policy selection, durable storage, and the remaining reconciliation/case fields begin in later owning slices; the Phase 2 repository port is a contract, not a durability claim.
+Phase 3A durably retains the accepted participant scope, resource and operation kind, safe idempotency-key digest, request and canonicalization versions, command digest, business correlation, operation kind, asset/unit, exact quantity, state/version, histories, and evidence references. Route/policy selection and the remaining reconciliation/case fields begin in later owning slices. Participant scope, both command digests, and internal evidence remain internal; the HTTP representation exposes only explicitly allowlisted opaque `participant:` evidence references.
 
 Mint and burn share lifecycle invariants but may have different authorization, token authority, inventory, and compensation policies. A common aggregate does not imply identical ledger entries or native instructions.
 
@@ -215,7 +215,7 @@ Operation IDs are generated before any external interaction and are never reused
 - Persistence and native encoding validate magnitude before conversion. Overflow, truncation, scientific notation, non-canonical zero, negative quantities, and unsupported scale fail deterministically.
 - String serialization round-trips exactly in the Phase 2 domain and canonical-command fixtures. API, persistence, signer-adapter, and chain-adapter boundary fixtures are required when those owning slices exist.
 
-Phase 2 implements these rules and exact round-trip tests without selecting a database numeric column.
+Phase 3A persists atomic units as positive bounded PostgreSQL `NUMERIC(512,0)` and verifies exact boundary round-trip behavior against PostgreSQL 17. The API continues to serialize only the canonical quantity string.
 
 ## 11. Chain adapter capability contract
 
@@ -272,25 +272,27 @@ Rust with Anchor is introduced only when required business logic cannot safely u
 
 ## 15. API boundary
 
-The proposed versioned resources are:
+The implemented versioned resources are:
 
 - `POST /v1/token-operations/mints`;
 - `POST /v1/token-operations/burns`; and
 - `GET /v1/token-operations/{operationId}`.
 
-Create requests require authentication/authorization, `Idempotency-Key`, a contract version, asset/unit identifier, canonical quantity string, and opaque correlation reference. The server derives route, contract/program, signer, policy, and finality configuration; callers do not inject arbitrary destinations or RPC fields.
+Create requests require a Spring Security-authenticated `ParticipantPrincipal`, operation-specific `token:mint` or `token:burn` authority, a 1–128-character visible-US-ASCII `Idempotency-Key`, contract version 1, a server-owned asset/unit identifier and version, canonical quantity string, and opaque correlation reference. Read-back requires `token:read`. The participant/tenant never comes from request JSON or an ad hoc tenant header. The server derives route, contract/program, signer, policy, and finality configuration; callers do not inject arbitrary destinations or RPC fields.
 
 Accepted creation returns HTTP 202 with the stable operation resource and `Location`. Duplicate same-payload requests return the same operation representation. A key/payload mismatch returns a conflict. Validation, policy rejection, authorization rejection, and service unavailability use explicit problem types.
 
-Status exposes business lifecycle, non-sensitive evidence references, attempt summaries, and distinct finalities. It does not expose raw policy data, personal data, secret provider identifiers, signed raw transactions by default, or a single `settled` Boolean.
+Status uses participant-scoped repository lookup, so an unknown ID and another participant's ID produce the same safe 404. It exposes business lifecycle, non-sensitive evidence references, attempt summaries, and distinct finalities. It does not expose raw idempotency keys, stored digests, participant internals, database IDs, raw policy data, personal data, secret provider identifiers, signed raw transactions, or a single `settled` Boolean.
 
-No business resource is implemented until durable acceptance and idempotency exist. The foundation exposes health/readiness only.
+One design-first OpenAPI 3.1 document at `/openapi/token-operations-v1.yaml` is authoritative and has executable YAML/conformance tests. RFC 9457-style problems use stable `urn:digital-banking:problem:*` types and omit untrusted values and infrastructure details. Health/readiness and this contract are anonymous; all business resources are stateless and deny by default until a future identity adapter supplies principals. No password, issuer, decoder, JWK endpoint, static bearer token, or local user is configured.
 
 ## 16. Persistence, transactions, outbox/inbox, and concurrency
 
-The durable API slice will use a relational database. One local transaction accepts the idempotency record, operation aggregate, initial transition/audit record, and outbox message. A uniqueness constraint enforces idempotency scope/key. Optimistic aggregate versioning or explicit row locking protects transitions.
+Phase 3A uses PostgreSQL, explicit Spring JDBC `JdbcClient`, HikariCP, and one forward-only Flyway migration; see [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md). Normalized tables store token operations and immutable acceptance context, hashed scoped idempotency bindings, ordered transitions/evidence, attempt lineage, four ordered finality/evidence histories, and pending outbox events. Exact quantities are constrained integer atomic units rather than floating-point or opaque aggregate JSON.
 
-External signing/submission never occurs inside a database transaction. Workers claim work through bounded leases and compare-and-set state/version guards. The outbox transports commands/events; it is not business authority. Consumers use inbox/deduplication records and monotonic version guards.
+One explicit `READ_COMMITTED` local transaction accepts the hashed idempotency binding, operation aggregate, initial transition/audit evidence, four initial `NOT_ASSESSED` finalities, and one versioned pending outbox message. PostgreSQL uniqueness plus `INSERT ... ON CONFLICT DO NOTHING` resolves concurrent scoped-key races without a process lock or a rollback-only loser path. Same canonical identity replays the committed operation; a different command digest conflicts without partial records. Acceptance timestamps are canonicalized to PostgreSQL microsecond precision before aggregate creation, keeping original and replay responses byte-stable. Optimistic aggregate version updates protect later append-only events.
+
+External signing/submission never occurs inside a database transaction. The outbox transports future commands/events; it is not business authority and Phase 3A does not poll or publish it. Bounded leases, compare-and-set claiming, publication, recovery, retries, and inbox/deduplication remain Phase 3B and require their own tests before any processing claim.
 
 Attempt creation, authorization evidence, and canonical digest are durable before signing/submission. Submission classification is recorded after the call; process death at that boundary produces inquiry, not automatic resubmission.
 
@@ -364,17 +366,16 @@ Business audit is durable, complete, append-only evidence for authorization and 
 
 ## 22. Local development and test topology
 
-Foundation topology is one JVM process with in-memory Spring context and Actuator health tests. No external service is required.
+Phase 3A runtime topology is one Spring Boot process plus a private/local PostgreSQL 17 database. Integration tests start the pinned `postgres:17.10-alpine3.23` Docker Official Image through Testcontainers, run Flyway from an empty schema, and verify rollback, two-thread concurrency, restart read-back, API, and security behavior. No reusable/cloud container, Compose service, public database endpoint, or embedded database is configured.
 
 Later phases add components only as needed:
 
-1. relational database plus migrations and concurrency tests;
-2. deterministic development signer/test double;
-3. Anvil as the local EVM chain for Ethereum;
-4. local Solana validator for Solana;
-5. independent observer endpoints/processes;
-6. Compose orchestration after individual slices are deterministic; and
-7. end-to-end fixtures and operator runbooks.
+1. deterministic development signer/test double;
+2. Anvil as the local EVM chain for Ethereum;
+3. local Solana validator for Solana;
+4. independent observer endpoints/processes;
+5. Compose orchestration after individual slices are deterministic; and
+6. end-to-end fixtures and operator runbooks.
 
 Local chains use disposable deterministic fixtures and no public RPC credentials. Tests must cover restarts, duplicate delivery, timeouts, ambiguous effects, reorg/commitment changes, and reconciliation breaks before a slice is verified.
 
@@ -394,10 +395,12 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - Direct authority mint/burn and CCTP are separate workflows.
 - Canonical command encoding version 1 uses length-prefixed UTF-8 fields and SHA-256; JSON property order is outside the digest contract.
 - Canonical command version 1 rejects malformed Unicode and normalizes business correlation to NFC before hashing.
+- PostgreSQL is the Phase 3 behavioral store; explicit Spring JDBC, HikariCP, Flyway, atomic hashed idempotency/operation/audit/finality/outbox acceptance, and real PostgreSQL Testcontainers are accepted in ADR 0004.
+- The single design-first OpenAPI 3.1 YAML resource is authoritative; no runtime documentation generator or UI is added.
+- Spring Security is stateless and deny-by-default: tests inject fixture principals/authorities, while production configuration contains no identity-provider endpoint or credential.
 
 ### Assumptions to validate
 
-- A relational database is the right first durable store.
 - Integer atomic/minor units plus versioned unit definitions cover the first asset scope.
 - One approved asset/network/authority configuration is sufficient for each initial chain slice.
 - A materially independent local observation path can be demonstrated for each local chain.
@@ -408,13 +411,13 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - Whether Sava passes the bounded Java-client evaluation and which exact release can be pinned.
 - Whether later Solana business requirements justify a custom Rust/Anchor program.
 - Custody/HSM/MPC provider and authorization interface details.
-- Database, workflow engine versus database-backed worker, OpenAPI versioning, and messaging topology.
+- Phase 3B worker leasing/publication/recovery mechanics, workflow engine versus database-backed worker, and messaging topology.
 - Chain finality thresholds, replacement/expiry policies, limits, and reconciliation tolerances.
 - Customer and accounting systems that would own their respective finalities.
 
 ### Deferred
 
-Production readiness, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification are intentionally outside this foundation.
+Production readiness, outbox publication/worker recovery, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain outside Phase 3A.
 
 ## 24. Traceability to the source publications
 

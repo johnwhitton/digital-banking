@@ -38,9 +38,10 @@ Status vocabulary:
 | --- | --- | --- |
 | Foundation and source publications | `verified` | Both supplied PDFs are byte-verified under `docs/reference/`; architecture, repository policy, Maven reactor, and health/readiness application are synchronized. |
 | Plain Java domain boundary | `verified` | Exact asset/unit quantities, stable IDs, guarded lifecycle, attempt lineage, append-only evidence, and four finalities pass the Phase 2 gate; `domain` has no runtime dependencies. |
-| Spring control-plane application | `verified` | `control-plane` starts a Spring context and exposes only Actuator health/readiness. |
-| Mint and burn operation lifecycle | `verified` | Framework-free commands, canonical SHA-256 payloads, scoped replay/conflict, lifecycle coordination, and provider-neutral ports pass 264 pure tests and the 266-test reactor. Persistence-backed durability and value-moving endpoints remain absent. |
-| Durable persistence and OpenAPI | `planned` | No database, migration, outbox, worker, or business API contract exists yet. |
+| Spring control-plane application | `verified` | `control-plane` composes the durable PostgreSQL adapter, exposes health/readiness and three secured business resources, and serves one design-first OpenAPI contract. Business resources deny requests until a future identity adapter supplies an authenticated `ParticipantPrincipal`. |
+| Mint and burn operation lifecycle | `verified` | Framework-free commands, canonical SHA-256 payloads, kind- and participant-scoped replay/conflict, lifecycle coordination, status lookup, and provider-neutral ports pass 269 domain/application tests. No signing or chain execution exists. |
+| Phase 3A durable acceptance and OpenAPI | `verified` | Explicit JDBC plus Flyway atomically records operation, hashed idempotency binding, audit evidence, four finalities, and one pending outbox event before HTTP 202. Real PostgreSQL tests cover rollback, concurrency, replay/conflict, restart, security, and read-back; the 302-test clean reactor gate passes. |
+| Phase 3B asynchronous worker | `planned` | No outbox polling, leasing, publication, retry, inbox, scheduler, or operation processing exists. A pending outbox row is not an execution claim. |
 | HSM, MPC, or custody signing | `planned` | Only the provider-neutral authority boundary is designed; no signer implementation or key material exists. |
 | Ethereum/Web3j adapter | `planned` | The later Ethereum-first slice uses Solidity/Foundry and Web3j only after its own gate. |
 | Solana Java adapter | `planned` | The later native-SVM slice begins with SPL Token and a bounded Java-client evaluation. |
@@ -62,7 +63,9 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 .
 ├── domain/                    # Plain Java domain boundary
 ├── application/               # Framework-free use cases and ports
-├── control-plane/             # Spring Boot composition and health/readiness
+├── adapters/
+│   └── persistence-postgres/  # Explicit JDBC, Flyway schema, durable acceptance/outbox
+├── control-plane/             # Spring Boot API, security, OpenAPI, and composition
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
 │   ├── IMPLEMENTATION.md      # Living delivery plan and current state
@@ -77,20 +80,23 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 └── SECURITY.md
 ```
 
-Future executable slices may add `adapters/`, `contracts/evm/`, `programs/solana/`, and `integration-tests/`. They are planned paths, not current modules, and will not be created empty.
+Future executable slices may add signer/chain adapters, `contracts/evm/`, `programs/solana/`, and `integration-tests/`. They are planned paths, not current modules, and will not be created empty.
 
 ## Local quick start
 
-Prerequisites: JDK 25 and an internet connection on the first Maven-wrapper run. On the bootstrap workstation, Homebrew's JDK is installed but not linked onto `PATH`.
+Prerequisites: JDK 25, Docker, and an internet connection for the first dependency/image resolution. On the bootstrap workstation, Homebrew's JDK is installed but not linked onto `PATH`. The verification suite starts the pinned PostgreSQL container automatically.
 
 ```bash
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw --version
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw clean verify
 ```
 
-Start the application in terminal 1:
+To run the packaged application, provide a private/local PostgreSQL 17 database through environment variables. Flyway validates and migrates it at startup; there is no in-memory fallback.
 
 ```bash
+SPRING_DATASOURCE_URL="${DB_URL}" \
+SPRING_DATASOURCE_USERNAME="${DB_USERNAME}" \
+SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \
 JAVA_HOME=/opt/homebrew/opt/openjdk /opt/homebrew/opt/openjdk/bin/java \
   -jar control-plane/target/digital-banking-control-plane-0.1.0-SNAPSHOT.jar
 ```
@@ -101,7 +107,7 @@ Check readiness in terminal 2:
 curl --fail --silent http://localhost:8080/actuator/health/readiness
 ```
 
-The response has status `UP`. Stop the application with `Ctrl-C`. No RPC URL, database, key, wallet, custody account, or chain process is required.
+The response has status `UP`. The authoritative contract is served at `/openapi/token-operations-v1.yaml`. Business endpoints return 401 in the default repository configuration because no issuer, decoder, local user, password, or token is configured; integration tests inject fixture-only identities and authorities. Stop the application with `Ctrl-C`. No RPC URL, key, wallet, custody account, chain process, or public service is required.
 
 ## AI-assisted engineering
 
@@ -149,4 +155,4 @@ Graph queries, reports, plugin advice, and agent suggestions are navigation aids
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) proves the common domain and operation lifecycle before either chain adapter. The next bounded phase remains durable API and persistence, not chain deployment.
+[The implementation plan](docs/IMPLEMENTATION.md) records the completed Phase 3A durable-acceptance slice and its limits. The next bounded recommendation is Phase 3B outbox worker/recovery mechanics, not signing or chain deployment.

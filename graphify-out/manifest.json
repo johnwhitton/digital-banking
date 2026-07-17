@@ -20,9 +20,9 @@
     "semantic_hash": "f21a19628ce6eda41dbb6abf070437cf"
   },
   "application/src/main/java/io/github/johnwhitton/digitalbanking/application/TokenOperationService.java": {
-    "mtime": 1784247161.7345343,
-    "ast_hash": "128913ea7df1cb27534910c2b8e7797c",
-    "semantic_hash": "128913ea7df1cb27534910c2b8e7797c"
+    "mtime": 1784261346.9916763,
+    "ast_hash": "322bd05c7c6a6b7763b062ddd9dcad79",
+    "semantic_hash": "322bd05c7c6a6b7763b062ddd9dcad79"
   },
   "application/src/main/java/io/github/johnwhitton/digitalbanking/application/command/BurnCommand.java": {
     "mtime": 1784247161.4743278,
@@ -50,9 +50,9 @@
     "semantic_hash": "4b32a796505a9e40062010a321374f91"
   },
   "application/src/main/java/io/github/johnwhitton/digitalbanking/application/command/IdempotencyKey.java": {
-    "mtime": 1784248042.0845404,
-    "ast_hash": "3b119134ff528f687d4760c9af11c138",
-    "semantic_hash": "3b119134ff528f687d4760c9af11c138"
+    "mtime": 1784261618.618524,
+    "ast_hash": "e2c16abbc7c6a7e386f16d5bc32ec54d",
+    "semantic_hash": "e2c16abbc7c6a7e386f16d5bc32ec54d"
   },
   "application/src/main/java/io/github/johnwhitton/digitalbanking/application/command/IdempotencyResource.java": {
     "mtime": 1784245730.493059,
@@ -60,9 +60,9 @@
     "semantic_hash": "760249a077e5d6330baf2b8ffc04804d"
   },
   "application/src/main/java/io/github/johnwhitton/digitalbanking/application/command/IdempotencyScope.java": {
-    "mtime": 1784245730.6194177,
-    "ast_hash": "39372d1c0cce443f63239fcf070683ed",
-    "semantic_hash": "39372d1c0cce443f63239fcf070683ed"
+    "mtime": 1784256422.2801404,
+    "ast_hash": "17e617582df1bd25849c65d181f5e7df",
+    "semantic_hash": "17e617582df1bd25849c65d181f5e7df"
   },
   "application/src/main/java/io/github/johnwhitton/digitalbanking/application/command/MintCommand.java": {
     "mtime": 1784247161.3459058,
@@ -75,9 +75,9 @@
     "semantic_hash": "a9e2f54846c6ea22ae42cb796f9724a4"
   },
   "application/src/main/java/io/github/johnwhitton/digitalbanking/application/command/TokenOperationCommand.java": {
-    "mtime": 1784247161.2163057,
-    "ast_hash": "66a2ef70171c7c5d24499fe0062b960a",
-    "semantic_hash": "66a2ef70171c7c5d24499fe0062b960a"
+    "mtime": 1784256422.4547265,
+    "ast_hash": "1b37c6b4cb032dd8e7f000f1ecc91bc7",
+    "semantic_hash": "1b37c6b4cb032dd8e7f000f1ecc91bc7"
   },
   "application/src/main/java/io/github/johnwhitton/digitalbanking/application/package-info.java": {
     "mtime": 1784245730.1459897,
@@ -110,9 +110,9 @@
     "semantic_hash": "055a8b10927e29dc4f4e20d6556de271"
   },
   "application/src/main/java/io/github/johnwhitton/digitalbanking/application/port/OperationRepository.java": {
-    "mtime": 1784247161.6012137,
-    "ast_hash": "e6be33576e44b2c3c584a6d613eaf201",
-    "semantic_hash": "e6be33576e44b2c3c584a6d613eaf201"
+    "mtime": 1784256422.699219,
+    "ast_hash": "0da1e04e2e781cfddf22f2078cace094",
+    "semantic_hash": "0da1e04e2e781cfddf22f2078cace094"
   },
   "application/src/main/java/io/github/johnwhitton/digitalbanking/application/port/PolicyApprovalPort.java": {
     "mtime": 1784245804.663529,
@@ -125,14 +125,14 @@
     "semantic_hash": "b627355726e411998826b5a2881e7bd2"
   },
   "application/src/test/java/io/github/johnwhitton/digitalbanking/application/TokenOperationServiceTest.java": {
-    "mtime": 1784247962.7866876,
-    "ast_hash": "87c0e4af7fddf8714004b217e3dcea42",
-    "semantic_hash": "87c0e4af7fddf8714004b217e3dcea42"
+    "mtime": 1784256423.5692222,
+    "ast_hash": "60235af89f39791f5572fa8124f327ae",
+    "semantic_hash": "60235af89f39791f5572fa8124f327ae"
   },
   "application/src/test/java/io/github/johnwhitton/digitalbanking/application/command/CommandCanonicalizerTest.java": {
-    "mtime": 1784248001.443376,
-    "ast_hash": "d2052e4fca0c11f2b5de567b554e413a",
-    "semantic_hash": "d2052e4fca0c11f2b5de567b554e413a"
+    "mtime": 1784261618.7504961,
+    "ast_hash": "acb0f2ea9ff2835f2f53544063351a32",
+    "semantic_hash": "acb0f2ea9ff2835f2f53544063351a32"
   },
   "application/src/test/java/io/github/johnwhitton/digitalbanking/application/port/PortContractTest.java": {
     "mtime": 1784247962.901778,
@@ -140,9 +140,9 @@
     "semantic_hash": "480c7ecdd2d24e5dfd4035b6f5b31258"
   },
   "control-plane/pom.xml": {
-    "mtime": 1784245476.2774346,
-    "ast_hash": "3aaecfd3d9c4f5a8ddefcd63bcf76216",
-    "semantic_hash": "3aaecfd3d9c4f5a8ddefcd63bcf76216"
+    "mtime": 1784260019.5696392,
+    "ast_hash": "9aad64e9c77df9df2c84a280fed184be",
+    "semantic_hash": "9aad64e9c77df9df2c84a280fed184be"
   },
   "control-plane/src/main/java/io/github/johnwhitton/digitalbanking/DigitalBankingApplication.java": {
     "mtime": 1784238631.0048614,
@@ -150,14 +150,14 @@
     "semantic_hash": "98513f895c7247679f4483cf5d773390"
   },
   "control-plane/src/test/java/io/github/johnwhitton/digitalbanking/DigitalBankingApplicationTests.java": {
-    "mtime": 1784238407.5406346,
-    "ast_hash": "4a37e0049c60b85629cc5995a9309744",
-    "semantic_hash": "4a37e0049c60b85629cc5995a9309744"
+    "mtime": 1784259279.5913038,
+    "ast_hash": "29002cf37437de8aa5c0b28099059b6c",
+    "semantic_hash": "29002cf37437de8aa5c0b28099059b6c"
   },
   "control-plane/src/test/java/io/github/johnwhitton/digitalbanking/HealthReadinessSmokeTests.java": {
-    "mtime": 1784238407.6675348,
-    "ast_hash": "45ccbfc2ece6ee9813aff88284b64284",
-    "semantic_hash": "45ccbfc2ece6ee9813aff88284b64284"
+    "mtime": 1784260416.5358937,
+    "ast_hash": "78ed190298390ab253d15718dade0493",
+    "semantic_hash": "78ed190298390ab253d15718dade0493"
   },
   "domain/pom.xml": {
     "mtime": 1784247255.6732972,
@@ -270,9 +270,9 @@
     "semantic_hash": "ab50dd89da7da2346b28003352eeeeeb"
   },
   "pom.xml": {
-    "mtime": 1784245476.0108871,
-    "ast_hash": "c219abc5e3ffb347252cff767ab4899c",
-    "semantic_hash": "c219abc5e3ffb347252cff767ab4899c"
+    "mtime": 1784257103.1691458,
+    "ast_hash": "968380018f12279b4189cbc3131b87e8",
+    "semantic_hash": "968380018f12279b4189cbc3131b87e8"
   },
   ".codex/prompts/README.md": {
     "mtime": 1784243678.698798,
@@ -410,9 +410,9 @@
     "semantic_hash": "695f21fcc5415e2c2a3f8f8a4ded6450"
   },
   "AGENTS.md": {
-    "mtime": 1784249979.02043,
-    "ast_hash": "6a08ceb67165155d41bb9365783f0f27",
-    "semantic_hash": "6a08ceb67165155d41bb9365783f0f27"
+    "mtime": 1784262391.5219355,
+    "ast_hash": "8588acfde57f5c15b5a7154f8154a2aa",
+    "semantic_hash": "8588acfde57f5c15b5a7154f8154a2aa"
   },
   "AUTONOMOUS_EXECUTION_POLICY.md": {
     "mtime": 1784244400.0634599,
@@ -420,14 +420,14 @@
     "semantic_hash": "6c2c10b35904d6788952fb9c21f77e48"
   },
   "README.md": {
-    "mtime": 1784252529.824,
-    "ast_hash": "e1a572604cbda38541d5dc47baea0bc5",
-    "semantic_hash": "e1a572604cbda38541d5dc47baea0bc5"
+    "mtime": 1784262390.9828358,
+    "ast_hash": "c9302ef78a67059bdb024c4cff916f4e",
+    "semantic_hash": "c9302ef78a67059bdb024c4cff916f4e"
   },
   "SECURITY.md": {
-    "mtime": 1784236345.8062425,
-    "ast_hash": "ee0e0e47a83eb2fa50d5a2b0984e8195",
-    "semantic_hash": "ee0e0e47a83eb2fa50d5a2b0984e8195"
+    "mtime": 1784262391.3865056,
+    "ast_hash": "cb17c94d5085d162b210615efe9945c1",
+    "semantic_hash": "cb17c94d5085d162b210615efe9945c1"
   },
   "THIRD_PARTY_NOTICES.md": {
     "mtime": 1784249979.4065485,
@@ -435,24 +435,24 @@
     "semantic_hash": "5fe8050fe7e6bd1c82084ded15970a75"
   },
   "control-plane/src/main/resources/application.yaml": {
-    "mtime": 1784238407.329565,
-    "ast_hash": "d7e2fac2134c5f08e427233aacca9d57",
-    "semantic_hash": "d7e2fac2134c5f08e427233aacca9d57"
+    "mtime": 1784260502.9683814,
+    "ast_hash": "fcfd952edbdd2184ff3e3ce510846b2f",
+    "semantic_hash": "fcfd952edbdd2184ff3e3ce510846b2f"
   },
   "docs/DESIGN.md": {
-    "mtime": 1784248071.003695,
-    "ast_hash": "bcd69e37821ef3c9df629c408e1594ea",
-    "semantic_hash": "bcd69e37821ef3c9df629c408e1594ea"
+    "mtime": 1784262391.1119168,
+    "ast_hash": "47f71880ce3b68f90403209ba2b40cd3",
+    "semantic_hash": "47f71880ce3b68f90403209ba2b40cd3"
   },
   "docs/IMPLEMENTATION.md": {
-    "mtime": 1784250398.7756948,
-    "ast_hash": "4050f37eabf5857476bb041676cfd8cd",
-    "semantic_hash": "4050f37eabf5857476bb041676cfd8cd"
+    "mtime": 1784262391.2562435,
+    "ast_hash": "9a207950d3197da256a906f5f81f5325",
+    "semantic_hash": "9a207950d3197da256a906f5f81f5325"
   },
   "docs/adr/0001-maven-reactor-and-module-boundaries.md": {
-    "mtime": 1784246443.5575197,
-    "ast_hash": "22c3f2c76698113d80654506fbb8071a",
-    "semantic_hash": "22c3f2c76698113d80654506fbb8071a"
+    "mtime": 1784260221.489848,
+    "ast_hash": "2087fe937a6541eb2fe084fa6ac3dd76",
+    "semantic_hash": "2087fe937a6541eb2fe084fa6ac3dd76"
   },
   "docs/adr/0002-evm-foundry-and-web3j.md": {
     "mtime": 1784243349.1596682,
@@ -465,9 +465,9 @@
     "semantic_hash": "48f3e814e19c78a2ee308a939fae6356"
   },
   "docs/adr/README.md": {
-    "mtime": 1784243349.412655,
-    "ast_hash": "cae8795c97724d534228a3dd15cabd51",
-    "semantic_hash": "cae8795c97724d534228a3dd15cabd51"
+    "mtime": 1784260060.5076368,
+    "ast_hash": "be5c79a8d11d4a6cb573c6c46b8e4fda",
+    "semantic_hash": "be5c79a8d11d4a6cb573c6c46b8e4fda"
   },
   "docs/plans/active/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md": {
     "mtime": 1784252894.2864466,
@@ -488,5 +488,125 @@
     "mtime": 1784243261.2988927,
     "ast_hash": "d84dffe238da1b3b22814459b28cc394",
     "semantic_hash": "d84dffe238da1b3b22814459b28cc394"
+  },
+  "adapters/persistence-postgres/pom.xml": {
+    "mtime": 1784257103.4173555,
+    "ast_hash": "35496f690125e3c0dc68a759454a987d",
+    "semantic_hash": "35496f690125e3c0dc68a759454a987d"
+  },
+  "adapters/persistence-postgres/src/main/java/io/github/johnwhitton/digitalbanking/persistence/postgres/PostgresOperationRepository.java": {
+    "mtime": 1784261467.2536433,
+    "ast_hash": "39c5993fb464f3602b59f0ebd1469eb4",
+    "semantic_hash": "39c5993fb464f3602b59f0ebd1469eb4"
+  },
+  "adapters/persistence-postgres/src/main/resources/db/migration/V1__create_token_operation_persistence.sql": {
+    "mtime": 1784258093.1305196,
+    "ast_hash": "4ef2010fbbe04c3e57162fa13663d1dc",
+    "semantic_hash": "4ef2010fbbe04c3e57162fa13663d1dc"
+  },
+  "adapters/persistence-postgres/src/test/java/io/github/johnwhitton/digitalbanking/persistence/postgres/PostgresOperationRepositoryTest.java": {
+    "mtime": 1784261553.8445241,
+    "ast_hash": "bf673b1a0a9822534a6c174a6114b3a2",
+    "semantic_hash": "bf673b1a0a9822534a6c174a6114b3a2"
+  },
+  "application/src/main/java/io/github/johnwhitton/digitalbanking/application/OperationNotFoundException.java": {
+    "mtime": 1784256423.008178,
+    "ast_hash": "42d113a5cdd6b7c9c27f4c7910bb8ba6",
+    "semantic_hash": "42d113a5cdd6b7c9c27f4c7910bb8ba6"
+  },
+  "application/src/main/java/io/github/johnwhitton/digitalbanking/application/TokenOperationApplicationService.java": {
+    "mtime": 1784256423.4076793,
+    "ast_hash": "cf18181616ad1bad55ead33ebb337f51",
+    "semantic_hash": "cf18181616ad1bad55ead33ebb337f51"
+  },
+  "application/src/main/java/io/github/johnwhitton/digitalbanking/application/UnknownAssetUnitException.java": {
+    "mtime": 1784256423.1406212,
+    "ast_hash": "20f5abc587d45fa68f4430cd5fc21176",
+    "semantic_hash": "20f5abc587d45fa68f4430cd5fc21176"
+  },
+  "application/src/main/java/io/github/johnwhitton/digitalbanking/application/UnsupportedRequestContractException.java": {
+    "mtime": 1784256423.2715724,
+    "ast_hash": "16af85281f07d7f33d8108636024d90d",
+    "semantic_hash": "16af85281f07d7f33d8108636024d90d"
+  },
+  "application/src/main/java/io/github/johnwhitton/digitalbanking/application/port/AssetUnitCatalog.java": {
+    "mtime": 1784256422.8578076,
+    "ast_hash": "925ddebe6a5a4d7772d460b3f195d66e",
+    "semantic_hash": "925ddebe6a5a4d7772d460b3f195d66e"
+  },
+  "application/src/test/java/io/github/johnwhitton/digitalbanking/application/TokenOperationApplicationServiceTest.java": {
+    "mtime": 1784256328.9660351,
+    "ast_hash": "5f091c16a8cdb95f1e4e3adbb225fcd6",
+    "semantic_hash": "5f091c16a8cdb95f1e4e3adbb225fcd6"
+  },
+  "control-plane/src/main/java/io/github/johnwhitton/digitalbanking/controlplane/api/ApiExceptionHandler.java": {
+    "mtime": 1784259907.6224334,
+    "ast_hash": "2fbd6cb45ac19b0d4fdedcf165fa7871",
+    "semantic_hash": "2fbd6cb45ac19b0d4fdedcf165fa7871"
+  },
+  "control-plane/src/main/java/io/github/johnwhitton/digitalbanking/controlplane/api/ParticipantPrincipal.java": {
+    "mtime": 1784259533.4045703,
+    "ast_hash": "e62936a8b3a3c90704d8c4e084b6e0c8",
+    "semantic_hash": "e62936a8b3a3c90704d8c4e084b6e0c8"
+  },
+  "control-plane/src/main/java/io/github/johnwhitton/digitalbanking/controlplane/api/TokenOperationController.java": {
+    "mtime": 1784259533.7055686,
+    "ast_hash": "7f6e5f4631ef5d0f6bb62ef7c73431a4",
+    "semantic_hash": "7f6e5f4631ef5d0f6bb62ef7c73431a4"
+  },
+  "control-plane/src/main/java/io/github/johnwhitton/digitalbanking/controlplane/api/TokenOperationResponse.java": {
+    "mtime": 1784261416.8231637,
+    "ast_hash": "f9e17a0a080429d2a537626b5d44f303",
+    "semantic_hash": "f9e17a0a080429d2a537626b5d44f303"
+  },
+  "control-plane/src/main/java/io/github/johnwhitton/digitalbanking/controlplane/api/UnauthenticatedPrincipalException.java": {
+    "mtime": 1784259533.8290987,
+    "ast_hash": "1db505a453973531ad307cd0319e8db5",
+    "semantic_hash": "1db505a453973531ad307cd0319e8db5"
+  },
+  "control-plane/src/main/java/io/github/johnwhitton/digitalbanking/controlplane/config/ApplicationConfiguration.java": {
+    "mtime": 1784261411.1415553,
+    "ast_hash": "5729ed828ca998611ca12a49952eaa50",
+    "semantic_hash": "5729ed828ca998611ca12a49952eaa50"
+  },
+  "control-plane/src/main/java/io/github/johnwhitton/digitalbanking/controlplane/config/SecurityConfiguration.java": {
+    "mtime": 1784259907.7472913,
+    "ast_hash": "ebe4a6df34705876265128392ff4046b",
+    "semantic_hash": "ebe4a6df34705876265128392ff4046b"
+  },
+  "control-plane/src/test/java/io/github/johnwhitton/digitalbanking/OpenApiContractTest.java": {
+    "mtime": 1784261873.6830323,
+    "ast_hash": "16aa9b2f7343a11a59d2529487fe3a46",
+    "semantic_hash": "16aa9b2f7343a11a59d2529487fe3a46"
+  },
+  "control-plane/src/test/java/io/github/johnwhitton/digitalbanking/PostgresApiIntegrationSupport.java": {
+    "mtime": 1784259191.5532722,
+    "ast_hash": "fa3efcbc44dffef2131a5e88f65d0d10",
+    "semantic_hash": "fa3efcbc44dffef2131a5e88f65d0d10"
+  },
+  "control-plane/src/test/java/io/github/johnwhitton/digitalbanking/TokenOperationApiIntegrationTest.java": {
+    "mtime": 1784261702.8291304,
+    "ast_hash": "7ac7ddc1bb5f9202824f1b31cdbcda68",
+    "semantic_hash": "7ac7ddc1bb5f9202824f1b31cdbcda68"
+  },
+  "control-plane/src/test/java/io/github/johnwhitton/digitalbanking/TokenOperationResponseTest.java": {
+    "mtime": 1784261986.043694,
+    "ast_hash": "6df625f32009eed169768f7caefbe984",
+    "semantic_hash": "6df625f32009eed169768f7caefbe984"
+  },
+  "control-plane/src/main/resources/static/openapi/token-operations-v1.yaml": {
+    "mtime": 1784261907.3087451,
+    "ast_hash": "6d820cf8b1f9f5fa2df847ac01ecf142",
+    "semantic_hash": "6d820cf8b1f9f5fa2df847ac01ecf142"
+  },
+  "docs/adr/0004-postgresql-jdbc-flyway-atomic-outbox.md": {
+    "mtime": 1784262390.7446444,
+    "ast_hash": "2014e9381b9e3072669ebbdb6ad77fed",
+    "semantic_hash": "2014e9381b9e3072669ebbdb6ad77fed"
+  },
+  "docs/plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md": {
+    "mtime": 1784263461.0058181,
+    "ast_hash": "3a5c9f314a4bee95a40545a41c89b5d2",
+    "semantic_hash": "3a5c9f314a4bee95a40545a41c89b5d2"
   }
 }

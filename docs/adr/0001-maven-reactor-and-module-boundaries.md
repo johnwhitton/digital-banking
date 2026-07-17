@@ -25,7 +25,7 @@ Use one Maven reactor with a committed Maven Wrapper:
 - Maven Wrapper 3.3.4 configured for Apache Maven 3.9.16 with a distribution checksum; and
 - Maven Enforcer dependency-ban rules in `domain` and `application` rejecting framework, JSON, chain SDK, HTTP, and persistence dependencies.
 
-The initial foundation contained only the `domain` package boundary. Phase 2 added domain behavior and the `application` module test-first. The control plane still exposes Actuator health/readiness only; no business API is created without durable semantics.
+The initial foundation contained only the `domain` package boundary. Phase 2 added domain behavior and the `application` module test-first. At that checkpoint the control plane exposed only Actuator health/readiness; the decision required any later business API to add durable semantics first.
 
 ## Alternatives considered
 

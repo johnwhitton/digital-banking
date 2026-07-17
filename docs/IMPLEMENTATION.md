@@ -48,7 +48,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | -------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
 | 1. Foundation                          | `verified`    | Source publications and the full foundation gate are verified; see the closed bootstrap plan. |
 | 2. Domain and operation lifecycle      | `verified`    | Exact quantities, guarded lifecycle/finality histories, canonical commands, idempotent acceptance contracts, and bound ports passed 264 pure tests and the 266-test reactor. |
-| 3. Durable API and persistence         | `not_started` | No API/database dependency or contract exists.                                                 |
+| 3. Durable API and persistence         | `in_progress` | Phase 3A durable acceptance/read-back is `verified` by the 302-test clean reactor gate; Phase 3B worker/publication mechanics remain absent. |
 | 4. Signing boundary                    | `not_started` | Design only; no signer code or keys.                                                           |
 | 5. Ethereum vertical slice             | `not_started` | No Web3j/Solidity/local-chain code.                                                            |
 | 6. Solana vertical slice               | `not_started` | No Java SDK/Rust/local-validator code.                                                         |
@@ -92,15 +92,25 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 
 ## Phase 3: Durable API and persistence
 
-**Deliverables:** versioned OpenAPI; Spring mint/burn create and operation-status resources; relational schema/migrations; durable idempotency; optimistic concurrency; operation/attempt/evidence repositories; transactional acceptance; outbox foundation; worker lease/timer mechanics; safe problem responses.
+### Phase 3A: durable acceptance and read-back
 
-**Tests:** OpenAPI/implementation contract, HTTP validation, 202/Location behavior, replay/conflict, parallel duplicate requests, rollback, uniqueness, version conflicts, worker recovery, process restart, outbox atomicity, and sensitive-field redaction.
+**Implemented deliverables:** one design-first OpenAPI 3.1 contract; secured Spring mint/burn create and participant-scoped operation-status resources; stateless deny-by-default security and safe RFC 9457 problems; PostgreSQL schema/Flyway migration; explicit JDBC repository; durable hashed idempotency; optimistic concurrency; normalized operation/attempt/transition/finality/evidence storage; one atomic pending acceptance-outbox record; and production composition with no in-memory fallback. See [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md).
 
-**Acceptance gate:** an accepted command is durable before response, duplicates cannot create a second operation, no external effect occurs inside the acceptance transaction, and restart/concurrency tests prove recovery.
+**Tests:** OpenAPI parsing/conformance, 401/403 boundaries, HTTP validation, 202/Location behavior, replay/conflict, participant non-disclosure, safe database failure, empty migration, schema/index/quantity constraints, complete aggregate replay, optimistic conflict, parallel duplicate/conflicting requests without retries, rollback, uniqueness, outbox atomicity, process restart, and sensitive-field absence.
 
-**Risks:** transaction leaks, database-specific coupling, exactly-once claims, status exposure of sensitive evidence.
+**Acceptance gate:** an accepted command is committed before HTTP 202; duplicates cannot create a second operation or outbox row; conflicts leave no partial state; no external effect occurs inside the acceptance transaction; and real PostgreSQL restart/concurrency tests prove durable read-back.
 
-**Deferred:** broker topology, full ledger, chain execution.
+**Current limitation:** the repository configures no real identity adapter, issuer, token decoder, local user, password, or static credential. Business endpoints deny by default; tests use fixture-only `ParticipantPrincipal` authentication and authorities.
+
+### Phase 3B: asynchronous worker and delivery recovery
+
+**Deferred deliverables:** outbox claiming/leasing, publication or local worker handoff, compare-and-set lifecycle progression, retries/backoff, inbox/deduplication, crash recovery, timers, and operator evidence. These remain unimplemented; a pending outbox row proves only durable local acceptance.
+
+**Future tests:** worker concurrency, lease expiry/recovery, duplicate delivery, monotonic transition guards, poison/failure handling, process death at every delivery boundary, and no blind external-effect retry.
+
+**Risks:** database-specific coupling, exactly-once overclaims, and future worker/recovery semantics. Phase 3A explicitly enforces `READ_COMMITTED`, canonical microsecond timestamps, and participant-safe evidence filtering; later response fields must preserve those controls.
+
+**Deferred beyond Phase 3:** broker topology selection, full ledger, signing, and chain execution.
 
 ## Phase 4: Signing boundary
 
@@ -183,11 +193,13 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 ## Plans and ADRs
 
 - Closed foundation plan: [`docs/plans/active/BOOTSTRAP.md`](plans/active/BOOTSTRAP.md).
-- Active Phase 2 plan: [`docs/plans/active/DOMAIN_OPERATION_LIFECYCLE.md`](plans/active/DOMAIN_OPERATION_LIFECYCLE.md).
+- Completed Phase 2 plan: [`docs/plans/active/DOMAIN_OPERATION_LIFECYCLE.md`](plans/active/DOMAIN_OPERATION_LIFECYCLE.md).
+- Active Phase 3A plan: [`docs/plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md`](plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
 - Accepted build/module choice: [`ADR 0001`](adr/0001-maven-reactor-and-module-boundaries.md).
 - Accepted EVM approach: [`ADR 0002`](adr/0002-evm-foundry-and-web3j.md).
 - Accepted Solana approach: [`ADR 0003`](adr/0003-native-solana-spl-token.md).
+- Accepted PostgreSQL/JDBC/Flyway/atomic-outbox approach: [`ADR 0004`](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md).
 
 Create or update an active plan before implementation. Create an ADR only when evidence requires an accepted material decision.
 
@@ -209,6 +221,8 @@ JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw clean verify
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl control-plane -am -Dtest=DigitalBankingApplicationTests,HealthReadinessSmokeTests -Dsurefire.failIfNoSpecifiedTests=false test
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl domain enforcer:enforce
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl application enforcer:enforce dependency:tree
+JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl adapters/persistence-postgres -am test
+JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl control-plane -am test
 graphify --version
 test -f .agents/skills/graphify/SKILL.md
 jq -e '.hooks.PreToolUse[] | select(.matcher == "^Bash$")' .codex/hooks.json
@@ -216,9 +230,21 @@ jq -e '.hooks.PreToolUse[] | select(.matcher == "^Bash$")' .codex/hooks.json
 
 Reference, documentation, skill/hook, stale-reference, diff, and Git commands are recorded with results in the active bootstrap plan. Add commands here only after they are stable contributor entry points.
 
-## Verified bounded vertical slice
+## Latest bounded vertical slice
 
-Action Request 02 implements **Domain and Operation Lifecycle** only:
+Action Request 04 implements **Phase 3A Durable API and Persistence**:
+
+- one `adapters/persistence-postgres` module using explicit Spring JDBC, HikariCP, Flyway, and the PostgreSQL driver;
+- one normalized migration for operations, hashed idempotency bindings, ordered transitions/evidence, attempt lineage, four finality/evidence histories, and pending outbox events;
+- one atomic acceptance transaction with database-authoritative concurrent replay/conflict behavior;
+- `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, and participant-scoped `GET /v1/token-operations/{operationId}`;
+- stateless Spring Security with separate mint/burn/read authorities and no configured identity provider or credential;
+- one authoritative OpenAPI 3.1 YAML resource plus executable conformance tests; and
+- real pinned PostgreSQL integration/API tests for migrations, exact quantities, rollback, concurrency, restart, safe failures, authorization, and data exposure.
+
+The slice durably accepts and records requests only. It does not poll or publish the outbox, process operations, sign, submit, mint, burn, reconcile, settle, or claim exactly-once external effects. Phase 3B worker and delivery recovery is the next recommended bounded slice; chain work still waits for the signing boundary.
+
+The previously verified Phase 2 slice supplies:
 
 - exact asset/unit and token quantity types;
 - mint and burn commands;
@@ -229,4 +255,4 @@ Action Request 02 implements **Domain and Operation Lifecycle** only:
 - provider-neutral chain and signer ports with stable internal correlation and exact-byte constraint binding; and
 - pure Java tests proving invariants without Spring, persistence, Web3j, Solana SDKs, Solidity, Rust, or Compose.
 
-The slice preserves opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence contracts without implementing either chain adapter. Phase 3 durable API and persistence is the next recommended slice after this gate; chain work still waits for the Phase 4 signing boundary.
+Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.

@@ -2,7 +2,7 @@
 
 ## Purpose and phase
 
-This repository is the **Digital Banking Reference Implementation**: non-production reference software for a regulated digital-asset settlement control plane. The foundation and plain-Java domain/operation lifecycle are verified. No later implementation phase is active or authorized; Phase 3 durable API and persistence is the next planned slice. The repository does not expose mint/burn APIs or implement persistence, signing, chain adapters, or financial settlement.
+This repository is the **Digital Banking Reference Implementation**: non-production reference software for a regulated digital-asset settlement control plane. The foundation and plain-Java domain/operation lifecycle are verified. Phase 3 is active: Phase 3A implements durable PostgreSQL-backed mint/burn request acceptance and participant-scoped read-back, while Phase 3B worker/publication behavior remains planned. The repository does not process operations, sign, submit to chains, mint, burn, reconcile, settle, or claim production readiness.
 
 Zelle appears only in the supplied publications as a public case study. Never describe this repository as Early Warning Services or Zelle production architecture, confidential information, a selected vendor stack, or an announced implementation plan.
 
@@ -99,7 +99,7 @@ The domain never depends outward. Chain adapters may depend on core ports and th
 - Canonical API quantities are decimal strings plus an asset/unit identifier, never binary floating-point JSON numbers.
 - Convert to integer atomic/minor units only after validating the configured scale. Reject excess precision unless an explicitly approved conversion policy names a rounding mode; value-moving operations default to no rounding.
 - Define maximum magnitude before persistence or native encoding; fail on overflow rather than truncate.
-- Scope idempotency keys by participant/tenant and operation resource.
+- Accept only 1–128 visible US-ASCII idempotency-key characters and scope keys by participant/tenant, operation resource, and operation kind.
 - Hash a versioned canonical payload. The same scope/key/hash returns the original durable operation; the same scope/key with a different hash is a conflict.
 - Operation IDs are stable business identities. Attempt IDs identify each authorized external-effect attempt. Never generate a new operation to retry an ambiguous effect.
 

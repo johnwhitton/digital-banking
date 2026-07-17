@@ -11,6 +11,7 @@ import java.util.function.Supplier;
 import io.github.johnwhitton.digitalbanking.application.command.CanonicalCommand;
 import io.github.johnwhitton.digitalbanking.application.command.CanonicalCommandMetadata;
 import io.github.johnwhitton.digitalbanking.application.command.CommandCanonicalizer;
+import io.github.johnwhitton.digitalbanking.application.command.BurnCommand;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyKey;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyScope;
 import io.github.johnwhitton.digitalbanking.application.command.MintCommand;
@@ -123,6 +124,22 @@ class TokenOperationServiceTest {
     }
 
     @Test
+    void isolatesTheSameKeyAcrossMintAndBurnResources() {
+        IdempotencyKey key = IdempotencyKey.of("shared-kind-key");
+        ParticipantScope participant = new ParticipantScope("tenant-a", "participant-a");
+
+        OperationAcceptance mint = service.accept(
+                new MintCommand(1, participant, TokenQuantity.parse("1", UNIT), "corr-001"),
+                key);
+        OperationAcceptance burn = service.accept(
+                new BurnCommand(1, participant, TokenQuantity.parse("1", UNIT), "corr-001"),
+                key);
+
+        assertNotEquals(mint.operation().operationId(), burn.operation().operationId());
+        assertEquals(2, repository.size());
+    }
+
+    @Test
     void acceptsCommandValidationBoundariesWithoutNarrowingThemInTheDomainContext() {
         String supplementaryCorrelation = "\uD83D\uDE00".repeat(128);
         MintCommand command = command(
@@ -213,6 +230,15 @@ class TokenOperationServiceTest {
         @Override
         public synchronized Optional<TokenOperation> findById(OperationId operationId) {
             return Optional.ofNullable(operations.get(operationId));
+        }
+
+        @Override
+        public synchronized Optional<TokenOperation> findById(
+                OperationId operationId, ParticipantScope participant) {
+            return findById(operationId).filter(operation ->
+                    operation.acceptanceContext().tenantId().equals(participant.tenantId())
+                            && operation.acceptanceContext().participantId()
+                            .equals(participant.participantId()));
         }
 
         @Override

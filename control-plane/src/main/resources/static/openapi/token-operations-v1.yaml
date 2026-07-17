@@ -1,0 +1,521 @@
+openapi: 3.1.0
+info:
+  title: Digital Banking Durable Token Operations API
+  version: 1.0.0
+  description: >-
+    Records durable mint and burn operation requests. HTTP 202 means the local
+    acceptance transaction committed; it does not perform signing, submission, minting, burning,
+    reconciliation, settlement, or any external side effect.
+paths:
+  /v1/token-operations/mints:
+    post:
+      operationId: acceptMintOperation
+      summary: Durably accept a mint operation request
+      description: >-
+        A replay with the same participant scope, key, and canonical request
+        returns HTTP 202 and the same operation without creating another event.
+      security:
+        - identityAdapter: []
+      x-required-authority: token:mint
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptanceRequest'
+            example:
+              contractVersion: 1
+              assetId: REFERENCE_ASSET
+              unitId: REFERENCE_UNIT
+              unitVersion: 3
+              quantity: '12.34'
+              businessCorrelation: corr-001
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/token-operations/burns:
+    post:
+      operationId: acceptBurnOperation
+      summary: Durably accept a burn operation request
+      description: >-
+        A replay with the same participant scope, key, and canonical request
+        returns HTTP 202 and the same operation without creating another event.
+      security:
+        - identityAdapter: []
+      x-required-authority: token:burn
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptanceRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/token-operations/{operationId}:
+    get:
+      operationId: getTokenOperation
+      summary: Read a participant-scoped durable operation
+      security:
+        - identityAdapter: []
+      x-required-authority: token:read
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Durable operation state and histories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenOperation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /openapi/token-operations-v1.yaml:
+    get:
+      operationId: getTokenOperationsContract
+      summary: Read this authoritative OpenAPI contract
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.1 YAML document
+          content:
+            application/yaml:
+              schema:
+                type: string
+components:
+  securitySchemes:
+    identityAdapter:
+      type: http
+      scheme: bearer
+      description: >-
+        Identity-adapter boundary only. This reference phase configures no
+        decoder, issuer, JWK, static token, password, or local user.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >-
+        Opaque caller key scoped by tenant, participant, resource, and operation
+        kind. It contains 1 to 128 visible US-ASCII characters, is hashed before
+        storage, and is never returned.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[!-~]{1,128}$'
+  responses:
+    Accepted:
+      description: >-
+        The local operation, audit, finality, idempotency, and pending outbox
+        records committed atomically. Processing has not started.
+      headers:
+        Location:
+          required: true
+          description: Stable participant-scoped operation resource
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TokenOperation'
+          example:
+            operationId: 8c5f0a89-9317-4f30-a7ca-f18a395293ce
+            kind: MINT
+            asset:
+              assetId: REFERENCE_ASSET
+              unitId: REFERENCE_UNIT
+              unitVersion: 3
+              scale: 2
+            quantity: '12.34'
+            state: REQUESTED
+            version: 0
+            createdAt: '2026-07-16T23:00:00.123456Z'
+            updatedAt: '2026-07-16T23:00:00.123456Z'
+            businessCorrelation: corr-001
+            attempts: []
+            transitions: []
+            finalities:
+              blockchain:
+                - status: NOT_ASSESSED
+                  authority: phase-3a-bootstrap
+                  policyVersion: phase-3a-v1
+                  updatedAt: '2026-07-16T23:00:00.123456Z'
+                  evidenceReferences: []
+              legal:
+                - status: NOT_ASSESSED
+                  authority: phase-3a-bootstrap
+                  policyVersion: phase-3a-v1
+                  updatedAt: '2026-07-16T23:00:00.123456Z'
+                  evidenceReferences: []
+              customerVisible:
+                - status: NOT_ASSESSED
+                  authority: phase-3a-bootstrap
+                  policyVersion: phase-3a-v1
+                  updatedAt: '2026-07-16T23:00:00.123456Z'
+                  evidenceReferences: []
+              accounting:
+                - status: NOT_ASSESSED
+                  authority: phase-3a-bootstrap
+                  policyVersion: phase-3a-v1
+                  updatedAt: '2026-07-16T23:00:00.123456Z'
+                  evidenceReferences: []
+            evidenceReferences:
+              - participant:acceptance:48ff09c2-0a2e-40c4-a122-190a66fc7444
+    BadRequest:
+      description: Malformed request or invalid bounded input
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: urn:digital-banking:problem:invalid-request
+            title: Invalid request
+            status: 400
+            detail: The request did not satisfy the API contract.
+            instance: urn:digital-banking:problem-instance:undisclosed
+    Unauthenticated:
+      description: Authenticated participant identity is required
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: urn:digital-banking:problem:unauthenticated
+            title: Authentication required
+            status: 401
+            detail: An authenticated participant identity is required.
+    Unauthorized:
+      description: Required operation authority is absent
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: urn:digital-banking:problem:unauthorized
+            title: Access denied
+            status: 403
+            detail: The authenticated participant is not authorized for this operation.
+    NotFound:
+      description: >-
+        Operation is unknown or outside the authenticated participant scope;
+        these cases are intentionally indistinguishable.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: urn:digital-banking:problem:operation-not-found
+            title: Operation not found
+            status: 404
+            detail: The operation was not found.
+            instance: urn:digital-banking:problem-instance:undisclosed
+    Conflict:
+      description: The scoped idempotency key names a different canonical request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: urn:digital-banking:problem:idempotency-conflict
+            title: Idempotency conflict
+            status: 409
+            detail: The idempotency key is already bound to a different request.
+            instance: urn:digital-banking:problem-instance:undisclosed
+    UnsupportedMediaType:
+      description: Request content is not application/json
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: urn:digital-banking:problem:unsupported-media-type
+            title: Unsupported media type
+            status: 415
+            detail: Use application/json for this request.
+            instance: urn:digital-banking:problem-instance:undisclosed
+    Unprocessable:
+      description: Unsupported request contract or server-owned asset unit
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: urn:digital-banking:problem:unprocessable-request
+            title: Unprocessable request
+            status: 422
+            detail: The request uses an unsupported contract or asset unit.
+            instance: urn:digital-banking:problem-instance:undisclosed
+    ServiceUnavailable:
+      description: Durable acceptance or read-back is unavailable
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: urn:digital-banking:problem:service-unavailable
+            title: Service unavailable
+            status: 503
+            detail: Durable acceptance is temporarily unavailable.
+            instance: urn:digital-banking:problem-instance:undisclosed
+  schemas:
+    CanonicalQuantity:
+      type: string
+      minLength: 1
+      maxLength: 512
+      pattern: '^[1-9][0-9]*(\.[0-9]*[1-9])?$'
+      description: Positive canonical decimal text; never a JSON number
+      examples:
+        - '12.34'
+    AcceptanceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - contractVersion
+        - assetId
+        - unitId
+        - unitVersion
+        - quantity
+        - businessCorrelation
+      properties:
+        contractVersion:
+          type: integer
+          const: 1
+        assetId:
+          $ref: '#/components/schemas/SafeIdentifier'
+        unitId:
+          $ref: '#/components/schemas/SafeIdentifier'
+        unitVersion:
+          type: integer
+          minimum: 1
+        quantity:
+          $ref: '#/components/schemas/CanonicalQuantity'
+        businessCorrelation:
+          type: string
+          minLength: 1
+          maxLength: 128
+    SafeIdentifier:
+      type: string
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$'
+    TokenOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - operationId
+        - kind
+        - asset
+        - quantity
+        - state
+        - version
+        - createdAt
+        - updatedAt
+        - businessCorrelation
+        - attempts
+        - transitions
+        - finalities
+        - evidenceReferences
+      properties:
+        operationId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [MINT, BURN]
+        asset:
+          $ref: '#/components/schemas/AssetUnit'
+        quantity:
+          $ref: '#/components/schemas/CanonicalQuantity'
+        state:
+          type: string
+          description: Durable lifecycle state; acceptance begins at REQUESTED
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        businessCorrelation:
+          type: string
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attempt'
+        transitions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transition'
+        finalities:
+          $ref: '#/components/schemas/FinalityHistories'
+        evidenceReferences:
+          type: array
+          description: Participant-safe opaque references only; internal evidence is omitted
+          items:
+            type: string
+    AssetUnit:
+      type: object
+      additionalProperties: false
+      required: [assetId, unitId, unitVersion, scale]
+      properties:
+        assetId:
+          $ref: '#/components/schemas/SafeIdentifier'
+        unitId:
+          $ref: '#/components/schemas/SafeIdentifier'
+        unitVersion:
+          type: integer
+          minimum: 1
+        scale:
+          type: integer
+          minimum: 0
+          maximum: 255
+    Attempt:
+      type: object
+      additionalProperties: false
+      required: [attemptId, predecessor, createdAt]
+      properties:
+        attemptId:
+          type: string
+          format: uuid
+        predecessor:
+          type: [string, 'null']
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+    Transition:
+      type: object
+      additionalProperties: false
+      required: [version, from, to, actor, reason, occurredAt, evidenceReferences]
+      properties:
+        version:
+          type: integer
+          format: int64
+        from:
+          type: string
+        to:
+          type: string
+        actor:
+          type: string
+        reason:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        evidenceReferences:
+          type: array
+          description: Participant-safe opaque references only
+          items:
+            type: string
+    FinalityHistories:
+      type: object
+      additionalProperties: false
+      required: [blockchain, legal, customerVisible, accounting]
+      properties:
+        blockchain:
+          $ref: '#/components/schemas/FinalityHistory'
+        legal:
+          $ref: '#/components/schemas/FinalityHistory'
+        customerVisible:
+          $ref: '#/components/schemas/FinalityHistory'
+        accounting:
+          $ref: '#/components/schemas/FinalityHistory'
+    FinalityHistory:
+      type: array
+      minItems: 1
+      items:
+        $ref: '#/components/schemas/FinalityRecord'
+    FinalityRecord:
+      type: object
+      additionalProperties: false
+      required: [status, authority, policyVersion, updatedAt, evidenceReferences]
+      properties:
+        status:
+          type: string
+          enum: [NOT_ASSESSED, PENDING, REACHED, REJECTED]
+        authority:
+          type: string
+        policyVersion:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        evidenceReferences:
+          type: array
+          description: Participant-safe opaque references only; internal evidence is omitted
+          items:
+            type: string
+    Problem:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type:
+          type: string
+          format: uri
+          enum:
+            - urn:digital-banking:problem:invalid-request
+            - urn:digital-banking:problem:unauthenticated
+            - urn:digital-banking:problem:unauthorized
+            - urn:digital-banking:problem:operation-not-found
+            - urn:digital-banking:problem:idempotency-conflict
+            - urn:digital-banking:problem:unsupported-media-type
+            - urn:digital-banking:problem:unprocessable-request
+            - urn:digital-banking:problem:service-unavailable
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri

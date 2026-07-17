@@ -1,0 +1,107 @@
+package io.github.johnwhitton.digitalbanking.controlplane.api;
+
+import java.net.URI;
+
+import io.github.johnwhitton.digitalbanking.application.IdempotencyConflictException;
+import io.github.johnwhitton.digitalbanking.application.OperationNotFoundException;
+import io.github.johnwhitton.digitalbanking.application.UnknownAssetUnitException;
+import io.github.johnwhitton.digitalbanking.application.UnsupportedRequestContractException;
+import org.springframework.dao.DataAccessException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.transaction.TransactionException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+
+@RestControllerAdvice
+public final class ApiExceptionHandler {
+
+    @ExceptionHandler({
+            MethodArgumentNotValidException.class,
+            MissingRequestHeaderException.class,
+            HttpMessageNotReadableException.class,
+            IllegalArgumentException.class
+    })
+    ResponseEntity<ProblemDetail> badRequest(Exception ignored) {
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                "invalid-request",
+                "Invalid request",
+                "The request did not satisfy the API contract.");
+    }
+
+    @ExceptionHandler(UnauthenticatedPrincipalException.class)
+    ResponseEntity<ProblemDetail> unauthenticated(UnauthenticatedPrincipalException ignored) {
+        return problem(
+                HttpStatus.UNAUTHORIZED,
+                "unauthenticated",
+                "Authentication required",
+                "An authenticated participant identity is required.");
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    ResponseEntity<ProblemDetail> unsupportedMedia(HttpMediaTypeNotSupportedException ignored) {
+        return problem(
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "unsupported-media-type",
+                "Unsupported media type",
+                "Use application/json for this request.");
+    }
+
+    @ExceptionHandler({
+            UnknownAssetUnitException.class,
+            UnsupportedRequestContractException.class
+    })
+    ResponseEntity<ProblemDetail> unprocessable(RuntimeException ignored) {
+        return problem(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                "unprocessable-request",
+                "Unprocessable request",
+                "The request uses an unsupported contract or asset unit.");
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    ResponseEntity<ProblemDetail> conflict(IdempotencyConflictException ignored) {
+        return problem(
+                HttpStatus.CONFLICT,
+                "idempotency-conflict",
+                "Idempotency conflict",
+                "The idempotency key is already bound to a different request.");
+    }
+
+    @ExceptionHandler(OperationNotFoundException.class)
+    ResponseEntity<ProblemDetail> notFound(OperationNotFoundException ignored) {
+        return problem(
+                HttpStatus.NOT_FOUND,
+                "operation-not-found",
+                "Operation not found",
+                "The operation was not found.");
+    }
+
+    @ExceptionHandler({DataAccessException.class, TransactionException.class})
+    ResponseEntity<ProblemDetail> serviceUnavailable(RuntimeException ignored) {
+        return problem(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "service-unavailable",
+                "Service unavailable",
+                "Durable acceptance is temporarily unavailable.");
+    }
+
+    private static ResponseEntity<ProblemDetail> problem(
+            HttpStatus status, String type, String title, String detail) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setType(URI.create("urn:digital-banking:problem:" + type));
+        problem.setTitle(title);
+        problem.setInstance(URI.create(
+                "urn:digital-banking:problem-instance:undisclosed"));
+        return ResponseEntity.status(status)
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(problem);
+    }
+}
