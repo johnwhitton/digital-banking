@@ -13,8 +13,9 @@ Reference implementation for a regulated digital-asset settlement control plane.
 | [Architecture Slides and John Whitton's Portfolio](https://zelle.johnwhitton.com) | Fast visual introduction to the architecture, project, and author. | Hiring managers, interviewers, engineering leaders, and architects. | `5 mins` |
 | [Zelle Executive Briefing](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/zelle-digital-asset-settlement-executive-brief.pdf) | Executive architecture brief for stablecoin and cross-border settlement. | Executives, hiring managers, principal engineers, product, risk, and architecture leaders. | `15-18 mins` |
 | [Digital Banking Reference Architecture](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/stablecoin-settlement-reference-architecture.pdf) | Detailed 112-page reference architecture covering control-plane boundaries, ledger and workflow, signing, native chain integration, finality, reconciliation, security, and delivery. | Architects, principal engineers, security, operations, risk, and implementation teams. | `~30 mins guided / ~180 mins full` |
+| [Digital Banking Engineering Companion](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/digital-banking-engineering-companion.pdf) | Volume II implementation and operations companion covering durable workflow, Java/Spring, wallets and signing, EVM, Solana, submission and observation, infrastructure, testing, performance, and delivery guidance. | Engineers, architects, security reviewers, operators, and technical decision makers. | `~60-75 mins` |
 
-The executive PDF states an 18-minute estimate. The detailed architecture contains approximately 37,700 extracted words and provides a guided reading path, so the table distinguishes a guided route from a complete technical read. Both PDFs are immutable contextual inputs; [the reference index](docs/reference/README.md) records provenance, checksums, and design traceability. [The engineering design](docs/DESIGN.md), accepted [ADRs](docs/adr/README.md), versioned contracts, and executable tests govern implementation details.
+The executive PDF states an 18-minute estimate. The detailed architecture contains approximately 37,700 extracted words and provides a guided reading path, so the table distinguishes a guided route from a complete technical read. The Engineering Companion is now available as Volume II: a vendor-neutral implementation and operations companion, not production certification or a runnable implementation. Its code-status discussion is pinned to commit `e921fcb1877b46a6881437f46b1a6ebfa115ae58`; the live repository has advanced since that evidence snapshot, so use this README, the current [implementation plan](docs/IMPLEMENTATION.md), accepted [ADRs](docs/adr/README.md), source, and tests for current repository status. All three PDFs are immutable contextual inputs; [the reference index](docs/reference/README.md) records provenance, checksums, metadata, and design traceability. [The engineering design](docs/DESIGN.md), accepted ADRs, versioned contracts, and executable tests govern implementation details.
 
 ## What This Demonstrates
 
@@ -36,7 +37,7 @@ Status vocabulary:
 
 | Capability | Status | Evidence and limitation |
 | --- | --- | --- |
-| Foundation and source publications | `verified` | Both supplied PDFs are byte-verified under `docs/reference/`; architecture, repository policy, Maven reactor, and health/readiness application are synchronized. |
+| Foundation and source publications | `verified` | All three reference PDFs are byte-verified under `docs/reference/`; architecture, repository policy, Maven reactor, and health/readiness application are synchronized. |
 | Plain Java domain boundary | `verified` | Exact asset/unit quantities, stable IDs, guarded lifecycle, attempt lineage, append-only evidence, and four finalities pass the Phase 2 gate; `domain` has no runtime dependencies. |
 | Spring control-plane application | `verified` | `control-plane` composes the durable PostgreSQL adapter, exposes health/readiness plus three secured token-operation resources, and serves one design-first OpenAPI contract. Business resources deny requests until a future identity adapter supplies an authenticated `ParticipantPrincipal`. |
 | Mint and burn operation lifecycle | `verified` | Framework-free commands, canonical SHA-256 payloads, kind- and participant-scoped replay/conflict, lifecycle coordination, status lookup, and provider-neutral ports pass 269 domain/application tests. No signing or chain execution exists. |
@@ -74,10 +75,9 @@ The planned [bank-to-bank stablecoin transfer demonstration](docs/TRANSFER_DEMO.
 - **Independent observation and reconciliation:** versioned native evidence, provider disagreement, breaks/cases, and authorized append-only repair.
 - **Integrated local environment and end-to-end tests:** complete five-step Ethereum and Solana demonstrations with restart, duplicate, timeout, and failure injection.
 - **Hardening and publication-readiness evidence:** threat review, dependency/SBOM evidence, security review, runbooks, clean-room reproduction, and performance/failure budgets.
-- **Volume II - Digital Banking Engineering Companion:** `planned` engineering handbook covering implementation patterns, wallets, signing, HSMs, Java, Spring, EVM, Solana, testing, deployment, observability, runbooks, and performance.
 - **Volume III - Digital Banking Reference Implementation:** `planned` written companion covering architecture-to-code mapping, module walkthroughs, API examples, database schema, code excerpts, build/run/test guides, and local-versus-production implementations.
 
-Volume II and Volume III are planned publications; no empty placeholder files are created.
+Volume III remains a planned publication; no empty placeholder file is created.
 
 ## On-Chain Development Approach
 
@@ -104,7 +104,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 │   ├── TRANSFER_DEMO.md       # Planned bank-to-bank transfer capability contract
 │   ├── adr/                   # Accepted architectural decisions
 │   ├── plans/active/          # Restartable execution plans and evidence
-│   └── reference/             # Immutable source publications and index
+│   └── reference/             # Three immutable publications and index
 ├── .codex/                    # Project config, prompt templates, and skill sources
 ├── .agents/skills/            # Codex repository-skill discovery compatibility
 ├── graphify-out/              # Reviewed portable graph report, JSON, and manifest

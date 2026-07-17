@@ -221,14 +221,12 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 **Deferred:** any production, regulatory, legal, vendor, or mainnet decision.
 
-## Future publications
+## Publications
 
-These are documentation roadmaps with explicit `planned` status. No placeholder publication file or empty tree exists.
-
-- **Volume II - Digital Banking Engineering Companion** (`planned`): engineering handbook covering implementation patterns, wallets, signing, HSMs, Java, Spring, EVM, Solana, testing, deployment, observability, runbooks, and performance.
+- **Volume II - [Digital Banking Engineering Companion](reference/digital-banking-engineering-companion.pdf)** (`published`): vendor-neutral implementation and operations guidance covering durable workflow, Java/Spring, wallets and signing, EVM, Solana, submission and observation, infrastructure, testing, performance, and delivery. It is not production certification or a runnable implementation. Its code-status discussion is pinned to `e921fcb1877b46a6881437f46b1a6ebfa115ae58`; use this current plan, the README, accepted ADRs, source, and tests for live repository status.
 - **Volume III - Digital Banking Reference Implementation** (`planned`): written companion covering architecture-to-code mapping, module walkthroughs, API examples, database schema, code excerpts, build/run/test guides, and local-versus-production implementations.
 
-Publication work follows executable evidence and Phase 9 review; it does not replace a focused implementation plan or acceptance test.
+Publishing Volume II does not change executable phase status, replace a focused implementation plan or acceptance test, complete Phase 9, or make Volume III complete.
 
 ## Plans and ADRs
 

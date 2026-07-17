@@ -525,9 +525,9 @@
     "semantic_hash": "6c2c10b35904d6788952fb9c21f77e48"
   },
   "README.md": {
-    "mtime": 1784265528.2424448,
-    "ast_hash": "e4e030760f482dd4be8f7f622812641c",
-    "semantic_hash": "e4e030760f482dd4be8f7f622812641c"
+    "mtime": 1784287752.2563756,
+    "ast_hash": "0a67a8529e461c59b9fffcc7bf4b1741",
+    "semantic_hash": "0a67a8529e461c59b9fffcc7bf4b1741"
   },
   "SECURITY.md": {
     "mtime": 1784262391.3865056,
@@ -555,9 +555,9 @@
     "semantic_hash": "488816b4aebc8bdc843d7f8341c23309"
   },
   "docs/IMPLEMENTATION.md": {
-    "mtime": 1784275922.479514,
-    "ast_hash": "bf07e6528f84d99f16aa084373e5ea57",
-    "semantic_hash": "bf07e6528f84d99f16aa084373e5ea57"
+    "mtime": 1784287752.5065076,
+    "ast_hash": "2b79b7a2e3cbfd31b43898ac3f5f9dcd",
+    "semantic_hash": "2b79b7a2e3cbfd31b43898ac3f5f9dcd"
   },
   "docs/TRANSFER_DEMO.md": {
     "mtime": 1784266721.3074048,
@@ -605,14 +605,14 @@
     "semantic_hash": "3a5c9f314a4bee95a40545a41c89b5d2"
   },
   "docs/plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md": {
-    "mtime": 1784268058.864912,
+    "mtime": 1784287959.2694604,
     "ast_hash": "da4478627c12dd46061daad495fefb9e",
     "semantic_hash": "da4478627c12dd46061daad495fefb9e"
   },
   "docs/reference/README.md": {
-    "mtime": 1784243261.2988927,
-    "ast_hash": "d84dffe238da1b3b22814459b28cc394",
-    "semantic_hash": "d84dffe238da1b3b22814459b28cc394"
+    "mtime": 1784287752.38059,
+    "ast_hash": "be6e17c97b3af626c1c5661b346c2fea",
+    "semantic_hash": "be6e17c97b3af626c1c5661b346c2fea"
   },
   "docs/IMPLEMENTATION_STANDARDS.md": {
     "mtime": 1784270508.0149977,
@@ -643,5 +643,10 @@
     "mtime": 1784277384.2873137,
     "ast_hash": "ccd61f117db6d5c67f66ac41ecc6279a",
     "semantic_hash": "ccd61f117db6d5c67f66ac41ecc6279a"
+  },
+  "docs/plans/active/ENGINEERING_COMPANION_PUBLICATION.md": {
+    "mtime": 1784288784.1009393,
+    "ast_hash": "c75ef29f857758e15ae15d9a5afb7da5",
+    "semantic_hash": "c75ef29f857758e15ae15d9a5afb7da5"
   }
 }
