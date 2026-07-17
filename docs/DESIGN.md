@@ -18,6 +18,7 @@ Zelle is only a public case study in the publications. This repository is organi
 - Isolate chain and signer technology behind ports while preserving native Ethereum and Solana semantics.
 - Recover safely from duplicates, timeouts, ambiguous submission, observation disagreement, and reconciliation breaks.
 - Provide independently testable layers, local infrastructure, and evidence-gated delivery.
+- Specify a planned local bank-to-bank transfer aggregate that coordinates mock bank effects and stablecoin mint/transfer/burn operations without claiming distributed atomicity.
 
 ### Non-goals
 
@@ -26,16 +27,21 @@ Zelle is only a public case study in the publications. This repository is organi
 - Selecting an issuer, stablecoin, chain, bridge, custody/HSM/MPC provider, or production node provider.
 - A consumer wallet, custom bridge, full cross-border product, or complete double-entry ledger in the first slices.
 - Making Ethereum and Solana identical behind a lowest-common-denominator API.
+- Real bank integration, production settlement wallets, or a synchronous transaction spanning a bank and blockchain.
 
 ### Current implementation boundary
 
-The current repository contains documentation, a plain-Java domain module with exact quantity and operation invariants, a framework-free application module with command/use-case/port contracts, one PostgreSQL persistence adapter, and a Spring Boot control plane. Phase 3A durably accepts participant-scoped mint/burn requests, supports scoped operation read-back, serves one OpenAPI 3.1 contract, and records a pending acceptance outbox event. The default configuration deliberately has no identity adapter, so business resources deny unauthenticated requests. There is no worker, outbox publication, signer implementation, chain adapter, contract/program, Compose environment, external effect, or business settlement claim.
+The current repository contains documentation, a plain-Java domain module with exact quantity and operation invariants, a framework-free application module with command/use-case/port contracts, one PostgreSQL persistence adapter, and a Spring Boot control plane. Phase 3A durably accepts participant-scoped mint/burn requests, supports scoped operation read-back, serves one OpenAPI 3.1 contract, and records a pending acceptance outbox event. The default configuration deliberately has no identity adapter, so business resources deny unauthenticated requests. There is no worker, outbox publication, transfer aggregate/API, bank adapter, settlement wallet, signer implementation, chain adapter, contract/program, Compose environment, external effect, or business settlement claim. The [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) is a planned POC contract only.
 
 ## 3. Terminology
 
 | Term | Meaning |
 | --- | --- |
 | Payment intent | A durable business request and obligation context accepted from an authorized participant. A future cross-border product may own this aggregate; the initial token-operation POC does not pretend to implement the entire payment lifecycle. |
+| Transfer | A planned durable parent aggregate for one authorized bank-to-bank request. It coordinates child bank effects and token operations while retaining one stable `TransferId`, request identity, route/configuration versions, status, finalities, and evidence. |
+| Bank effect | A planned idempotent withdrawal/deposit effect behind a source- or destination-bank port. It has its own stable identity and evidence and is not a database transaction shared with a chain. |
+| Settlement wallet | A server-configured sender or recipient role used by a local route. Wallet addresses and authorities are resolved from versioned configuration, not caller input. |
+| Process manager | A provider-neutral control-plane boundary that coordinates durable work and timers through domain commands/ports. It does not replace domain state, ledger, policy, signing authority, evidence, or reconciliation. |
 | Token operation | A privileged durable command to mint or burn an exact quantity under a configured asset, route, policy, and approval context. |
 | Chain attempt | One authorized effort to create a specific external chain effect for an operation. It has a stable attempt ID even before a native transaction identity exists. |
 | Submission | The one-time handoff of exact signed bytes to a submit provider. A response may be accepted, rejected, or ambiguous. |
@@ -43,7 +49,7 @@ The current repository contains documentation, a plain-Java domain module with e
 | Reconciliation evidence | A versioned comparison joining internal operation/attempt records with signer, chain, issuer/token, and accounting or inventory evidence. |
 | Business truth | Durable internal operation, policy, authorization, ledger, finality, and reconciliation state. Native evidence informs this truth but does not replace it. |
 
-These identities never collapse into one record. A payment can contain multiple token operations; an operation can contain multiple attempts; an attempt can accumulate multiple observations; reconciliation can reopen a break without rewriting history.
+These identities never collapse into one record. The planned relationship is `Transfer -> child bank effects/token operations -> chain attempts -> observations`. A transfer can contain multiple child effects/operations; an operation can contain multiple attempts; an attempt can accumulate multiple observations; reconciliation can reopen a break without rewriting history.
 
 ## 4. System context and trust boundaries
 
@@ -77,6 +83,23 @@ Trust does not flow transitively. The API authenticates a caller but does not gr
 
 Personal, sanctions, fraud, case, and policy data remain inside controlled systems. If a chain reference is required, it is an opaque correlation value with no direct personal meaning.
 
+### Planned transfer context
+
+```mermaid
+flowchart LR
+    caller["Authorized transfer caller"] --> api["Single asynchronous transfer resource"]
+    api --> process["Domain-owned transfer + process manager"]
+    process --> source["Source-bank port / local mock"]
+    process --> token["Mint / transfer / burn child operations"]
+    token --> signer["Independent signer port"]
+    token --> chain["Chain adapter / local chain"]
+    observer["Independent observer"] -.-> process
+    process --> destination["Destination-bank port / local mock"]
+    process --> recon["Finality, reconciliation, and cases"]
+```
+
+The planned transfer is an asynchronous saga/workflow. Each local state transition, outbox/inbox handoff, bank effect, signing decision, chain attempt, observation, and compensation has its own transaction and durable identity. No diagram edge implies a shared atomic transaction or transitive authority.
+
 ## 5. Java/Spring control-plane responsibilities
 
 Spring owns composition and operational interfaces. Java application/domain code owns:
@@ -90,10 +113,13 @@ Spring owns composition and operational interfaces. Java application/domain code
 - transactional persistence and outbox/inbox boundaries;
 - worker leasing, concurrency, timers, inquiry, and case creation;
 - signer and chain port orchestration;
+- source- and destination-bank port orchestration for the planned transfer;
 - evidence registration, finality decisions, reconciliation, and audit queries; and
 - safe administrative pause, resume, inquiry, and repair interfaces.
 
 Spring annotations, controllers, repositories, transactions, and serialization are delivery/infrastructure concerns. Domain objects remain usable in pure tests without a Spring context.
+
+The process manager is a logical application capability. A database-backed Java worker or an approved enterprise BPM/durable-workflow platform may execute it, but either implementation must call domain/application contracts and preserve state versioning, idempotency, durable timers, recovery, audit/export, and evidence. Messaging transports do not become process or financial-state authority.
 
 ## 6. Proposed modules and dependency direction
 
@@ -121,7 +147,7 @@ flowchart LR
     solana -.-> rust
 ```
 
-The current reactor contains `domain`, `application`, `adapters/persistence-postgres`, and `control-plane`. Its concrete direction is `domain <- application <- persistence-postgres <- control-plane`; the adapter implements application-owned ports and no framework/database type enters domain/application signatures. Later executable slices may add `adapters/signer-*`, `adapters/ethereum-web3j`, `adapters/solana-java`, `contracts/evm`, `programs/solana`, and `integration-tests`. These paths are an ownership map, not an instruction to create empty modules. No module may depend on another chain adapter. The application layer defines capability-aware ports, while adapter-specific native types stay within the adapter and its tests.
+The current reactor contains `domain`, `application`, `adapters/persistence-postgres`, and `control-plane`. Its concrete direction is `domain <- application <- persistence-postgres <- control-plane`; the adapter implements application-owned ports and no framework/database type enters domain/application signatures. Later executable slices may add the bank, signer, chain, contract/program, and integration-test locations proposed in [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Those names are a roadmap, not an instruction to create empty modules. ADRs 0002 and 0003 explicitly select `adapters/ethereum-web3j/` and `adapters/solana-java/`; those accepted paths remain authoritative unless superseded by a later ADR, and focused chain plans must reconcile the Action Request's provisional path names before creating code. No module may depend on another chain adapter. The application layer defines capability-aware ports, while adapter-specific native types stay within the adapter and its tests.
 
 ## 7. Mint and burn operation aggregate
 
@@ -145,6 +171,20 @@ A chain attempt contains `attemptId`, `operationId`, adapter/route version, desi
 Phase 3A durably retains the accepted participant scope, resource and operation kind, safe idempotency-key digest, request and canonicalization versions, command digest, business correlation, operation kind, asset/unit, exact quantity, state/version, histories, and evidence references. Route/policy selection and the remaining reconciliation/case fields begin in later owning slices. Participant scope, both command digests, and internal evidence remain internal; the HTTP representation exposes only explicitly allowlisted opaque `participant:` evidence references.
 
 Mint and burn share lifecycle invariants but may have different authorization, token authority, inventory, and compensation policies. A common aggregate does not imply identical ledger entries or native instructions.
+
+### Planned bank-to-bank transfer aggregate
+
+The planned `Transfer` is a parent business aggregate, not a new wrapper around synchronous calls. Its minimum durable fields are:
+
+- server-issued `TransferId`, participant scope, idempotency scope/key digest, canonicalization/request versions, and canonical request hash;
+- opaque source/destination mock-bank account references, exact amount/currency, selected local route/configuration versions, and settlement-wallet roles;
+- authorization, limit, asset, wallet, signer, policy, approval, and finality configuration evidence;
+- ordered child bank-effect and token-operation identities, each with separate attempt lineage;
+- current parent state/version, four distinct finality histories, reconciliation/case posture, and append-only transition/evidence history.
+
+The five planned steps are source-bank withdrawal, mint to the sender settlement wallet, wallet-to-wallet token transfer, burn from the recipient settlement wallet, and destination-bank deposit. Mint and burn reuse the existing token-operation lifecycle and future chain attempt seam. The wallet transfer adds a separately identified token-transfer operation with the same exactness, signing, ambiguity, observation, and reconciliation rules. Bank effects add provider-neutral `SourceBankPort` and `DestinationBankPort` contracts with idempotent request/inquiry semantics; they do not expose bank-provider types to the domain.
+
+The parent advances only after configured evidence gates pass. A child timeout remains ambiguous and is inquired by stable identity. Confirmed effects are never removed from history; compensation is a new authorized child operation/effect. The complete proposed contract and per-step evidence matrix are in [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md).
 
 ## 8. Asynchronous lifecycle
 
@@ -186,6 +226,8 @@ An authorized attempt identity and evidence must exist before `SIGNING` or `SUBM
 
 `SUBMISSION_AMBIGUOUS` is not failure and never authorizes blind resubmission. The system inquires by stable attempt/native identity, gathers independent evidence, waits for route-specific expiry/canonicality conditions, and creates a case when proof remains insufficient. A new attempt is allowed only after policy establishes that the prior attempt cannot create the effect or defines a native-safe replacement relationship.
 
+The planned transfer process manager composes child lifecycles rather than replacing them. Parent states such as accepted, source-bank pending, mint pending, transfer pending, burn pending, destination-bank pending, reconciling, completed, failed-no-effect, compensation-required, and manual-review remain proposed until Phase 3C defines exact transitions and tests. No parent status converts an ambiguous child into failure or collapses the four finalities.
+
 ## 9. Identity and idempotency contracts
 
 ### Idempotency key
@@ -200,6 +242,8 @@ An authorized attempt identity and evidence must exist before `SIGNING` or `SUBM
 Canonicalization version 1 rejects malformed UTF-16, normalizes the opaque business correlation to Unicode NFC, and uses an ordered length-prefixed UTF-8 field set with exact decimal representation. Transport-only fields and JSON property order do not affect the result. The stored identity includes canonicalization version and hash; the hash binds operation kind, participant scope, resource kind, asset/unit/version, exact quantity, business correlation, and request contract version.
 
 The same scope/key/hash returns the original operation and never creates a new effect. The same scope/key with a different hash returns an idempotency conflict. Changing canonicalization requires versioning and compatibility tests.
+
+The planned transfer applies the same rule at the parent resource scope. Its canonical identity binds participant, source/destination opaque account references, exact amount/currency, request version, and logical settlement-network choice. Server-resolved RPC, signer, wallet, contract/program, and finality configuration are versioned acceptance evidence rather than caller-controlled hash fields.
 
 ### Operation and attempt IDs
 
@@ -217,6 +261,8 @@ Operation IDs are generated before any external interaction and are never reused
 
 Phase 3A persists atomic units as positive bounded PostgreSQL `NUMERIC(512,0)` and verifies exact boundary round-trip behavior against PostgreSQL 17. The API continues to serialize only the canonical quantity string.
 
+The planned transfer API likewise accepts `amount` as a canonical decimal string plus a configured currency identifier. The route resolves currency scale and stablecoin asset/unit; each child persists and signs an exact bounded atomic quantity. No implicit FX, rounding, fee deduction, or unit conversion is part of the first demonstration.
+
 ## 11. Chain adapter capability contract
 
 The common port coordinates a lifecycle, not a generic transaction:
@@ -228,6 +274,8 @@ The common port coordinates a lifecycle, not a generic transaction:
 - `observe(observationRequest)` binds stable operation/attempt IDs, opaque native identity, and policy version before returning normalized native evidence with the same internal correlation.
 
 The common result includes operation/attempt correlation, an opaque native identity, observed effect, evidence schema/version, source, observed time, and policy-relevant confidence. It does not make native semantics disappear. Adapter-owned native evidence remains queryable and reconcilable in a versioned schema.
+
+The planned transfer adds a token-transfer child operation without changing this lifecycle seam. `capabilities(routeVersion)` must declare mint, transfer, and burn support before the route is eligible. Each child uses its own stable operation/attempt identity and preserves exact wallet, authority, amount, and native evidence. The parent `TransferId` is additional correlation, not a substitute for child or native identities.
 
 ### Ethereum semantics preserved
 
@@ -258,6 +306,8 @@ Phase 2 implements this provider-neutral port contract only. It verifies that th
 
 The signer independently reproduces or verifies critical constraints against the canonical bytes. It rejects mismatches. HSM, MPC, qualified custody, and an isolated local-development signer implement the port. The local signer is test-only, uses disposable local-chain fixtures, and cannot load production configuration.
 
+The existing Phase 2 contract binds mint/burn purposes. Before the planned wallet-transfer child becomes executable, its owning Phase 3C/4 plan must extend the provider-neutral purpose/effect contract test-first so the signer can bind the exact transfer source and destination wallets without adding chain-native types to the domain.
+
 ## 13. Ethereum/Web3j boundary
 
 The Ethereum-first chain slice uses Foundry as the only EVM contract toolchain: `forge` for build and native tests, `anvil` for the local chain, `cast` for diagnostics, and Foundry scripts for deployment when needed. Web3j belongs only in the Java Ethereum adapter and may provide typed JSON-RPC, deterministic encoding, generated bindings, receipt/event decoding, and node interaction. Foundry artifacts and Web3j types never cross the adapter boundary.
@@ -272,7 +322,7 @@ Rust with Anchor is introduced only when required business logic cannot safely u
 
 ## 15. API boundary
 
-The implemented versioned resources are:
+The implemented versioned token-operation resources are:
 
 - `POST /v1/token-operations/mints`;
 - `POST /v1/token-operations/burns`; and
@@ -286,6 +336,17 @@ Status uses participant-scoped repository lookup, so an unknown ID and another p
 
 One design-first OpenAPI 3.1 document at `/openapi/token-operations-v1.yaml` is authoritative and has executable YAML/conformance tests. RFC 9457-style problems use stable `urn:digital-banking:problem:*` types and omit untrusted values and infrastructure details. Health/readiness and this contract are anonymous; all business resources are stateless and deny by default until a future identity adapter supplies principals. No password, issuer, decoder, JWK endpoint, static bearer token, or local user is configured.
 
+### Planned transfer resource
+
+The future bank-to-bank demonstration exposes one parent resource:
+
+- `POST /v1/transfers`; and
+- `GET /v1/transfers/{transferId}`.
+
+Creation accepts a scoped idempotency key, opaque source/destination mock-bank account references, exact amount/currency, and an optional logical `ETHEREUM` or `SOLANA` choice. Participant/tenant scope is derived only from the authenticated principal, never request JSON or an ad hoc tenant header; planned create/read authorities remain separate. The server validates the network choice against allowlisted, versioned local route configuration and selects the configured local default when omitted. Callers cannot provide RPC URLs, contract/program addresses, signer/key references, wallet authority, or finality thresholds.
+
+HTTP 202 and `Location` mean the parent transfer request was durably accepted, not that any bank or chain effect occurred. `GET` uses participant-scoped lookup, returns durable parent/child status and safe evidence summaries, and gives the same safe 404 for an unknown ID and another participant's ID. The current OpenAPI contract and mint/burn API remain unchanged until Phase 3C supplies its own design-first contract and executable conformance tests. See [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md).
+
 ## 16. Persistence, transactions, outbox/inbox, and concurrency
 
 Phase 3A uses PostgreSQL, explicit Spring JDBC `JdbcClient`, HikariCP, and one forward-only Flyway migration; see [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md). Normalized tables store token operations and immutable acceptance context, hashed scoped idempotency bindings, ordered transitions/evidence, attempt lineage, four ordered finality/evidence histories, and pending outbox events. Exact quantities are constrained integer atomic units rather than floating-point or opaque aggregate JSON.
@@ -297,6 +358,10 @@ External signing/submission never occurs inside a database transaction. The outb
 Attempt creation, authorization evidence, and canonical digest are durable before signing/submission. Submission classification is recorded after the call; process death at that boundary produces inquiry, not automatic resubmission.
 
 Corrections append transitions, reversals, or adjustment records. They do not destructively edit accepted business history.
+
+Phase 3C plans separate normalized transfer, child-correlation, bank-effect, transition/evidence, finality, and outbox/inbox records. Parent acceptance is one local transaction. Each worker claim, child command acceptance, bank call result, chain attempt transition, observation, and compensation commits through a narrow local transaction; no database transaction remains open across a bank, signer, workflow platform, or chain call.
+
+The process manager may run as the repository's self-contained database-backed Java/Spring worker or through an approved enterprise BPM/durable-workflow platform. Both must use the same domain-owned state/version, idempotency, durable timer, recovery, audit/export, and evidence contracts. A focused evidence spike and ADR are required before adding a workflow-platform dependency.
 
 ## 17. Independent observation and reconciliation
 
@@ -336,6 +401,7 @@ Each finality history starts `NOT_ASSESSED`, never returns to that state, and re
 | Policy/approval rejected | limit, allowlist, quorum, expired approval | Terminal rejection with evidence; no signing. |
 | Deterministic build/sign failure | invalid route config, canonical mismatch | Pause/reject attempt; operator/config repair before retry. |
 | Definitive submission rejection | provider proves bytes were not accepted | Record no-effect failure; new attempt only if policy authorizes. |
+| Ambiguous bank effect | bank-mock timeout, disconnect, or lost response | Inquire by stable bank-effect identity; do not issue another debit/credit blindly. |
 | Ambiguous submission | timeout, disconnect, lost response | Inquiry and observation; no blind resubmission. |
 | Native execution failure | reverted EVM receipt, Solana instruction error | Record native evidence; assess compensation/new business operation. |
 | Observation conflict | providers disagree, reorg, commitment regression | Hold progression, gather evidence, open case. |
@@ -351,6 +417,8 @@ Retries repeat an idempotent technical read or the exact same safe request ident
 - High-risk operations require quorum/four-eyes approval over the exact digest.
 - Application code never stores production raw keys; signer adapters receive only provider references and approved payloads.
 - Development signing is local-only, disposable, clearly named, and denied in production profiles.
+- The planned transfer accepts only logical allowlisted local network choices; RPC URLs, addresses, signer references, keys, and finality thresholds remain server-owned configuration.
+- Local bank mocks and the development signer are impossible to enable through a production profile. Opaque bank references and wallet roles never become on-chain personal data.
 - Audit evidence binds actor/workload, intent, canonical payload hash, policy/config versions, approvals, exact digest, signer decision, native identity, observations, transitions, and reconciliation.
 - Kill switches prevent new work while leaving evidence inquiry and reconciliation available.
 - Dependencies, contracts, programs, generated bindings, and provider SDKs receive security review before promotion.
@@ -370,12 +438,13 @@ Phase 3A runtime topology is one Spring Boot process plus a private/local Postgr
 
 Later phases add components only as needed:
 
-1. deterministic development signer/test double;
-2. Anvil as the local EVM chain for Ethereum;
-3. local Solana validator for Solana;
-4. independent observer endpoints/processes;
-5. Compose orchestration after individual slices are deterministic; and
-6. end-to-end fixtures and operator runbooks.
+1. source- and destination-bank mock adapters or stub services behind bank ports;
+2. deterministic development signer/test double with disposable wallet authorities;
+3. Anvil as the local EVM chain for the separate Ethereum demonstration;
+4. local Solana validator plus SPL mint/token accounts for the separate Solana demonstration;
+5. materially independent observer endpoints/processes;
+6. Compose orchestration after individual slices are deterministic; and
+7. end-to-end fixtures and operator runbooks proving all five transfer steps.
 
 Local chains use disposable deterministic fixtures and no public RPC credentials. Tests must cover restarts, duplicate delivery, timeouts, ambiguous effects, reorg/commitment changes, and reconciliation breaks before a slice is verified.
 
@@ -399,11 +468,20 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - The single design-first OpenAPI 3.1 YAML resource is authoritative; no runtime documentation generator or UI is added.
 - Spring Security is stateless and deny-by-default: tests inject fixture principals/authorities, while production configuration contains no identity-provider endpoint or credential.
 
+### Planned coordination-technology posture
+
+- The self-contained reference-implementation baseline is a database-backed Java/Spring worker unless a later evidence spike and ADR select another durable-workflow runtime.
+- Action Request 05 supplies an inference from a job description that an application-owned Java/Spring state machine with Oracle persistence and Kafka/JMS/TIBCO EMS messaging is the most plausible organizational pattern. This is not a discovered Zelle/EWS implementation fact.
+- Kafka, JMS, and TIBCO EMS are transports, not BPM engines, domain-state owners, ledgers, or finality authorities.
+- TIBCO BusinessWorks/BPM Enterprise, MuleSoft, and SAP integration products remain possible integration/process boundaries only if organizational evidence establishes their use.
+- Camunda 8 and Temporal are representative candidates for a future focused comparison, not accepted dependencies or recommendations. Evaluation must cover state/version ownership, idempotency, durable timers, ambiguity recovery, human tasks, audit/export, HA/DR, security, operations, deployment, licensing, and exit/migration strategy.
+
 ### Assumptions to validate
 
 - Integer atomic/minor units plus versioned unit definitions cover the first asset scope.
 - One approved asset/network/authority configuration is sufficient for each initial chain slice.
 - A materially independent local observation path can be demonstrated for each local chain.
+- One exact amount/currency can map to one versioned local stablecoin route without implicit FX or rounding in the initial transfer demonstrations.
 
 ### Unknowns requiring future evidence or ADRs
 
@@ -412,12 +490,14 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - Whether later Solana business requirements justify a custom Rust/Anchor program.
 - Custody/HSM/MPC provider and authorization interface details.
 - Phase 3B worker leasing/publication/recovery mechanics, workflow engine versus database-backed worker, and messaging topology.
+- Exact Phase 3C transfer states, bank-port inquiry contracts, persistence schema, route/wallet configuration, and safe compensation policy.
+- Whether an approved enterprise BPM/durable-workflow platform exists organizationally and satisfies the domain/evidence contract; no vendor is currently selected.
 - Chain finality thresholds, replacement/expiry policies, limits, and reconciliation tolerances.
 - Customer and accounting systems that would own their respective finalities.
 
 ### Deferred
 
-Production readiness, outbox publication/worker recovery, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain outside Phase 3A.
+Production readiness, outbox publication/worker recovery, transfer implementation, bank adapters, wallet provisioning, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker/workflow topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain deferred. Each future executable slice requires a focused active plan; [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md) defines the proposed transfer acceptance target.
 
 ## 24. Traceability to the source publications
 
@@ -433,6 +513,7 @@ The table identifies conceptual inputs, not normative code requirements.
 | Signing and security authority | 4 decision 8; 7; 10 | 13; 13.1-13.2; 14; A |
 | Java/native and module boundaries | 4 decisions 4 and 5; 8 | 15; 15.1; 16; C |
 | Ethereum/Solana differences | 5; 8 | 16.2-16.4; C |
+| Planned transfer workflow and narrow transactions | 3; 6; 9 | 5; 7-11; 16; F |
 | Evidence-gated delivery and exit | 6; 9; 10; 11 | 18; 19; D |
 
 Full titles, publication versions, normalized paths, source-commit provenance, and verified SHA-256 checksums are recorded in [`docs/reference/README.md`](reference/README.md).

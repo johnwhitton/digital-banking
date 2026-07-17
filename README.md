@@ -4,27 +4,27 @@ Reference implementation for a regulated digital-asset settlement control plane.
 
 > **Safety boundary:** This repository is research and reference software. Do not use it with real funds, production credentials, mainnet accounts, public testnets, or production signing authority. Nothing here is a compliance, legal, security, or operational certification.
 
-## Source publications
+> **Public-case-study boundary:** Zelle appears only in the supplied publications as a public case study. This repository does not represent Early Warning Services or Zelle production architecture, confidential information, selected vendors, endorsement, or an announced implementation plan.
 
-The architecture starts from two user-supplied publications:
+## BACKGROUND READING - START HERE
 
-1. [*Designing a Stablecoin Settlement Platform for Existing Real-Time Payment Networks*](docs/reference/stablecoin-settlement-reference-architecture.pdf) - detailed reference architecture using Zelle as a public case study.
-2. [*Digital Asset Settlement for Zelle*](docs/reference/zelle-digital-asset-settlement-executive-brief.pdf) - executive architecture brief for stablecoin and cross-border settlement.
+| Document | Description | Audience | Reading Time |
+| --- | --- | --- | --- |
+| [Architecture Slides and John Whitton's Portfolio](https://zelle.johnwhitton.com) | Fast visual introduction to the architecture, project, and author. | Hiring managers, interviewers, engineering leaders, and architects. | `5 mins` |
+| [Zelle Executive Briefing](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/zelle-digital-asset-settlement-executive-brief.pdf) | Executive architecture brief for stablecoin and cross-border settlement. | Executives, hiring managers, principal engineers, product, risk, and architecture leaders. | `15-18 mins` |
+| [Digital Banking Reference Architecture](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/stablecoin-settlement-reference-architecture.pdf) | Detailed 112-page reference architecture covering control-plane boundaries, ledger and workflow, signing, native chain integration, finality, reconciliation, security, and delivery. | Architects, principal engineers, security, operations, risk, and implementation teams. | `~30 mins guided / ~180 mins full` |
 
-The PDFs are immutable contextual inputs. [The reference index](docs/reference/README.md) records their provenance, checksums, and design traceability. [The engineering design](docs/DESIGN.md), accepted [ADRs](docs/adr/README.md), versioned contracts, and executable tests govern implementation details.
+The executive PDF states an 18-minute estimate. The detailed architecture contains approximately 37,700 extracted words and provides a guided reading path, so the table distinguishes a guided route from a complete technical read. Both PDFs are immutable contextual inputs; [the reference index](docs/reference/README.md) records provenance, checksums, and design traceability. [The engineering design](docs/DESIGN.md), accepted [ADRs](docs/adr/README.md), versioned contracts, and executable tests govern implementation details.
 
-Zelle appears only as a public case study. This repository does not represent Early Warning Services or Zelle production architecture, confidential information, selected vendors, or an announced implementation plan.
+## What This Demonstrates
 
-## Architectural thesis
+- Java and Spring own the regulated control plane: authenticated business APIs, durable operations, policy coordination, workflow, persistence, reconciliation, and operational interfaces.
+- Durable internal state owns business truth. A signature, transaction hash, RPC response, receipt, or commitment is evidence, not complete financial settlement.
+- Exact quantities, stable operation/attempt identities, versioned idempotency, append-only evidence, four separate finalities, and ambiguous-effect recovery are explicit contracts.
+- Chain SDKs, native transaction semantics, and signer/custody providers remain behind ports and adapters.
+- Delivery proceeds in evidence-gated slices: prove the common lifecycle, worker/recovery, and signing authority before any local chain effect.
 
-- Java and Spring own the regulated control plane: business APIs, durable operations, policy coordination, workflow, persistence, reconciliation, and operational interfaces.
-- The internal ledger and durable workflow own business truth. A transaction hash or successful RPC response is evidence, not complete financial settlement.
-- Chain SDKs, transaction encodings, signing providers, and native network semantics remain behind explicit ports and adapters.
-- Mint and burn are privileged asynchronous operations with exact quantity, idempotency, approval, attempt, evidence, and status semantics.
-- Blockchain, legal, customer-visible, and accounting finality remain separate judgments.
-- Ambiguous submission triggers inquiry and observation, never blind resubmission.
-
-## Current capability
+## Complete Now
 
 Status vocabulary:
 
@@ -38,22 +38,54 @@ Status vocabulary:
 | --- | --- | --- |
 | Foundation and source publications | `verified` | Both supplied PDFs are byte-verified under `docs/reference/`; architecture, repository policy, Maven reactor, and health/readiness application are synchronized. |
 | Plain Java domain boundary | `verified` | Exact asset/unit quantities, stable IDs, guarded lifecycle, attempt lineage, append-only evidence, and four finalities pass the Phase 2 gate; `domain` has no runtime dependencies. |
-| Spring control-plane application | `verified` | `control-plane` composes the durable PostgreSQL adapter, exposes health/readiness and three secured business resources, and serves one design-first OpenAPI contract. Business resources deny requests until a future identity adapter supplies an authenticated `ParticipantPrincipal`. |
+| Spring control-plane application | `verified` | `control-plane` composes the durable PostgreSQL adapter, exposes health/readiness plus three secured token-operation resources, and serves one design-first OpenAPI contract. Business resources deny requests until a future identity adapter supplies an authenticated `ParticipantPrincipal`. |
 | Mint and burn operation lifecycle | `verified` | Framework-free commands, canonical SHA-256 payloads, kind- and participant-scoped replay/conflict, lifecycle coordination, status lookup, and provider-neutral ports pass 269 domain/application tests. No signing or chain execution exists. |
 | Phase 3A durable acceptance and OpenAPI | `verified` | Explicit JDBC plus Flyway atomically records operation, hashed idempotency binding, audit evidence, four finalities, and one pending outbox event before HTTP 202. Real PostgreSQL tests cover rollback, concurrency, replay/conflict, restart, security, and read-back; the 302-test clean reactor gate passes. |
-| Phase 3B asynchronous worker | `planned` | No outbox polling, leasing, publication, retry, inbox, scheduler, or operation processing exists. A pending outbox row is not an execution claim. |
-| HSM, MPC, or custody signing | `planned` | Only the provider-neutral authority boundary is designed; no signer implementation or key material exists. |
-| Ethereum/Web3j adapter | `planned` | The later Ethereum-first slice uses Solidity/Foundry and Web3j only after its own gate. |
-| Solana Java adapter | `planned` | The later native-SVM slice begins with SPL Token and a bounded Java-client evaluation. |
-| Observation and reconciliation | `planned` | Independent observation and reconciliation are designed but not implemented. |
 
-## On-chain development approach
+The current business API is limited to `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, and participant-scoped `GET /v1/token-operations/{operationId}`. Durable acceptance is not minting, burning, transfer, settlement, or chain execution.
 
-- **Ethereum/EVM:** Solidity contracts, when required, use Foundry (`forge`, `anvil`, `cast`, and Foundry scripts). Java integration uses Web3j in an adapter; neither Web3j nor generated bindings enter the core domain.
-- **Solana/SVM:** use native Solana semantics and the classic SPL Token Program for the initial Circle-USDC-aligned path. Evaluate Sava through a bounded dependency spike before selecting any Java SDK.
+## Designed, Not Executable
+
+- Provider-neutral signer and chain ports are implemented as framework-free contracts, but no HSM/MPC/custody signer, development signer, chain adapter, or key material exists.
+- A pending PostgreSQL outbox row is scaffolded for later delivery, but no Phase 3B worker, broker publication, inbox, recovery loop, or durable scheduler exists.
+- Independent observation, reconciliation, cases, and four-finality authority models are designed, but only the domain records and Phase 3A persistence foundation exist.
+- Ethereum/Foundry/Web3j and native Solana/SPL Token approaches are accepted design directions; no contract, program, SDK, local chain, wallet, or deployment is present.
+- The bank-to-bank transfer aggregate and public transfer resource are `planned` in the [target demonstration specification](docs/TRANSFER_DEMO.md), not implemented.
+
+## Target Demonstration
+
+The planned [bank-to-bank stablecoin transfer demonstration](docs/TRANSFER_DEMO.md) is one durable parent workflow:
+
+1. mock withdrawal from the sender's bank account;
+2. mint the stablecoin to the sender's settlement wallet;
+3. transfer the stablecoin to the recipient's settlement wallet;
+4. burn the stablecoin from the recipient's settlement wallet; and
+5. mock deposit to the recipient's bank account.
+
+**This flow is future work.** The current token-operation acceptance API does not orchestrate transfers, call bank adapters, sign, submit to a chain, mint, burn, observe, reconcile, or settle.
+
+## Future Work
+
+- **Phase 3B asynchronous worker and recovery:** database-backed claiming/leasing, durable timers, inbox/deduplication, retries, ambiguity recovery, and operator evidence; evaluate an approved enterprise BPM/durable-workflow platform against the same contracts without selecting a vendor in this action.
+- **Transfer orchestration and mock bank adapters:** planned Phase 3C parent transfer aggregate, API/status, persistence, bank ports, and local mock adapters.
+- **HSM/MPC/custody signer implementations:** isolated local signer plus provider-neutral production authority integrations; raw production keys remain outside application memory.
+- **Ethereum/Foundry/Web3j local vertical slice:** authorized mint, ERC-20 transfer, burn, deployment, observation, ambiguity/replacement, and recovery on Anvil.
+- **Solana native-SVM/SPL Token local vertical slice:** mint/account setup, native mint/transfer/burn, lifetime/commitment, observation, and recovery on a local validator.
+- **Independent observation and reconciliation:** versioned native evidence, provider disagreement, breaks/cases, and authorized append-only repair.
+- **Integrated local environment and end-to-end tests:** complete five-step Ethereum and Solana demonstrations with restart, duplicate, timeout, and failure injection.
+- **Hardening and publication-readiness evidence:** threat review, dependency/SBOM evidence, security review, runbooks, clean-room reproduction, and performance/failure budgets.
+- **Volume II - Digital Banking Engineering Companion:** `planned` engineering handbook covering implementation patterns, wallets, signing, HSMs, Java, Spring, EVM, Solana, testing, deployment, observability, runbooks, and performance.
+- **Volume III - Digital Banking Reference Implementation:** `planned` written companion covering architecture-to-code mapping, module walkthroughs, API examples, database schema, code excerpts, build/run/test guides, and local-versus-production implementations.
+
+Volume II and Volume III are planned publications; no empty placeholder files are created.
+
+## On-Chain Development Approach
+
+- **Ethereum/EVM:** Solidity contracts, when required, use Foundry (`forge`, `anvil`, `cast`, and Foundry scripts). Java integration uses Web3j inside its adapter; neither Web3j nor generated bindings enter the core domain.
+- **Solana/SVM:** use native Solana semantics and the classic SPL Token Program for the initial path. Evaluate the Java client through the bounded gate in ADR 0003 before selecting a dependency.
 - **Custom Solana execution:** add Rust with Anchor only when required business logic cannot safely use existing programs. No speculative Rust workspace is present.
 - **Neon:** excluded from the baseline because the reference path prioritizes native SVM composability. Reconsideration requires a later ADR for a distinct EVM-compatibility requirement.
-- **Sequencing:** prove the common lifecycle, then one Ethereum vertical slice, then validate the same contracts against Solana's structurally different semantics.
+- **Sequencing:** complete worker/recovery and signing controls, prove one Ethereum vertical slice, then validate the same business contract against Solana's structurally different semantics.
 
 Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are separate workflows. CCTP is not the initial direct mint/burn mechanism.
 
@@ -69,6 +101,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
 │   ├── IMPLEMENTATION.md      # Living delivery plan and current state
+│   ├── TRANSFER_DEMO.md       # Planned bank-to-bank transfer capability contract
 │   ├── adr/                   # Accepted architectural decisions
 │   ├── plans/active/          # Restartable execution plans and evidence
 │   └── reference/             # Immutable source publications and index
@@ -80,9 +113,9 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 └── SECURITY.md
 ```
 
-Future executable slices may add signer/chain adapters, `contracts/evm/`, `programs/solana/`, and `integration-tests/`. They are planned paths, not current modules, and will not be created empty.
+Future executable slices may add bank, signer, and chain adapters plus `contracts/evm/`, conditional `programs/solana/`, and `integration-tests/`. They are planned paths, not current modules, and will not be created empty.
 
-## Local quick start
+## Build and Inspect the Current Implementation
 
 Prerequisites: JDK 25, Docker, and an internet connection for the first dependency/image resolution. On the bootstrap workstation, Homebrew's JDK is installed but not linked onto `PATH`. The verification suite starts the pinned PostgreSQL container automatically.
 
@@ -107,7 +140,7 @@ Check readiness in terminal 2:
 curl --fail --silent http://localhost:8080/actuator/health/readiness
 ```
 
-The response has status `UP`. The authoritative contract is served at `/openapi/token-operations-v1.yaml`. Business endpoints return 401 in the default repository configuration because no issuer, decoder, local user, password, or token is configured; integration tests inject fixture-only identities and authorities. Stop the application with `Ctrl-C`. No RPC URL, key, wallet, custody account, chain process, or public service is required.
+The response has status `UP`. Inspect the authoritative contract at `/openapi/token-operations-v1.yaml` and the current implementation evidence in [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md). Business endpoints return 401 in the default repository configuration because no issuer, decoder, local user, password, or token is configured; integration tests inject fixture-only identities and authorities. Stop the application with `Ctrl-C`. No RPC URL, key, wallet, custody account, chain process, or public service is required.
 
 ## AI-assisted engineering
 

@@ -48,13 +48,15 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | -------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
 | 1. Foundation                          | `verified`    | Source publications and the full foundation gate are verified; see the closed bootstrap plan. |
 | 2. Domain and operation lifecycle      | `verified`    | Exact quantities, guarded lifecycle/finality histories, canonical commands, idempotent acceptance contracts, and bound ports passed 264 pure tests and the 266-test reactor. |
-| 3. Durable API and persistence         | `in_progress` | Phase 3A durable acceptance/read-back is `verified` by the 302-test clean reactor gate; Phase 3B worker/publication mechanics remain absent. |
+| 3. Durable API and persistence         | `in_progress` | Phase 3A durable acceptance/read-back is `verified` by the 302-test clean reactor gate; Phase 3B worker/recovery and planned Phase 3C transfer orchestration remain absent. |
 | 4. Signing boundary                    | `not_started` | Design only; no signer code or keys.                                                           |
 | 5. Ethereum vertical slice             | `not_started` | No Web3j/Solidity/local-chain code.                                                            |
 | 6. Solana vertical slice               | `not_started` | No Java SDK/Rust/local-validator code.                                                         |
 | 7. Observation and reconciliation      | `not_started` | Design only.                                                                                   |
 | 8. Integrated local environment        | `not_started` | No Compose file.                                                                               |
 | 9. Hardening and publication readiness | `not_started` | No production-readiness claim.                                                                 |
+
+The current executable boundary remains Phase 3A. The planned [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) does not change any implementation status. Every future transfer-related slice requires its own focused active plan before code, dependency, schema, API, signer, adapter, contract/program, or environment work begins.
 
 ## Phase 1: Foundation
 
@@ -104,21 +106,50 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 
 ### Phase 3B: asynchronous worker and delivery recovery
 
-**Deferred deliverables:** outbox claiming/leasing, publication or local worker handoff, compare-and-set lifecycle progression, retries/backoff, inbox/deduplication, crash recovery, timers, and operator evidence. These remain unimplemented; a pending outbox row proves only durable local acceptance.
+**Deferred deliverables:** outbox claiming/leasing, publication or local worker handoff, compare-and-set lifecycle progression, retries/backoff, inbox/deduplication, crash recovery, durable timers, and operator evidence. These remain unimplemented; a pending outbox row proves only durable local acceptance.
+
+This slice supplies the worker, timer, delivery, and recovery contracts required by the planned [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md) workflow; it does not implement that transfer or any bank/chain effect.
+
+The focused Phase 3B plan must evaluate two bounded execution approaches against the same domain-owned state/version, idempotency, durable-timer, retry, recovery, audit/export, availability, and evidence contracts:
+
+1. **Database-backed Java/Spring worker** - the self-contained reference-implementation baseline, using PostgreSQL outbox/inbox state, leases, compare-and-set progression, and durable recovery.
+2. **Approved enterprise BPM/durable-workflow platform** - permitted only when organizational evidence establishes an approved platform and an evidence spike proves it can coordinate the same domain contracts without becoming the ledger, policy authority, signer, observer, or reconciliation record.
+
+Camunda 8 and Temporal are representative future evaluation candidates, not selected dependencies or current recommendations. A comparison must cover state ownership, deterministic/versioned behavior, idempotency, durable timers, ambiguous-effect recovery, human tasks, audit/export, HA/DR, security, operational ownership, deployment constraints, licensing, and exit/migration strategy. Temporal's Java/Spring SDK experience does not make its server a Java runtime.
+
+Action Request 05 supplies an inference from a job description that an application-owned Java/Spring state machine with Oracle persistence and Kafka/JMS/TIBCO EMS messaging is the most plausible organizational pattern; it is not a discovered Zelle/EWS implementation fact. Kafka, JMS, and TIBCO EMS remain transports. TIBCO BusinessWorks/BPM Enterprise, MuleSoft, and SAP integration products remain integration/process boundaries unless organizational evidence and an ADR justify broader ownership.
 
 **Future tests:** worker concurrency, lease expiry/recovery, duplicate delivery, monotonic transition guards, poison/failure handling, process death at every delivery boundary, and no blind external-effect retry.
 
-**Risks:** database-specific coupling, exactly-once overclaims, and future worker/recovery semantics. Phase 3A explicitly enforces `READ_COMMITTED`, canonical microsecond timestamps, and participant-safe evidence filtering; later response fields must preserve those controls.
+**Acceptance gate:** one selected Phase 3B implementation passes the same deterministic delivery/recovery contract. Any new workflow-platform dependency requires a focused evidence spike and ADR before implementation; no vendor is selected by this roadmap.
+
+**Risks:** database-specific coupling, workflow-platform state leakage, exactly-once overclaims, and future worker/recovery semantics. Phase 3A explicitly enforces `READ_COMMITTED`, canonical microsecond timestamps, and participant-safe evidence filtering; later response fields must preserve those controls.
 
 **Deferred beyond Phase 3:** broker topology selection, full ledger, signing, and chain execution.
 
+### Phase 3C: chain-neutral transfer aggregate and mock-bank boundary
+
+**Dependency:** Phase 3B worker/recovery mechanics are verified before this slice performs or coordinates any child effect.
+
+**Planned deliverables:** execute the chain-neutral portion of [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md): one durable `Transfer` parent aggregate; `POST /v1/transfers` and participant-scoped `GET /v1/transfers/{transferId}`; versioned canonical idempotency and exact amount/currency; normalized transfer/child/evidence/finality persistence; source- and destination-bank ports; local mock-bank adapters; route/wallet/asset/approval configuration contracts; and child token-operation correlation. Do not add a chain adapter or claim the five-step demonstration in this phase.
+
+**Future tests:** API contract/validation/security, exact amount and canonical hash, replay/conflict and concurrent duplicates, participant isolation, parent/child persistence and restart recovery, outbox/inbox delivery, bank-effect inquiry after timeout, mock withdrawal/deposit duplicate handling, append-only evidence/finality, and compensation as a new authorized effect.
+
+**Acceptance gate:** the parent and each bank effect have stable durable identities; duplicate delivery creates no duplicate transfer/effect; a lost bank-mock response is inquired before retry; no synchronous controller method or distributed transaction spans the workflow; chain children remain planned and no external value effect is claimed.
+
+**Risks:** hiding child ambiguity behind a parent status, caller-controlled infrastructure fields, treating mocks as production integrations, and beginning chain execution before signer/worker controls.
+
+**Deferred:** settlement-wallet provisioning, development/production signer implementations, native chain effects, independent observation/reconciliation, and the complete five-step demonstrations.
+
+Phases 4-9 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Each future phase or bounded sub-slice requires a focused active plan before implementation; this roadmap does not authorize combining both chains in one action.
+
 ## Phase 4: Signing boundary
 
-**Deliverables:** exact signing request/decision/evidence contracts; policy/approval binding; signer request idempotency; isolated local-development signer or deterministic test double; interfaces for HSM/MPC/custody providers; no vendor selection.
+**Deliverables:** exact signing request/decision/evidence contracts for mint, wallet transfer, and burn; policy/approval binding; signer request idempotency; isolated local-development signer using disposable local wallet authorities; settlement-wallet role/configuration binding; interfaces for HSM/MPC/custody providers; no vendor selection.
 
 **Tests:** exact digest/bytes binding, mismatched amount/destination/chain rejection, allowlists, limits, quorum, expiry, repeated request identity, timeout ambiguity, redaction, and proof that raw keys never cross the port.
 
-**Acceptance gate:** application code can authorize and record a signer decision without owning production key material; local signer is impossible to enable through production configuration.
+**Acceptance gate:** application code can authorize and record a signer decision for the exact child operation/attempt without owning production key material; raw keys never enter the Java application; the local signer and disposable wallets are impossible to enable through production configuration.
 
 **Risks:** treating signing as business authorization; mutable approval payloads; test keys escaping fixtures.
 
@@ -128,11 +159,11 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 
 **Dependency:** phases 2-4 verified. Build this first, then review the common ports before beginning Solana.
 
-**Deliverables:** execute [ADR 0002](adr/0002-evm-foundry-and-web3j.md); use Foundry (`forge`, `anvil`, `cast`, and scripts) as the sole contract toolchain; add a minimal reviewed Solidity token/authority contract only if required; add a Web3j adapter; prove deterministic encoding, nonce/replacement lineage, event/receipt observation, independent inquiry, and mint/burn happy, rejection, revert, timeout, ambiguity, replacement, and reorg/canonicality paths.
+**Deliverables:** execute [ADR 0002](adr/0002-evm-foundry-and-web3j.md) and the Ethereum portion of [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md); use Foundry (`forge`, `anvil`, `cast`, and scripts) as the sole contract toolchain; add and deploy a minimal reviewed local stablecoin contract supporting authorized mint, ERC-20 transfer, and authorized burn; add a Web3j adapter; prove deterministic encoding, nonce/replacement lineage, event/receipt observation, independent inquiry, and mint/transfer/burn happy, rejection, revert, timeout, ambiguity, replacement, and reorg/canonicality paths.
 
-**Tests:** golden encoding, chain ID/nonce/destination/amount binding, signer digest, submit-once, response loss, inquiry, replacement rules, failed receipt, event effect, canonicality change, duplicate request, and reconciliation evidence.
+**Tests:** deterministic deployment, golden mint/transfer/burn encoding, chain ID/nonce/source/destination/amount binding, signer digest, submit-once, response loss, inquiry, replacement rules, failed receipt, event effect, canonicality change, duplicate request, and reconciliation evidence.
 
-**Acceptance gate:** local mint/burn effects are authorized, observable, and reconcilable by stable IDs; ambiguous submission never blind-resubmits; no Web3j/native model leaks into domain.
+**Acceptance gate:** local mint/transfer/burn effects on Anvil are authorized, independently observable, recoverable, and reconcilable by stable IDs; ambiguous submission never blind-resubmits; no Web3j/native model leaks into domain. This phase proves chain effects, not the complete bank-to-bank demonstration.
 
 **Risks:** unsafe admin/upgrade authority, fake finality, submit/observe provider coupling, fixture keys presented as production patterns.
 
@@ -142,11 +173,11 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 
 **Dependency:** phases 2-4 verified and the first chain slice reviewed for common-port changes.
 
-**Deliverables:** execute [ADR 0003](adr/0003-native-solana-spl-token.md); run the bounded Sava evaluation; use native SVM semantics and classic SPL Token on a local validator; add a Java adapter only after the client gate passes; define recent-blockhash/durable-nonce and lifetime policy, instruction/account evidence, commitment observation, and mint/burn happy and failure paths. Add a pinned Rust/Anchor program only if existing programs cannot safely express required business logic. Neon is excluded from this baseline.
+**Deliverables:** execute [ADR 0003](adr/0003-native-solana-spl-token.md) and the Solana portion of [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md); run the bounded Java-client evaluation; use native SVM semantics and classic SPL Token on a local validator; create the local SPL mint plus sender/recipient token accounts; add a Java adapter only after the client gate passes; define recent-blockhash/durable-nonce and lifetime policy, instruction/account evidence, commitment observation, and native mint/transfer/burn happy and failure paths. Add a pinned Rust/Anchor program only if existing programs cannot safely express required business logic. Neon is excluded from this baseline.
 
-**Tests:** deterministic message/instruction accounts, authority and amount binding, blockhash expiry, same-signed-transaction resend versus new-blockhash attempt, instruction error, signature/slot/commitment progression, provider disagreement, duplicate request, and reconciliation evidence.
+**Tests:** deterministic mint/account setup and mint/transfer/burn messages/instruction accounts, authority/source/destination/amount binding, blockhash expiry, same-signed-transaction resend versus new-blockhash attempt, instruction error, signature/slot/commitment progression, provider disagreement, duplicate request, and reconciliation evidence.
 
-**Acceptance gate:** local effects are authorized and reconcilable; lifetime and commitment semantics remain explicit; Java SDK/Rust types do not leak into domain; Rust is absent if existing programs suffice.
+**Acceptance gate:** local native SPL mint/transfer/burn effects are authorized, independently observable, recoverable, and reconcilable; lifetime and commitment semantics remain explicit; Java SDK/Rust types do not leak into domain; Rust is absent if existing programs suffice. This phase proves chain effects, not the complete bank-to-bank demonstration.
 
 **Risks:** unmaintained SDK, unnecessary custom program, erasing Solana semantics to match EVM, upgrade authority ambiguity.
 
@@ -156,7 +187,7 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 ## Phase 7: Observation and reconciliation
 
-**Deliverables:** independent observer ports/adapters; versioned native evidence store; canonicality/commitment policy; operation/signer/chain/inventory reconciliation; ambiguous outcome recovery; break/case model; authorized repair and append-only evidence.
+**Deliverables:** independent observer ports/adapters; versioned native and bank-effect evidence stores; canonicality/commitment policy; transfer/child/bank/signer/chain/inventory reconciliation; ambiguous outcome recovery; break/case model; authorized repair and append-only evidence.
 
 **Tests:** submit provider unavailable, observer disagreement, reorg/commitment regression, signer/chain digest mismatch, supply/account mismatch, delayed data, duplicate observations, rerunnable reconciliation, break aging, and repair authorization.
 
@@ -168,11 +199,11 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 ## Phase 8: Integrated local environment
 
-**Deliverables:** Docker Compose where practical; API/database/local-chain processes; deterministic fixtures; development signer; readiness/dependency ordering; end-to-end tests; failure injection; operator runbooks.
+**Deliverables:** Docker Compose where practical; API/database/bank-mock/local-chain/observer processes; deterministic fixtures and disposable wallet authorities; development signer; readiness/dependency ordering; end-to-end tests; failure injection; operator runbooks; and two separately evidenced demonstrations from [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md): complete five-step Ethereum and complete five-step Solana.
 
-**Tests:** clean startup, restart, dependency outage/recovery, duplicate delivery, timeouts, chain reset/reorg/expiry, reconciliation rerun, deterministic teardown, and no secret/public-network access.
+**Tests:** clean startup; five-step Ethereum and Solana happy paths; restart at every bank/worker/signer/chain/observer boundary; duplicate delivery; bank and chain response loss; dependency outage/recovery; chain reset/reorg/expiry/commitment regression; reconciliation rerun; deterministic teardown; and no secret/public-network access.
 
-**Acceptance gate:** one command produces a deterministic local environment, end-to-end tests prove both happy and failure paths, and runbooks match executed commands.
+**Acceptance gate:** one command produces a deterministic local environment; each chain's five-step flow is durably correlated, independently observable where applicable, idempotent under duplicate delivery, and recoverable across restart/timeout ambiguity; and clean-room runbooks match executed commands. The two demonstrations remain separate claims and imply no production/legal/accounting/compliance readiness.
 
 **Risks:** Compose hiding flaky dependencies, slow nondeterministic tests, build artifacts or fixture secrets committed.
 
@@ -190,11 +221,21 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 **Deferred:** any production, regulatory, legal, vendor, or mainnet decision.
 
+## Future publications
+
+These are documentation roadmaps with explicit `planned` status. No placeholder publication file or empty tree exists.
+
+- **Volume II - Digital Banking Engineering Companion** (`planned`): engineering handbook covering implementation patterns, wallets, signing, HSMs, Java, Spring, EVM, Solana, testing, deployment, observability, runbooks, and performance.
+- **Volume III - Digital Banking Reference Implementation** (`planned`): written companion covering architecture-to-code mapping, module walkthroughs, API examples, database schema, code excerpts, build/run/test guides, and local-versus-production implementations.
+
+Publication work follows executable evidence and Phase 9 review; it does not replace a focused implementation plan or acceptance test.
+
 ## Plans and ADRs
 
 - Closed foundation plan: [`docs/plans/active/BOOTSTRAP.md`](plans/active/BOOTSTRAP.md).
 - Completed Phase 2 plan: [`docs/plans/active/DOMAIN_OPERATION_LIFECYCLE.md`](plans/active/DOMAIN_OPERATION_LIFECYCLE.md).
-- Active Phase 3A plan: [`docs/plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md`](plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md).
+- Verified Phase 3A plan: [`docs/plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md`](plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md).
+- Active Zelle share-readiness and transfer-roadmap plan: [`docs/plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
 - Accepted build/module choice: [`ADR 0001`](adr/0001-maven-reactor-and-module-boundaries.md).
 - Accepted EVM approach: [`ADR 0002`](adr/0002-evm-foundry-and-web3j.md).
@@ -256,3 +297,5 @@ The previously verified Phase 2 slice supplies:
 - pure Java tests proving invariants without Spring, persistence, Web3j, Solana SDKs, Solidity, Rust, or Compose.
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
+
+The planned transfer aggregate, API, bank ports, signer/chain effects, and two end-to-end demonstrations are specified in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). They do not change the current capability claim or dependency order. Phase 3B worker and delivery recovery remains the next recommended bounded implementation action.
