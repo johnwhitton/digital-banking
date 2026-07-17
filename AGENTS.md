@@ -94,6 +94,19 @@ control-plane/adapters -> application ports -> domain
 
 The domain never depends outward. Chain adapters may depend on core ports and their native SDK, but never on another chain adapter. Signing adapters implement the signer port and do not authorize business policy independently. Observation paths do not reuse mutable submit-provider truth as their only evidence source.
 
+## Implementation standards
+
+Consult [`docs/IMPLEMENTATION_STANDARDS.md`](docs/IMPLEMENTATION_STANDARDS.md) before changing Java, Spring, persistence, API, asynchronous workflow, signer, or chain code. It is the detailed implementation authority beneath accepted ADRs and `docs/DESIGN.md`.
+
+- Preserve `control-plane/adapters -> application -> domain`; core signatures contain no framework, transport, persistence, provider, or native SDK types.
+- Use immutable validated domain types, exhaustive lifecycle/outcome handling, exact quantities, defensive copies, and injected clocks/IDs. Never use `float` or `double` for financial or token values.
+- Use constructor injection, thin controllers, principal-derived participant scope, distinct authorities, deny-by-default security, explicit participant-safe response projections, and classified RFC 9457-style problems.
+- Preserve explicit parameterized JDBC/Flyway/PostgreSQL, database-authoritative concurrency, atomic acceptance/idempotency/history/finality/outbox, narrow transactions, and at-least-once delivery truth. No external effect belongs inside a database transaction.
+- Persist attempt identity before effects; separate build, sign, submit-once, inquire, observe, reconcile, and compensate. Ambiguous submissions require inquiry/observation before any new attempt.
+- Treat roughly 500 production lines as an extraction-review prompt and roughly 800 as a design smell requiring documented cohesion; do not split code mechanically or add speculative layers.
+- Require an executable present need for every dependency, abstraction, wrapper, module, or extension point, and an ADR for material dependency, store, workflow, chain, signer, contract/program, or authority choices.
+- Tests must prove boundaries and failure paths, not merely build success: exhaustive lifecycle/exactness, deterministic races, rollback/restart, whole-aggregate persistence, security/redaction, and dependency direction.
+
 ## Exact money, token quantity, and idempotency rules
 
 - Canonical API quantities are decimal strings plus an asset/unit identifier, never binary floating-point JSON numbers.

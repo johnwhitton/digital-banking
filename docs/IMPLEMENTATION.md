@@ -252,6 +252,12 @@ Ponytail and Superpowers are user-installed plugins, not repository dependencies
 
 Contributor setup, reviewed update commands, exact hook-trust behavior, and evidence limitations are maintained in the README. The restartable implementation and review record for this integration is [`docs/plans/active/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md`](plans/active/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md). This workflow changes no product capability, phase status, module dependency, financial invariant, or next-slice recommendation.
 
+## Implementation Standards
+
+[`docs/IMPLEMENTATION_STANDARDS.md`](IMPLEMENTATION_STANDARDS.md) is the detailed normative authority for Java, Spring, persistence, API, asynchronous workflow, signer, chain, and test implementation. It requires inward dependency direction, immutable validated domain types, exact quantities, constructor injection, principal-derived scope, explicit participant-safe response projections, classified safe problems, parameterized JDBC, atomic acceptance and outbox, database-authoritative concurrency, attempt-before-effect sequencing, native adapter semantics, deterministic failure-path tests, and an executable present need for every dependency or abstraction.
+
+The completed Phase 3A baseline was reviewed against those rules in [`docs/reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md`](reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md). Its bounded corrections are follow-up actions, not changes to the current executable baseline. Phase 3B planning and implementation must disposition the review's required pre-Phase-3B items before worker or participant-status behavior expands.
+
 ## Current validation commands
 
 These commands are the verified foundation entry points on the bootstrap workstation:

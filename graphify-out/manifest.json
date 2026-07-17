@@ -515,9 +515,9 @@
     "semantic_hash": "695f21fcc5415e2c2a3f8f8a4ded6450"
   },
   "AGENTS.md": {
-    "mtime": 1784262391.5219355,
-    "ast_hash": "8588acfde57f5c15b5a7154f8154a2aa",
-    "semantic_hash": "8588acfde57f5c15b5a7154f8154a2aa"
+    "mtime": 1784270518.7675846,
+    "ast_hash": "ca13a7446562fda07c9a808a1953bfb0",
+    "semantic_hash": "ca13a7446562fda07c9a808a1953bfb0"
   },
   "AUTONOMOUS_EXECUTION_POLICY.md": {
     "mtime": 1784244400.0634599,
@@ -555,9 +555,9 @@
     "semantic_hash": "488816b4aebc8bdc843d7f8341c23309"
   },
   "docs/IMPLEMENTATION.md": {
-    "mtime": 1784266721.5545158,
-    "ast_hash": "03e36004186ef60ab2b319b9a447df32",
-    "semantic_hash": "03e36004186ef60ab2b319b9a447df32"
+    "mtime": 1784270527.4200962,
+    "ast_hash": "39fd776f40667c18cf0972e035eeaeb5",
+    "semantic_hash": "39fd776f40667c18cf0972e035eeaeb5"
   },
   "docs/TRANSFER_DEMO.md": {
     "mtime": 1784266721.3074048,
@@ -613,5 +613,20 @@
     "mtime": 1784243261.2988927,
     "ast_hash": "d84dffe238da1b3b22814459b28cc394",
     "semantic_hash": "d84dffe238da1b3b22814459b28cc394"
+  },
+  "docs/IMPLEMENTATION_STANDARDS.md": {
+    "mtime": 1784270508.0149977,
+    "ast_hash": "c94bb9ff76c8fd508826e17261af07cf",
+    "semantic_hash": "c94bb9ff76c8fd508826e17261af07cf"
+  },
+  "docs/plans/active/JAVA_SPRING_IMPLEMENTATION_STANDARDS_AUDIT.md": {
+    "mtime": 1784273388.1115503,
+    "ast_hash": "199844372ee544efad956880195a8043",
+    "semantic_hash": "199844372ee544efad956880195a8043"
+  },
+  "docs/reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md": {
+    "mtime": 1784271247.8807929,
+    "ast_hash": "b764ad21fbaa04d635875778047f49eb",
+    "semantic_hash": "b764ad21fbaa04d635875778047f49eb"
   }
 }
