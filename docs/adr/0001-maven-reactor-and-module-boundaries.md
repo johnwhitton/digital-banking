@@ -18,13 +18,14 @@ Use one Maven reactor with a committed Maven Wrapper:
 
 - parent reactor at `pom.xml`;
 - plain Java `domain` JAR module;
-- Spring Boot `control-plane` application module depending on `domain`;
+- framework-free `application` JAR module depending on `domain`;
+- Spring Boot `control-plane` application module depending on `application`;
 - Java release 25;
 - Spring Boot 4.0.6, which manages Spring Framework 7.0.x;
 - Maven Wrapper 3.3.4 configured for Apache Maven 3.9.16 with a distribution checksum; and
-- a Maven Enforcer dependency-ban rule in `domain` rejecting Spring, Web3j, Solana SDK, HTTP, and persistence dependencies.
+- Maven Enforcer dependency-ban rules in `domain` and `application` rejecting framework, JSON, chain SDK, HTTP, and persistence dependencies.
 
-The initial `domain` module contains only its package boundary. Domain behaviors and ports are added test-first in the next vertical slice. The control plane exposes Actuator health/readiness only; no business API is created without durable semantics.
+The initial foundation contained only the `domain` package boundary. Phase 2 added domain behavior and the `application` module test-first. The control plane still exposes Actuator health/readiness only; no business API is created without durable semantics.
 
 ## Alternatives considered
 
@@ -34,7 +35,7 @@ Rejected because package conventions alone would not make the core boundary visi
 
 ### Gradle multi-project build
 
-Credible, but not selected. The empty repository supplied no Gradle convention, Maven's reactor is sufficient for two small modules, Spring Initializr confirmed the exact requested baseline, and Maven Wrapper provides the needed local build without installing a system build tool.
+Credible, but not selected. The empty repository supplied no Gradle convention, Maven's reactor is sufficient for these small modules, Spring Initializr confirmed the exact requested baseline, and Maven Wrapper provides the needed local build without installing a system build tool.
 
 ### JPMS modules in the bootstrap
 
@@ -49,7 +50,7 @@ Rejected. Ethereum, Solana, signing, persistence, and API modules will be create
 - Domain code has an explicit, independently buildable ownership boundary.
 - The repository has one build tool and one wrapper.
 - Contributors need JDK 25; the bootstrap workstation must set `JAVA_HOME` because Homebrew's JDK is not linked onto `PATH`.
-- A two-module build is slightly more verbose than a single application module.
+- A three-module build is slightly more verbose than a single application module.
 - Future adapters can depend inward without requiring the domain to know framework or chain types.
 - Moving to Gradle, changing the Java/Spring baseline, or restructuring modules requires a superseding ADR and updated validation evidence.
 
@@ -59,6 +60,7 @@ Rejected. Ethereum, Solana, signing, persistence, and API modules will be create
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw --version
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw clean verify
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl domain enforcer:enforce
+JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl application enforcer:enforce dependency:tree
 ```
 
-The build must also prove the Spring application context and readiness endpoint, and dependency inspection must show no Spring, Web3j, Solana, HTTP, or persistence dependency in `domain`.
+The build must also prove the Spring application context and readiness endpoint. Dependency inspection must show no runtime dependency in `domain`, only `domain` at runtime in `application`, and no Spring, JSON framework, Web3j, Solana, HTTP, or persistence dependency in either inner module.

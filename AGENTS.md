@@ -2,7 +2,7 @@
 
 ## Purpose and phase
 
-This repository is the **Digital Banking Reference Implementation**: non-production reference software for a regulated digital-asset settlement control plane. The foundation is verified; the current bounded phase implements the plain-Java domain and operation lifecycle. It does not expose mint/burn APIs or implement persistence, signing, chain adapters, or financial settlement.
+This repository is the **Digital Banking Reference Implementation**: non-production reference software for a regulated digital-asset settlement control plane. The foundation and plain-Java domain/operation lifecycle are verified. No later implementation phase is active or authorized; Phase 3 durable API and persistence is the next planned slice. The repository does not expose mint/burn APIs or implement persistence, signing, chain adapters, or financial settlement.
 
 Zelle appears only in the supplied publications as a public case study. Never describe this repository as Early Warning Services or Zelle production architecture, confidential information, a selected vendor stack, or an announced implementation plan.
 

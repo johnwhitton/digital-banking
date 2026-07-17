@@ -21,6 +21,7 @@
 
     <modules>
         <module>domain</module>
+        <module>application</module>
         <module>control-plane</module>
     </modules>
 

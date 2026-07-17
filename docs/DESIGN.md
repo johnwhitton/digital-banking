@@ -29,7 +29,7 @@ Zelle is only a public case study in the publications. This repository is organi
 
 ### Current foundation
 
-The current repository contains documentation, a dependency-free Java domain module boundary, and a Spring Boot control-plane application that exposes health/readiness only. There is no mint/burn API, database, signer, chain adapter, contract/program, OpenAPI document, Compose environment, or business settlement claim.
+The current repository contains documentation, a plain-Java domain module with exact quantity and operation invariants, a framework-free application module with command/use-case/port contracts, and a Spring Boot control-plane application that exposes health/readiness only. There is no mint/burn API, database, signer implementation, chain adapter, contract/program, OpenAPI document, Compose environment, or business settlement claim.
 
 ## 3. Terminology
 
@@ -121,7 +121,7 @@ flowchart LR
     solana -.-> rust
 ```
 
-The verified foundation contains `domain` and `control-plane`. Phase 2 adds `application`; later executable slices may add `adapters/persistence`, `adapters/signer-*`, `adapters/ethereum-web3j`, `adapters/solana-java`, `contracts/evm`, `programs/solana`, and `integration-tests`. These paths are an ownership map, not an instruction to create empty modules. No module may depend on another chain adapter. The application layer defines capability-aware ports, while adapter-specific native types stay within the adapter and its tests.
+The current reactor contains `domain`, `application`, and `control-plane`; dependencies point inward in that order. Later executable slices may add `adapters/persistence`, `adapters/signer-*`, `adapters/ethereum-web3j`, `adapters/solana-java`, `contracts/evm`, `programs/solana`, and `integration-tests`. These paths are an ownership map, not an instruction to create empty modules. No module may depend on another chain adapter. The application layer defines capability-aware ports, while adapter-specific native types stay within the adapter and its tests.
 
 ## 7. Mint and burn operation aggregate
 
@@ -141,6 +141,8 @@ A token operation is the business aggregate. Its minimum durable fields are:
 - append-only transition timestamps, actor/workload, reason, and evidence links.
 
 A chain attempt contains `attemptId`, `operationId`, adapter/route version, desired effect, signer request/decision evidence, canonical-bytes digest, native identity when known, submission classification, retry-safety classification, native evidence references, and observation history.
+
+Phase 2 retains the accepted participant scope, resource kind, safe idempotency-key digest, request and canonicalization versions, command digest, business correlation, operation kind, asset/unit, and exact quantity in an immutable aggregate context. Route/policy selection, durable storage, and the remaining reconciliation/case fields begin in later owning slices; the Phase 2 repository port is a contract, not a durability claim.
 
 Mint and burn share lifecycle invariants but may have different authorization, token authority, inventory, and compensation policies. A common aggregate does not imply identical ledger entries or native instructions.
 
@@ -178,7 +180,9 @@ stateDiagram-v2
     COMPLETED --> [*]
 ```
 
-`REQUESTED` through `RECONCILING`, `SUBMISSION_AMBIGUOUS`, and `MANUAL_REVIEW` are non-terminal. `REJECTED`, `FAILED_NO_EFFECT`, and `COMPLETED` are terminal for the operation version. Cancellation is permitted only before an external effect is possible and becomes a distinct terminal state when implemented.
+`REQUESTED` through `RECONCILING`, `SUBMISSION_AMBIGUOUS`, and `MANUAL_REVIEW` are non-terminal. `REJECTED`, `FAILED_NO_EFFECT`, and `COMPLETED` are terminal lifecycle states. Finality histories remain independent append-only evidence and may advance after lifecycle completion without reopening the operation. Cancellation is permitted only before an external effect is possible and becomes a distinct terminal state when implemented.
+
+An authorized attempt identity and evidence must exist before `SIGNING` or `SUBMISSION_PENDING`. Blockchain finality must have an evidence-backed `REACHED` record before `CHAIN_FINALITY_REACHED` or technical `COMPLETED`; this does not imply legal, customer-visible, or accounting finality.
 
 `SUBMISSION_AMBIGUOUS` is not failure and never authorizes blind resubmission. The system inquires by stable attempt/native identity, gathers independent evidence, waits for route-specific expiry/canonicality conditions, and creates a case when proof remains insufficient. A new attempt is allowed only after policy establishes that the prior attempt cannot create the effect or defines a native-safe replacement relationship.
 
@@ -193,7 +197,7 @@ stateDiagram-v2
 
 ### Canonical payload hash
 
-Canonicalization uses a versioned field set, Unicode normalization rule, field ordering, and exact decimal representation. Transport-only fields and JSON property order do not affect the result. The stored hash includes operation kind, participant scope, asset/unit, exact quantity, opaque business reference, and relevant request contract version.
+Canonicalization version 1 rejects malformed UTF-16, normalizes the opaque business correlation to Unicode NFC, and uses an ordered length-prefixed UTF-8 field set with exact decimal representation. Transport-only fields and JSON property order do not affect the result. The stored identity includes canonicalization version and hash; the hash binds operation kind, participant scope, resource kind, asset/unit/version, exact quantity, business correlation, and request contract version.
 
 The same scope/key/hash returns the original operation and never creates a new effect. The same scope/key with a different hash returns an idempotency conflict. Changing canonicalization requires versioning and compatibility tests.
 
@@ -203,15 +207,15 @@ Operation IDs are generated before any external interaction and are never reused
 
 ## 10. Exact amount and unit representation
 
-- API quantities are canonical base-10 strings, never JSON binary floating-point numbers.
-- The asset/unit registry supplies a stable unit identifier, non-negative scale, native decimals, maximum magnitude, and encoding version. Callers do not choose scale independently.
-- Domain arithmetic uses integer atomic/minor units (`BigInteger` is the current design candidate) plus an immutable unit definition. Any display `BigDecimal` is derived and never the authoritative stored quantity.
+- API quantities are positive canonical base-10 strings, never JSON binary floating-point numbers. The implemented canonical form has no explicit sign, leading integer zero, scientific notation, or insignificant trailing fractional zero and is bounded before numeric conversion.
+- The asset/unit definition supplies stable asset and unit identifiers, a positive version, scale, and maximum atomic magnitude. Callers do not choose scale independently.
+- Domain arithmetic uses `BigInteger` atomic units plus an immutable `AssetUnit`. No `BigDecimal`, `double`, or `float` is authoritative.
 - Input with excess precision is rejected. A conversion that can lose value requires an explicitly named rounding mode and policy; mint/burn default to exact conversion with no rounding.
 - Addition/comparison requires identical units and compatible versions. Cross-unit conversion is a separate priced operation, not arithmetic convenience.
 - Persistence and native encoding validate magnitude before conversion. Overflow, truncation, scientific notation, non-canonical zero, negative quantities, and unsupported scale fail deterministically.
-- String serialization round-trips exactly and has golden tests across API, persistence, signer request, and adapter boundaries.
+- String serialization round-trips exactly in the Phase 2 domain and canonical-command fixtures. API, persistence, signer-adapter, and chain-adapter boundary fixtures are required when those owning slices exist.
 
-Phase 2 turns this design into concrete types and tests without selecting a database numeric column.
+Phase 2 implements these rules and exact round-trip tests without selecting a database numeric column.
 
 ## 11. Chain adapter capability contract
 
@@ -221,7 +225,7 @@ The common port coordinates a lifecycle, not a generic transaction:
 - `prepare(operation, attempt)` produces canonical unsigned bytes/digest plus a redacted build-evidence reference;
 - `submitOnce(signedAttempt)` submits the exact signed bytes once and classifies the response as accepted, definitively rejected, or ambiguous;
 - `inquire(attemptIdentity)` determines known native identity/effect and route-specific retry safety; and
-- `observe(nativeIdentity, policyVersion)` returns normalized status plus versioned native evidence.
+- `observe(observationRequest)` binds stable operation/attempt IDs, opaque native identity, and policy version before returning normalized native evidence with the same internal correlation.
 
 The common result includes operation/attempt correlation, an opaque native identity, observed effect, evidence schema/version, source, observed time, and policy-relevant confidence. It does not make native semantics disappear. Adapter-owned native evidence remains queryable and reconcilable in a versioned schema.
 
@@ -249,6 +253,8 @@ No shared enum may imply that an EVM receipt confirmation and a Solana commitmen
 - idempotent signer request identity.
 
 It returns an approved or rejected `SigningDecision` with key reference (never key bytes), signed payload/signature, digest, decision reason, signer policy version, authorization evidence, and provider request identity.
+
+Phase 2 implements this provider-neutral port contract only. It verifies that the supplied unsigned-payload SHA-256 matches the defensive byte copy, bounds issuance/expiry, carries the exact-effect constraints and evidence above, redacts bytes from string rendering, and forbids a rejected decision from carrying signed bytes. Provider-side reproduction, allowlist/quorum evaluation, and signing remain Phase 4 behavior.
 
 The signer independently reproduces or verifies critical constraints against the canonical bytes. It rejects mismatches. HSM, MPC, qualified custody, and an isolated local-development signer implement the port. The local signer is test-only, uses disposable local-chain fixtures, and cannot load production configuration.
 
@@ -317,6 +323,8 @@ Differences create durable breaks with owner, severity, age, evidence, dispositi
 
 The POC therefore models the four slots and their evidence provenance but initially derives only blockchain finality. Operation `COMPLETED` in a narrow technical slice means its explicitly configured acceptance gate passed; it never silently claims legal, customer, or accounting finality.
 
+Each finality history starts `NOT_ASSESSED`, never returns to that state, and requires evidence for every assessment. Version-ordered transitions, attempts, and finality updates share an aggregate-monotonic recorded timestamp; an earlier evidence-effective time requires a later explicit field rather than backdating the aggregate history. `PENDING` can progress to `REACHED` or `REJECTED`; `REACHED` can remain reached or append an explicit rejected/conflict assessment; `REJECTED` is terminal for that finality history in this phase.
+
 ## 19. Error taxonomy, retry safety, and compensation
 
 | Class | Example | Default posture |
@@ -376,6 +384,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 
 - Java 25 and Spring Boot 4.0.6 / Spring Framework 7.0.x baseline.
 - Maven reactor with plain `domain` and Spring `control-plane` modules; see ADR 0001.
+- Framework-free `application` module between `control-plane` and `domain`, with Enforcer dependency guards; see ADR 0001.
 - Health/readiness is the only foundation endpoint.
 - Chain and signer dependencies are deferred until a tested slice.
 - The common domain/lifecycle slice precedes either chain slice.
@@ -383,6 +392,8 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - Solana uses native SVM semantics and classic SPL Token first; Sava must pass a bounded evaluation before selection; see ADR 0003.
 - Rust/Anchor is conditional on business logic that existing programs cannot safely supply; Neon is outside the baseline.
 - Direct authority mint/burn and CCTP are separate workflows.
+- Canonical command encoding version 1 uses length-prefixed UTF-8 fields and SHA-256; JSON property order is outside the digest contract.
+- Canonical command version 1 rejects malformed Unicode and normalizes business correlation to NFC before hashing.
 
 ### Assumptions to validate
 

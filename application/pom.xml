@@ -11,10 +11,15 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>digital-banking-domain</artifactId>
-    <name>Digital Banking Domain</name>
+    <artifactId>digital-banking-application</artifactId>
+    <name>Digital Banking Application</name>
 
     <dependencies>
+        <dependency>
+            <groupId>io.github.johnwhitton</groupId>
+            <artifactId>digital-banking-domain</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -63,18 +68,16 @@
                                 <exclude>org.apache.tomcat:*</exclude>
                                 <exclude>org.apache.tomcat.embed:*</exclude>
                                 <exclude>org.eclipse.jetty:*</exclude>
-                                <exclude>org.eclipse.jetty.ee10:*</exclude>
-                                <exclude>org.eclipse.jetty.ee11:*</exclude>
                                 <exclude>org.glassfish.jersey.core:*</exclude>
                                 <exclude>org.jboss.resteasy:*</exclude>
                             </excludes>
-                            <message>The domain module must remain plain Java and independent of frameworks, transports, persistence, and chain SDKs.</message>
+                            <message>The application module must remain framework-free and independent of transports, persistence, and chain SDKs.</message>
                         </bannedDependencies>
                     </rules>
                 </configuration>
                 <executions>
                     <execution>
-                        <id>enforce-plain-java-domain</id>
+                        <id>enforce-framework-free-application</id>
                         <phase>validate</phase>
                         <goals>
                             <goal>enforce</goal>

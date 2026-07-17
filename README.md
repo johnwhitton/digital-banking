@@ -37,9 +37,9 @@ Status vocabulary:
 | Capability | Status | Evidence and limitation |
 | --- | --- | --- |
 | Foundation and source publications | `verified` | Both supplied PDFs are byte-verified under `docs/reference/`; architecture, repository policy, Maven reactor, and health/readiness application are synchronized. |
-| Plain Java domain boundary | `scaffolded` | `domain` has no runtime dependencies and Maven Enforcer rejects framework, transport, persistence, and chain SDK dependencies. |
+| Plain Java domain boundary | `verified` | Exact asset/unit quantities, stable IDs, guarded lifecycle, attempt lineage, append-only evidence, and four finalities pass the Phase 2 gate; `domain` has no runtime dependencies. |
 | Spring control-plane application | `verified` | `control-plane` starts a Spring context and exposes only Actuator health/readiness. |
-| Mint and burn operation lifecycle | `planned` | Phase 2 adds exact quantities, lifecycle, idempotency, application ports, and pure tests; no value-moving endpoint exists. |
+| Mint and burn operation lifecycle | `verified` | Framework-free commands, canonical SHA-256 payloads, scoped replay/conflict, lifecycle coordination, and provider-neutral ports pass 264 pure tests and the 266-test reactor. Persistence-backed durability and value-moving endpoints remain absent. |
 | Durable persistence and OpenAPI | `planned` | No database, migration, outbox, worker, or business API contract exists yet. |
 | HSM, MPC, or custody signing | `planned` | Only the provider-neutral authority boundary is designed; no signer implementation or key material exists. |
 | Ethereum/Web3j adapter | `planned` | The later Ethereum-first slice uses Solidity/Foundry and Web3j only after its own gate. |
@@ -61,6 +61,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ```text
 .
 ├── domain/                    # Plain Java domain boundary
+├── application/               # Framework-free use cases and ports
 ├── control-plane/             # Spring Boot composition and health/readiness
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
@@ -75,7 +76,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 └── SECURITY.md
 ```
 
-Future executable slices may add `application/`, `adapters/`, `contracts/evm/`, `programs/solana/`, and `integration-tests/`. They are planned paths, not current modules, and will not be created empty.
+Future executable slices may add `adapters/`, `contracts/evm/`, `programs/solana/`, and `integration-tests/`. They are planned paths, not current modules, and will not be created empty.
 
 ## Local quick start
 
@@ -115,4 +116,4 @@ Codex discovers compatibility entries under `.agents/skills/`; canonical sources
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) proves the common domain and durable lifecycle before either chain adapter. The next bounded phase after the lifecycle remains a durable API and persistence slice, not chain deployment.
+[The implementation plan](docs/IMPLEMENTATION.md) proves the common domain and operation lifecycle before either chain adapter. The next bounded phase remains durable API and persistence, not chain deployment.

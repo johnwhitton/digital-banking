@@ -47,7 +47,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | Phase                                  | Status        | Evidence summary                                                                               |
 | -------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
 | 1. Foundation                          | `verified`    | Source publications and the full foundation gate are verified; see the closed bootstrap plan. |
-| 2. Domain and operation lifecycle      | `in_progress` | The active Phase 2 plan owns exact quantities, lifecycle, idempotency, ports, and pure tests.   |
+| 2. Domain and operation lifecycle      | `verified`    | Exact quantities, guarded lifecycle/finality histories, canonical commands, idempotent acceptance contracts, and bound ports passed 264 pure tests and the 266-test reactor. |
 | 3. Durable API and persistence         | `not_started` | No API/database dependency or contract exists.                                                 |
 | 4. Signing boundary                    | `not_started` | Design only; no signer code or keys.                                                           |
 | 5. Ethereum vertical slice             | `not_started` | No Web3j/Solidity/local-chain code.                                                            |
@@ -79,12 +79,12 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 - scoped idempotency key and payload-hash contract;
 - stable `OperationId` and `AttemptId` types;
 - token-operation aggregate and explicit transition guards;
-- policy, approval, signer, chain, clock, ID, and evidence ports expressed in plain Java; and
-- pure unit/property tests with no Spring context.
+- operation/attempt repository, policy/approval, signer, chain, clock, ID, and evidence ports expressed in plain Java; and
+- pure unit tests with no Spring context.
 
-**Tests:** excess precision, negative/zero/boundary quantities, overflow, unit mismatch, serialization round-trip, same-key/same-hash replay, same-key/different-hash conflict, every allowed/forbidden state transition, ambiguous outcome rules, attempt lineage, and distinct finality records.
+**Tests:** excess precision, negative/zero/boundary quantities, overflow, unit mismatch, serialization round-trip, NFC normalization/malformed Unicode, same-key/same-version/hash replay, canonical-version/digest conflict, retained acceptance context, every allowed/forbidden state transition, attempt prerequisites and lineage, ambiguous outcome rules, finality status/time rules, exact signer digest/effect/lifetime binding, rejected-payload safety, and stable chain inquiry/observation correlation.
 
-**Acceptance gate:** `domain` remains dependency-free, all transitions are only reachable through invariant-enforcing methods, no `double`/`float` or framework/native type exists, and pure tests prove the lifecycle independent of a chain.
+**Acceptance gate:** `domain` has no runtime dependency, `application` has only `domain` at runtime, all transitions are reachable only through invariant-enforcing methods, no `double`/`float` or framework/native type exists, and pure tests prove the lifecycle independent of a chain. The repository acceptance contract does not claim persistence until Phase 3 supplies a durable implementation.
 
 **Risks:** premature database/JSON choices; over-generic chain port; conflating operation completion with all finalities.
 
@@ -200,21 +200,22 @@ JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw --version
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw clean verify
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl control-plane -am -Dtest=DigitalBankingApplicationTests,HealthReadinessSmokeTests -Dsurefire.failIfNoSpecifiedTests=false test
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl domain enforcer:enforce
+JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl application enforcer:enforce dependency:tree
 ```
 
 Reference, documentation, skill/hook, stale-reference, diff, and Git commands are recorded with results in the active bootstrap plan. Add commands here only after they are stable contributor entry points.
 
-## Current bounded vertical slice
+## Verified bounded vertical slice
 
 Action Request 02 implements **Domain and Operation Lifecycle** only:
 
 - exact asset/unit and token quantity types;
 - mint and burn commands;
-- scoped idempotency and canonical payload hashing;
+- scoped idempotency, versioned canonical payload hashing, and immutable accepted-command context;
 - operation and attempt identity;
 - explicit operation state transitions including ambiguous submission and manual review;
-- distinct finality records;
-- provider-neutral chain and signer ports; and
+- distinct append-only finality histories with lifecycle prerequisites;
+- provider-neutral chain and signer ports with stable internal correlation and exact-byte constraint binding; and
 - pure Java tests proving invariants without Spring, persistence, Web3j, Solana SDKs, Solidity, Rust, or Compose.
 
-The slice ends with a review of whether the common ports preserve enough native-semantic room. It does not implement either chain adapter. After it is verified, Phase 3 durable API and persistence is the next recommended slice; chain work still waits for the Phase 4 signing boundary.
+The slice preserves opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence contracts without implementing either chain adapter. Phase 3 durable API and persistence is the next recommended slice after this gate; chain work still waits for the Phase 4 signing boundary.
