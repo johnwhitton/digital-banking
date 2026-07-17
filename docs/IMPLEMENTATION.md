@@ -37,7 +37,7 @@ Foundation creates:
 - a Maven reactor with dependency-free `domain` and Spring Boot `control-plane` modules;
 - a committed wrapper, Java 25 / Spring Boot 4.0.6 baseline, and domain dependency guard;
 - Spring application context and health/readiness verification only;
-- repository-local Codex config, valid empty hooks, reusable prompt templates, and focused workflow skills; and
+- repository-local Codex config, structurally valid reviewed hooks, reusable prompt templates, focused workflow skills, and portable Graphify navigation artifacts; and
 - hygiene rules for generated files, secrets, line endings, and build output.
 
 Foundation intentionally does not create mint/burn endpoints, domain lifecycle behavior, persistence, OpenAPI, signers, Web3j, Solana SDKs, Solidity, Rust, Compose, mainnet/testnet configuration, or production claims.
@@ -191,6 +191,14 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 Create or update an active plan before implementation. Create an ADR only when evidence requires an accepted material decision.
 
+## AI-assisted engineering workflow
+
+The repository tracks Graphify's project-scoped skill, portable fail-open hook, scan policy, and the reviewed `graphify-out/GRAPH_REPORT.md`, `graph.json`, and `manifest.json`. Transient visualization, cache, query-memory, cost, reflection, and machine-state output remains ignored; immutable source PDFs are not indexed. Use the graph first for repository-navigation questions and validate its suggestions against authoritative source.
+
+Ponytail and Superpowers are user-installed plugins, not repository dependencies or vendored content. Ponytail supplies explicit simplicity/YAGNI modes and the final over-engineering review. Superpowers supplies matching planning, TDD, debugging, review, and verification workflows. The user's approved request, repository policy/security/design, active plan, ADRs, focused repository skills, source, and tests take precedence over all three tools.
+
+Contributor setup, reviewed update commands, exact hook-trust behavior, and evidence limitations are maintained in the README. The restartable implementation and review record for this integration is [`docs/plans/active/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md`](plans/active/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md). This workflow changes no product capability, phase status, module dependency, financial invariant, or next-slice recommendation.
+
 ## Current validation commands
 
 These commands are the verified foundation entry points on the bootstrap workstation:
@@ -201,6 +209,9 @@ JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw clean verify
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl control-plane -am -Dtest=DigitalBankingApplicationTests,HealthReadinessSmokeTests -Dsurefire.failIfNoSpecifiedTests=false test
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl domain enforcer:enforce
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl application enforcer:enforce dependency:tree
+graphify --version
+test -f .agents/skills/graphify/SKILL.md
+jq -e '.hooks.PreToolUse[] | select(.matcher == "^Bash$")' .codex/hooks.json
 ```
 
 Reference, documentation, skill/hook, stale-reference, diff, and Git commands are recorded with results in the active bootstrap plan. Add commands here only after they are stable contributor entry points.

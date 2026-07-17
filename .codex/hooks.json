@@ -1,3 +1,17 @@
 {
-  "hooks": {}
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if command -v graphify >/dev/null 2>&1; then graphify hook-check; fi",
+            "commandWindows": "if (Get-Command graphify -ErrorAction SilentlyContinue) { graphify hook-check }",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
 }

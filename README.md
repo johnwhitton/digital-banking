@@ -71,6 +71,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 │   └── reference/             # Immutable source publications and index
 ├── .codex/                    # Project config, prompt templates, and skill sources
 ├── .agents/skills/            # Codex repository-skill discovery compatibility
+├── graphify-out/              # Reviewed portable graph report, JSON, and manifest
 ├── AGENTS.md                  # Repository operating rules
 ├── AUTONOMOUS_EXECUTION_POLICY.md
 └── SECURITY.md
@@ -104,13 +105,45 @@ The response has status `UP`. Stop the application with `Ctrl-C`. No RPC URL, da
 
 ## AI-assisted engineering
 
-- [AGENTS.md](AGENTS.md) defines architecture, Git safety, testing, documentation, and handoff rules.
-- [The autonomous-execution policy](AUTONOMOUS_EXECUTION_POLICY.md) distinguishes reversible implementation autonomy from decisions requiring user authority.
-- Repository-local skills encode repeated workflows for plans, Java/Spring changes, chain adapters, financial invariants, and documentation synchronization.
-- `.codex/prompts/` contains explicitly invoked templates; tests, build rules, diff review, and recorded validation determine correctness.
-- Active plans make work restartable from the repository rather than chat history.
+[AGENTS.md](AGENTS.md), [the autonomous-execution policy](AUTONOMOUS_EXECUTION_POLICY.md), architecture, ADRs, active plans, repository skills, and executable tests govern agent work. Third-party instructions and generated output never override them.
 
-Codex discovers compatibility entries under `.agents/skills/`; canonical sources remain under `.codex/skills/`.
+| Tool | Role and trigger | Boundary |
+| --- | --- | --- |
+| [Graphify](https://github.com/safishamsi/graphify) | Repository navigation: consult `graphify-out/` first for architecture, ownership, lifecycle, and cross-file questions, then verify against source. | The tracked skill, hook, ignore policy, report, graph, and manifest are project integration. PDFs, secrets, caches, provider-backed extraction, Git hooks, and background services are excluded. Graph output is advisory. |
+| [Ponytail](https://github.com/DietrichGebert/ponytail) | Simplicity pressure: invoke before adding a dependency, abstraction, wrapper, module, or speculative option; for explicit minimal/YAGNI work; and for the final over-engineering review. | Official user-installed Codex plugin only; never vendored. Its reviewed local hooks provide instructions and plugin-state bookkeeping, not evidence. |
+| [Superpowers](https://github.com/obra/superpowers) | Engineering discipline: use the matching planning, TDD, debugging, review, and verification skill for substantial work. | Official `openai-curated` user-installed plugin only; never vendored. Repository policy and focused financial/chain/Java skills take precedence. |
+
+Codex discovers canonical project skills under `.codex/skills/` through the relative `.agents/skills/` compatibility link. `.codex/prompts/` remains explicitly invoked, and active plans keep work restartable from repository evidence rather than chat history.
+
+### Setup, update, verification, and trust
+
+The repository pins its reviewed Graphify integration to `graphifyy` 0.8.47. Install the executable without optional PDF or provider extras; the project skill and hook are already committed:
+
+```bash
+uv tool install "graphifyy==0.8.47"
+graphify --version
+test -f .agents/skills/graphify/SKILL.md
+jq -e '.hooks.PreToolUse[] | select(.matcher == "^Bash$")' .codex/hooks.json
+```
+
+Do not update Graphify implicitly. After reviewing a proposed canonical release, replace `REVIEWED_VERSION` in `uv tool upgrade "graphifyy==REVIEWED_VERSION"`, rerun `graphify install --project --platform codex`, and review/reconcile every generated change, especially hook portability, instruction precedence, ignore rules, license notice, and graph artifacts.
+
+Install the two user-level plugins from their official marketplaces, then start a new Codex task so bundled skills are loaded:
+
+```bash
+codex plugin marketplace add DietrichGebert/ponytail
+codex plugin add ponytail@ponytail
+codex plugin add superpowers@openai-curated
+codex plugin list
+```
+
+For an update, run `codex plugin marketplace upgrade ponytail`, inspect the resolved canonical checkout and plugin hooks, then rerun the applicable `codex plugin add` command. Do the same provenance/manifest review before accepting a refreshed OpenAI-curated Superpowers version.
+
+In the new trusted-repository task, run `/hooks`, inspect the project Graphify definition and Ponytail's three lifecycle definitions, and trust only those exact reviewed definitions. Repeat that review whenever a hook definition or plugin checkout changes. Never use a trust bypass.
+
+The committed Graphify hook is project-scoped, resolves the reviewed executable from `PATH`, exits cleanly when Graphify is absent, propagates a present executable's failure, and calls the local-only no-op `hook-check` provided by 0.8.47. It contains no Salus or user/workstation absolute path, unlike the rejected Salus-style definition reviewed during setup.
+
+Graph queries, reports, plugin advice, and agent suggestions are navigation aids, not implementation evidence. Confirm every material claim against authoritative source, tests, build rules, and recorded validation; never use AI output to authorize financial state changes, signing, external submission, finality, reconciliation, or production operation.
 
 ## Security and delivery direction
 

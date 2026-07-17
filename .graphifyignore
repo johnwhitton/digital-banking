@@ -1,0 +1,17 @@
+.git/
+.idea/
+.vscode/
+.DS_Store
+*.iml
+
+target/
+**/target/
+tmp/
+graphify-out/
+
+.env
+.env.*
+!.env.example
+*.log
+
+docs/reference/*.pdf
