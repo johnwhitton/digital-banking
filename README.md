@@ -16,7 +16,7 @@ Reference implementation for a regulated digital-asset settlement control plane.
 | [Digital Banking Engineering Companion](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/digital-banking-engineering-companion.pdf)         | Volume II implementation and operations companion covering durable workflow, Java/Spring, wallets and signing, EVM, Solana, submission and observation, infrastructure, testing, performance, and delivery guidance. | Engineers, architects, security reviewers, operators, and technical decision makers.       | `~60-75 mins`                      |
 | [Digital Banking Reference Implementation](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/digital-banking-reference-implementation.pdf)   | Volume III Reference Implementation.                                                                                                                                                                                 | Engineers, architects, security reviewers, operators, and technical decision makers.       | `~60-75 mins`                      |
 
-The executive PDF states an 18-minute estimate. The detailed architecture contains approximately 37,700 extracted words and provides a guided reading path, so the table distinguishes a guided route from a complete technical read. The Engineering Companion is now available as Volume II: a vendor-neutral implementation and operations companion, not production certification or a runnable implementation. Its code-status discussion is pinned to commit `e921fcb1877b46a6881437f46b1a6ebfa115ae58`; the live repository has advanced since that evidence snapshot, so use this README, the current [implementation plan](docs/IMPLEMENTATION.md), accepted [ADRs](docs/adr/README.md), source, and tests for current repository status. All three PDFs are immutable contextual inputs; [the reference index](docs/reference/README.md) records provenance, checksums, metadata, and design traceability. [The engineering design](docs/DESIGN.md), accepted ADRs, versioned contracts, and executable tests govern implementation details.
+The executive PDF states an 18-minute estimate. The detailed architecture contains approximately 37,700 extracted words and provides a guided reading path, so the table distinguishes a guided route from a complete technical read. The Engineering Companion is available as Volume II: a vendor-neutral implementation and operations companion, not production certification or a runnable implementation. Its code-status discussion is pinned to commit `e921fcb1877b46a6881437f46b1a6ebfa115ae58`; the live repository has advanced since that evidence snapshot, so use this README, the current [implementation plan](docs/IMPLEMENTATION.md), accepted [ADRs](docs/adr/README.md), source, and tests for current repository status. All four PDFs are immutable contextual inputs. The existing [reference index](docs/reference/README.md) retains its established provenance, checksum, metadata, and design-traceability records; [the engineering design](docs/DESIGN.md), accepted ADRs, versioned contracts, and executable tests govern implementation details.
 
 ## What This Demonstrates
 
@@ -38,19 +38,20 @@ Status vocabulary:
 
 | Capability                              | Status     | Evidence and limitation                                                                                                                                                                                                                                                                                                                                                              |
 | --------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Foundation and source publications      | `verified` | All three reference PDFs are byte-verified under `docs/reference/`; architecture, repository policy, Maven reactor, and health/readiness application are synchronized.                                                                                                                                                                                                               |
+| Foundation and source publications      | `verified` | All four reference PDFs are tracked under `docs/reference/`; architecture, repository policy, Maven reactor, and health/readiness application are synchronized.                                                                                                                                                                                                                     |
 | Plain Java domain boundary              | `verified` | Exact asset/unit quantities, stable IDs, guarded lifecycle, attempt lineage, append-only evidence, and four finalities pass the Phase 2 gate; `domain` has no runtime dependencies.                                                                                                                                                                                                  |
 | Spring control-plane application        | `verified` | `control-plane` composes the durable PostgreSQL adapter, exposes health/readiness plus token-operation and transfer resources, and serves one design-first OpenAPI contract. Business resources deny requests until a future identity adapter supplies an authenticated `ParticipantPrincipal`.                                                                                      |
-| Mint and burn operation lifecycle       | `verified` | Framework-free commands, canonical SHA-256 payloads, kind- and participant-scoped replay/conflict, lifecycle coordination, status lookup, and provider-neutral ports pass 269 domain/application tests. No signing or chain execution exists.                                                                                                                                        |
+| Mint and burn operation lifecycle       | `verified` | Framework-free commands, canonical SHA-256 payloads, kind- and participant-scoped replay/conflict, lifecycle coordination, status lookup, and provider-neutral ports pass their existing gates. No signing provider or chain execution exists.                                                                                                                                       |
 | Phase 3A durable acceptance and OpenAPI | `verified` | Explicit JDBC plus Flyway atomically records operation, hashed idempotency binding, audit evidence, four finalities, and one pending outbox event before HTTP 202. Real PostgreSQL tests cover rollback, concurrency, replay/conflict, restart, security, and read-back; the 302-test clean reactor gate passes.                                                                     |
 | Phase 3B durable delivery worker        | `verified` | Framework-free delivery contracts plus an opt-in Spring worker durably claim PostgreSQL outbox work, fence leases, record attempts/outcomes, retry bounded failures, and recover expiry; the 335-test offline reactor passes. Phase 3C adds one transactional transfer-preparation handler, but no external business/chain effect is wired.                                          |
 | Phase 3C transfer acceptance            | `verified` | A chain-neutral parent durably owns five ordered effects, server-resolved wallet context, exact amount/currency, scoped replay/conflict, PostgreSQL V3 persistence, transfer APIs, a synthetic mock-bank contract/adapter, and a transactional handler inbox that can prepare only the first withdrawal; the 364-test offline reactor passes. No bank or blockchain effect executes. |
+| Phase 4A signing-authority boundary     | `implemented` | Framework-free request/attempt/key identities, distinct EVM-digest and Solana-message modes, policy/key checks, durable replay/conflict/ambiguity/inquiry, PostgreSQL V4 evidence persistence, and a test-only synthetic provider are implemented. No runtime signer, key material, public endpoint, native transaction, or chain effect exists. |
 
 The current business API includes `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Durable transfer acceptance and effect planning are not bank movement, minting, token transfer, burning, deposit, settlement, or chain execution.
 
 ## Designed, Not Executable
 
-- Provider-neutral signer and chain ports are implemented as framework-free contracts, but no HSM/MPC/custody signer, development signer, chain adapter, or key material exists.
+- The durable provider-neutral signing boundary is implemented, but no HSM/MPC/custody signer, development signer, chain adapter, runtime composition, provider credential, or key material exists.
 - Phase 3B delivery infrastructure exists and Phase 3C supplies a real transfer-accepted handler/inbox for one bounded internal preparation transition, but the default worker remains disabled and no external effect or broker publication exists.
 - Independent observation, reconciliation, cases, and four-finality authority models are designed, but only the domain records and Phase 3A persistence foundation exist.
 - Ethereum/Foundry/Web3j and native Solana/SPL Token approaches are accepted design directions; no contract, program, SDK, local chain, wallet, or deployment is present.
@@ -77,9 +78,6 @@ The planned [bank-to-bank stablecoin transfer demonstration](docs/TRANSFER_DEMO.
 - **Independent observation and reconciliation:** versioned native evidence, provider disagreement, breaks/cases, and authorized append-only repair.
 - **Integrated local environment and end-to-end tests:** complete five-step Ethereum and Solana demonstrations with restart, duplicate, timeout, and failure injection.
 - **Hardening and publication-readiness evidence:** threat review, dependency/SBOM evidence, security review, runbooks, clean-room reproduction, and performance/failure budgets.
-- **Volume III - Digital Banking Reference Implementation:** `planned` written companion covering architecture-to-code mapping, module walkthroughs, API examples, database schema, code excerpts, build/run/test guides, and local-versus-production implementations.
-
-Volume III remains a planned publication; no empty placeholder file is created.
 
 ## On-Chain Development Approach
 
@@ -98,7 +96,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ├── domain/                    # Plain Java domain boundary
 ├── application/               # Framework-free use cases and ports
 ├── adapters/
-│   └── persistence-postgres/  # Explicit JDBC/Flyway operation, transfer, outbox, and inbox state
+│   └── persistence-postgres/  # Explicit JDBC/Flyway operation, transfer, delivery, and signing evidence
 ├── control-plane/             # Spring APIs, reference route/wallet resolution, and opt-in worker
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
@@ -106,7 +104,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 │   ├── TRANSFER_DEMO.md       # Implemented acceptance mapping and remaining flow contract
 │   ├── adr/                   # Accepted architectural decisions
 │   ├── plans/active/          # Restartable execution plans and evidence
-│   └── reference/             # Three immutable publications and index
+│   └── reference/             # Four immutable publications and index
 ├── .codex/                    # Project config, prompt templates, and skill sources
 ├── .agents/skills/            # Codex repository-skill discovery compatibility
 ├── graphify-out/              # Reviewed portable graph report, JSON, and manifest

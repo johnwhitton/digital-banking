@@ -31,7 +31,7 @@ Zelle is only a public case study in the publications. This repository is organi
 
 ### Current implementation boundary
 
-The current repository contains documentation, a plain-Java domain module with exact operation and transfer invariants, a framework-free application module with command/use-case/delivery/bank contracts, one PostgreSQL persistence adapter, and a Spring Boot control plane. Phase 3A durably accepts participant-scoped mint/burn requests. Phase 3B adds at-least-once PostgreSQL delivery/recovery. Phase 3C durably accepts and reads a participant-scoped transfer with five planned effects, persists immutable server-resolved wallet/route context, and provides a transactional inbox transition that prepares only the first withdrawal. The default configuration has no identity adapter and leaves the worker disabled. There is no broker publication, external bank/token effect, signer implementation, chain adapter, contract/program, Compose environment, or business settlement claim. The [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) records both this implemented boundary and the remaining POC contract.
+The current repository contains documentation, a plain-Java domain module with exact operation, transfer, and signing-authority invariants, a framework-free application module with use cases and provider-neutral ports, one PostgreSQL persistence adapter, and a Spring Boot control plane. Phase 3A durably accepts participant-scoped mint/burn requests. Phase 3B adds at-least-once PostgreSQL delivery/recovery. Phase 3C durably accepts and reads a participant-scoped transfer with five planned effects and prepares only the first withdrawal. Phase 4A adds durable context-bound signing requests, key/policy checks, provider-request identity, ambiguity inquiry, and redacted evidence without runtime signer composition. The default configuration has no identity or signer provider and leaves the worker disabled. There is no broker publication, external bank/token effect, cryptographic signer implementation, chain adapter, contract/program, Compose environment, or business settlement claim. The [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) records both this implemented boundary and the remaining POC contract.
 
 ## 3. Terminology
 
@@ -289,24 +289,25 @@ No shared enum may imply that an EVM receipt confirmation and a Solana commitmen
 
 ## 12. Signer and custody authority port
 
-`Signer` accepts a provider-neutral `SigningRequest` containing:
+The Phase 4A `SigningAuthorityService` accepts a provider-neutral request containing:
 
-- operation and attempt IDs and purpose (`MINT`/`BURN`);
+- stable signing request and provider-attempt IDs, operation/attempt correlation, optional transfer/effect correlation and linked-request lineage;
+- purpose (`MINT`, `TRANSFER`, or `BURN`), logical network, exact asset/unit quantity, source/destination roles or opaque references;
 - chain/route and asset/unit configuration versions;
-- exact quantity, source/authority, destination, contract/program and method/instruction identity;
-- canonical unsigned bytes and digest;
+- future contract/program and method/instruction identity plus opaque native lifetime, fee, and constraint context;
+- either an exact 32-byte EVM `secp256k1` digest or exact serialized Solana `Ed25519` message bytes, never an ambiguous generic byte command;
 - nonce/blockhash/lifetime or an opaque adapter-native constraint digest;
 - fee ceiling, expiry, allowlist, and simulation/result evidence;
 - policy version and approval/quorum evidence; and
 - idempotent signer request identity.
 
-It returns an approved or rejected `SigningDecision` with key reference (never key bytes), signed payload/signature, digest, decision reason, signer policy version, authorization evidence, and provider request identity.
+The application resolves only an opaque key alias plus non-secret registry version, key version, role, algorithm, network, status, validity, and allowlists. Policy/approval is evaluated before a stable provider request is persisted. The evolved `SignerPort` has separate EVM-digest, Solana-message, and inquiry methods and returns explicit signed, denied, retryable-no-signature, ambiguous, or provider-identity-conflict results.
 
-Phase 2 implements this provider-neutral port contract only. It verifies that the supplied unsigned-payload SHA-256 matches the defensive byte copy, bounds issuance/expiry, carries the exact-effect constraints and evidence above, redacts bytes from string rendering, and forbids a rejected decision from carrying signed bytes. Provider-side reproduction, allowlist/quorum evaluation, and signing remain Phase 4 behavior.
+Phase 4A version-1 canonicalization length-prefixes and hashes the complete intent, then separately binds the resolved key metadata. Exact replay returns the durable result without consulting changed configuration. Any payload/context/key/policy/approval substitution conflicts. A provider request is durable before invocation; persisted or ambiguous outcomes are inquired by the same provider identity and cannot be blindly resubmitted. Only proof of no signature permits a linked retry. Raw signable material and returned signature bytes are transient defensive copies; PostgreSQL stores their hashes, lengths, encodings, origins, and opaque evidence references only.
 
-The signer independently reproduces or verifies critical constraints against the canonical bytes. It rejects mismatches. HSM, MPC, qualified custody, and an isolated local-development signer implement the port. The local signer is test-only, uses disposable local-chain fixtures, and cannot load production configuration.
+The repository includes only a deterministic synthetic provider in test sources. It produces unmistakably synthetic evidence and is neither a runtime bean nor a fallback. Future HSM, MPC, qualified-custody, and isolated local-development adapters implement the port without placing production raw keys, provider credentials, or chain-native SDK types in the domain or application.
 
-The existing Phase 2 contract binds mint/burn purposes. Before the planned wallet-transfer child becomes executable, its owning Phase 3C/4 plan must extend the provider-neutral purpose/effect contract test-first so the signer can bind the exact transfer source and destination wallets without adding chain-native types to the domain.
+A signature is authorization evidence only. It does not imply submission, execution, blockchain finality, legal settlement, customer-visible finality, accounting finality, or transfer progression. Phase 4A exposes no public signing endpoint and is not yet composed into the transfer worker.
 
 ## 13. Ethereum/Web3j boundary
 
@@ -349,7 +350,7 @@ HTTP 202 and `Location` mean the parent, five planned effects, histories, idempo
 
 ## 16. Persistence, transactions, outbox/inbox, and concurrency
 
-Phase 3 uses PostgreSQL, explicit Spring JDBC `JdbcClient`, HikariCP, and three forward-only Flyway migrations; see [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md) and [ADR 0005](adr/0005-postgresql-operation-delivery-worker.md). Normalized tables store token operations, transfers and five effects, immutable acceptance context, hashed scoped idempotency bindings, ordered transitions/evidence, four finality histories, shared outbox state, handler inbox state, and delivery attempts. Exact quantities are constrained integer atomic units rather than floating-point or opaque aggregate JSON.
+The repository uses PostgreSQL, explicit Spring JDBC `JdbcClient`, HikariCP, and four forward-only Flyway migrations; see [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md) and [ADR 0005](adr/0005-postgresql-operation-delivery-worker.md). Normalized tables store token operations, transfers and five effects, delivery state, and Phase 4A signing requests, approval evidence, provider attempts, and transitions. Exact quantities are constrained integer atomic units rather than floating-point or opaque aggregate JSON.
 
 One explicit `READ_COMMITTED` local transaction accepts the hashed idempotency binding, operation aggregate, initial transition/audit evidence, four initial `NOT_ASSESSED` finalities, and one versioned pending outbox message. PostgreSQL uniqueness plus `INSERT ... ON CONFLICT DO NOTHING` resolves concurrent scoped-key races without a process lock or a rollback-only loser path. Same canonical identity replays the committed operation; a different command digest conflicts without partial records. Acceptance timestamps are canonicalized to PostgreSQL microsecond precision before aggregate creation, keeping original and replay responses byte-stable. Optimistic aggregate version updates protect later append-only events.
 
@@ -357,7 +358,7 @@ External signing/submission never occurs inside a database transaction. The outb
 
 Delivery is at least once, not exactly once. The durable outbox `event_id` is the handler's deduplication identity. The `TransferAccepted` handler commits that identity with the bounded first-withdrawal preparation transition; redelivery returns `DUPLICATE`, and rollback leaves inbox, parent, effect, and history unchanged. It performs no external call and records no financial success. Future consumers must preserve the same atomic inbox/effect rule. Expected outcomes remain explicit, unexpected handler exceptions become ambiguous acknowledgement with a stable safe code, and terminal/exhausted work remains in `MANUAL_REVIEW`.
 
-Attempt creation, authorization evidence, and canonical digest are durable before signing/submission. Submission classification is recorded after the call; process death at that boundary produces inquiry, not automatic resubmission.
+Phase 4A signing acceptance and every lifecycle update use separate short `READ_COMMITTED` transactions with optimistic aggregate versions. Provider invocation occurs after the provider-request attempt commits and outside a database transaction. Process death or an unexpected provider failure at that boundary leaves a durable unresolved identity that is inquired, not automatically resubmitted. Request, approval, attempt, outcome, and transition histories are append-only and fully reconstructed after restart.
 
 Corrections append transitions, reversals, or adjustment records. They do not destructively edit accepted business history.
 
@@ -418,7 +419,7 @@ Retries repeat an idempotent technical read or the exact same safe request ident
 - Value bands, velocity limits, destinations, assets, chains, contracts/programs, methods/instructions, fee caps, and validity windows are versioned policy.
 - High-risk operations require quorum/four-eyes approval over the exact digest.
 - Application code never stores production raw keys; signer adapters receive only provider references and approved payloads.
-- Development signing is local-only, disposable, clearly named, and denied in production profiles.
+- Synthetic signing exists only in test sources; no development or production signer is configured at runtime.
 - The planned transfer accepts only logical allowlisted local network choices; RPC URLs, addresses, signer references, keys, and finality thresholds remain server-owned configuration.
 - Local bank mocks and the development signer are impossible to enable through a production profile. Opaque bank references and wallet roles never become on-chain personal data.
 - Audit evidence binds actor/workload, intent, canonical payload hash, policy/config versions, approvals, exact digest, signer decision, native identity, observations, transitions, and reconciliation.
@@ -436,12 +437,12 @@ Business audit is durable, complete, append-only evidence for authorization and 
 
 ## 22. Local development and test topology
 
-Phase 3C runtime topology remains one Spring Boot process plus a private/local PostgreSQL 17 database. Integration tests start the pinned `postgres:17.10-alpine3.23` image through Testcontainers, run all three Flyway migrations from an empty schema, and verify operation and transfer rollback, concurrency, leases/recovery, replay/conflict, inbox deduplication, restart reconstruction, API, and security behavior. The polling lifecycle is disabled by default. No reusable/cloud container, Compose service, public database endpoint, embedded database, broker, workflow platform, public chain, or runtime mock-bank fallback is configured.
+The runtime topology remains one Spring Boot process plus a private/local PostgreSQL 17 database. Integration tests start the pinned `postgres:17.10-alpine3.23` image through Testcontainers, run all four Flyway migrations from an empty schema, and verify operation, transfer, delivery, and signing-authority rollback, concurrency, replay/conflict, ambiguity, and restart behavior. The polling lifecycle is disabled by default, and no signing-authority service or signer provider is a Spring bean. No reusable/cloud container, Compose service, public database endpoint, embedded database, broker, workflow platform, public chain, runtime mock-bank fallback, or runtime signer fallback is configured.
 
 Later phases add components only as needed:
 
 1. runtime source- and destination-bank mock execution/inquiry behind the existing bank port;
-2. deterministic development signer/test double with disposable wallet authorities;
+2. isolated local-development signer with disposable wallet authorities behind the Phase 4A port;
 3. Anvil as the local EVM chain for the separate Ethereum demonstration;
 4. local Solana validator plus SPL mint/token accounts for the separate Solana demonstration;
 5. materially independent observer endpoints/processes;
@@ -468,6 +469,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - Canonical command version 1 rejects malformed Unicode and normalizes business correlation to NFC before hashing.
 - PostgreSQL is the Phase 3 behavioral store; explicit Spring JDBC, HikariCP, Flyway, atomic hashed idempotency/operation/audit/finality/outbox acceptance, and real PostgreSQL Testcontainers are accepted in ADR 0004.
 - PostgreSQL `SKIP LOCKED` claims, opaque expiring leases, fenced outcome updates, durable retry/manual-review evidence, at-least-once handler delivery, and the opt-in Spring worker lifecycle are accepted in ADR 0005.
+- Signing canonicalization version 1, distinct EVM-digest/Solana-message commands, non-secret key metadata, durable provider identity, inquiry-before-retry, redacted evidence persistence, and no runtime fallback implement the already-governed signing boundary without a new provider decision.
 - The single design-first OpenAPI 3.1 YAML resource is authoritative; no runtime documentation generator or UI is added.
 - Spring Security is stateless and deny-by-default: tests inject fixture principals/authorities, while production configuration contains no identity-provider endpoint or credential.
 
@@ -500,7 +502,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 
 ### Deferred
 
-Production readiness, executing transfer effects, runtime bank integration, wallet provisioning/registry, signing, chain adapters, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker/workflow topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain deferred. Each future executable slice requires a focused active plan; [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md) defines the remaining end-to-end target.
+Production readiness, executing transfer effects, runtime bank integration, wallet provisioning/registry, real cryptographic signing and provider integration, chain adapters, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker/workflow topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain deferred. Each future executable slice requires a focused active plan; [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md) defines the remaining end-to-end target.
 
 ## 24. Traceability to the source publications
 

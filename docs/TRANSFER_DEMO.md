@@ -4,7 +4,7 @@
 
 This document specifies a local-only, non-production proof of concept for bank-to-bank value movement using a stablecoin settlement rail. It is a capability contract subordinate to accepted [ADRs](adr/README.md), the canonical [design](DESIGN.md), and executable tests.
 
-**Status:** `partially implemented`. Phase 3C implements the transfer resource, durable five-effect plan, server-resolved synthetic custody context, PostgreSQL acceptance/outbox/inbox state, mock-bank contract/test adapter, and first-withdrawal preparation. It does not execute the end-to-end flow, bank or token effects, signing, chain activity, observation, reconciliation, compensation, or settlement.
+**Status:** `partially implemented`. Phase 3C implements the transfer resource, durable five-effect plan, server-resolved synthetic custody context, PostgreSQL acceptance/outbox/inbox state, mock-bank contract/test adapter, and first-withdrawal preparation. Phase 4A implements the internal durable signing-authority boundary, but it is not wired to this workflow and has no runtime signer. The repository does not execute the end-to-end flow, bank or token effects, cryptographic signing, chain activity, observation, reconciliation, compensation, or settlement.
 
 Intended reviewers are application engineers, architects, smart-contract and program engineers, security and operations teams, and interview reviewers. This demonstration never implies production, legal, accounting, compliance, or operational readiness.
 
@@ -33,7 +33,7 @@ GET  /v1/transfers/{transferId}
 
 Participant/tenant scope comes only from the authenticated principal, never request JSON or an ad hoc tenant header. Creation requires `transfer:create`; read-back requires `transfer:read`. `GET` is participant-scoped, so an unknown transfer ID and another participant's transfer ID produce the same safe 404 response.
 
-The server resolves currency scale, stablecoin asset/unit, sender and recipient wallet roles, and route configuration. Later slices also resolve signer, chain endpoint, contract/program identity, and finality thresholds. The network choice is not arbitrary infrastructure input: it is validated against an allowlisted, versioned local route configuration. Callers never provide sender, recipient, mint-authority, burn-authority, treasury, RPC, contract/program, signer/key, or finality configuration. If the network is absent, the server selects the configured local default.
+The server resolves currency scale, stablecoin asset/unit, sender and recipient wallet roles, and route configuration. Phase 4A defines how an internal use case resolves non-secret signer key metadata; later composition still must connect transfer effects to that boundary and resolve chain endpoint, contract/program identity, and finality thresholds. The network choice is not arbitrary infrastructure input: it is validated against an allowlisted, versioned local route configuration. Callers never provide sender, recipient, mint-authority, burn-authority, treasury, RPC, contract/program, signer/key, or finality configuration. If the network is absent, the server selects the configured local default.
 
 Acceptance returns HTTP 202 with a stable `TransferId`, a transfer representation, and `Location: /v1/transfers/{transferId}` only after durable local acceptance commits. `GET` returns the durable parent status, child summaries, distinct finalities, and explicitly allowlisted evidence summaries. It does not return raw idempotency keys, internal digests, private account data, policy facts, signer/provider details, signed bytes, or a single `settled` Boolean.
 
@@ -66,6 +66,14 @@ The current `Transfer` aggregate persists participant identity, canonical reques
 V3 commits the parent, hashed idempotency binding, effects, initial transition/evidence, finalities, and `TransferAccepted` outbox row atomically. The Phase 3B handler commits its inbox delivery identity with the single bounded transition from `BANK_WITHDRAWAL/PLANNED` to `PREPARED`; redelivery returns the stored duplicate result. It does not invoke the mock-bank port inside that transaction or mark withdrawal applied.
 
 The provider-neutral `MockBankPort` binds transfer/effect/participant/account, exact quantity, operation, idempotency and attempt identities, policy version, request time, and deadline. Its synthetic adapter proves applied/already-applied, rejected-no-effect, retryable-no-effect, and ambiguous classifications in tests, but it is not registered as a runtime fallback.
+
+### Phase 4A signing-authority mapping
+
+The framework-free signing aggregate binds a stable signing request to operation/attempt and optional transfer/effect correlation, action, logical network, exact asset/unit quantity, source/destination roles or opaque references, future native action/lifetime/fee constraints, payload identity, non-secret key alias/version/role/algorithm metadata, policy version, approval evidence, and expiry. EVM requests carry an exact 32-byte `secp256k1` digest; Solana requests carry exact serialized message bytes for `Ed25519`. These are separate provider methods.
+
+The request, provider identity, and authorization evidence are durable before any provider call. Exact replay returns the retained outcome; substitution conflicts. An unresolved or ambiguous call is inquired by its stable provider identity, and a linked retry is allowed only after evidence proves no signature. PostgreSQL V4 stores hashes, lengths, encodings, outcome origins, and evidence references—never raw signable material, signature bytes, private keys, or provider credentials.
+
+Only the synthetic provider in application test sources is executable today. No signing service/provider is registered in Spring, no public signing endpoint exists, and no transfer effect invokes the boundary. A signed outcome is authorization evidence; it does not mark a token attempt submitted, a transfer effect applied, or any finality reached.
 
 ## Workflow and transaction boundary
 

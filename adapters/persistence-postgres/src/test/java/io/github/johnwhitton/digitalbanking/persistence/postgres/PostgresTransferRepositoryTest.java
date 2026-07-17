@@ -123,7 +123,7 @@ class PostgresTransferRepositoryTest {
                 () -> transfer(1, PARTICIPANT, "transfer-key", metadata('a')));
 
         assertFalse(accepted.replayed());
-        assertEquals(3, jdbc.sql("SELECT count(*) FROM flyway_schema_history WHERE success")
+        assertEquals(4, jdbc.sql("SELECT count(*) FROM flyway_schema_history WHERE success")
                 .query(Integer.class).single());
         assertEquals(1L, count("banking_transfer"));
         assertEquals(1L, count("transfer_idempotency"));

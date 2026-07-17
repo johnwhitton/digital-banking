@@ -65,6 +65,7 @@ class OpenApiContractTest {
         assertTrue(map(paths.get("/v1/transfers")).containsKey("post"));
         assertTrue(map(paths.get("/v1/transfers/{transferId}")).containsKey("get"));
         assertTrue(map(paths.get("/openapi/token-operations-v1.yaml")).containsKey("get"));
+        assertFalse(paths.keySet().stream().anyMatch(path -> path.contains("sign")));
         assertFalse(document.containsKey("servers"));
         assertFalse(text.contains("http://"));
         assertFalse(text.contains("https://"));

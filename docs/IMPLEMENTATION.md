@@ -49,14 +49,14 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 1. Foundation                          | `verified`    | Source publications and the full foundation gate are verified; see the closed bootstrap plan. |
 | 2. Domain and operation lifecycle      | `verified`    | Exact quantities, guarded lifecycle/finality histories, canonical commands, idempotent acceptance contracts, and bound ports passed 264 pure tests and the 266-test reactor. |
 | 3. Durable API and persistence         | `verified`    | Phase 3A acceptance/read-back, Phase 3B worker/recovery, and Phase 3C transfer acceptance/first deduplicated internal preparation pass the 364-test offline reactor. External workflow effects remain absent by scope. |
-| 4. Signing boundary                    | `not_started` | Design only; no signer code or keys.                                                           |
+| 4. Signing boundary                    | `implemented` | Phase 4A provides durable provider-neutral authority, key/policy checks, replay/conflict, ambiguity inquiry, and redacted PostgreSQL evidence. No runtime signer, keys, or native-chain integration. |
 | 5. Ethereum vertical slice             | `not_started` | No Web3j/Solidity/local-chain code.                                                            |
 | 6. Solana vertical slice               | `not_started` | No Java SDK/Rust/local-validator code.                                                         |
 | 7. Observation and reconciliation      | `not_started` | Design only.                                                                                   |
 | 8. Integrated local environment        | `not_started` | No Compose file.                                                                               |
 | 9. Hardening and publication readiness | `not_started` | No production-readiness claim.                                                                 |
 
-The current executable boundary is Phase 3C transfer acceptance: durable parent/effect planning plus an opt-in at-least-once worker contract and one transactional transfer inbox that prepares the first withdrawal without calling an external service. The complete [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) remains future work. Every later effect/signing/chain slice requires its own focused active plan.
+The current executable boundary includes Phase 3C transfer acceptance and Phase 4A's internal durable signing-authority use case. It can persist and recover exact context-bound signing requests and provider outcomes, but it is not a Spring runtime bean and has no configured signer, key material, public endpoint, native transaction, or chain effect. The complete [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) remains future work. Every later effect/provider/chain slice requires its own focused active plan.
 
 ## Phase 1: Foundation
 
@@ -144,15 +144,15 @@ Phases 4-9 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 ## Phase 4: Signing boundary
 
-**Deliverables:** exact signing request/decision/evidence contracts for mint, wallet transfer, and burn; policy/approval binding; signer request idempotency; isolated local-development signer using disposable local wallet authorities; settlement-wallet role/configuration binding; interfaces for HSM/MPC/custody providers; no vendor selection.
+**Phase 4A implemented deliverables:** framework-free typed signing request/attempt/provider/key identities; exact mint/transfer/burn authority context; distinct EVM `secp256k1` digest and Solana `Ed25519` serialized-message commands; versioned complete-context canonicalization; non-secret key-registry and policy ports; durable replay/conflict, provider-request-before-call, ambiguity inquiry, linked retry, append-only evidence, and optimistic concurrency; explicit JDBC/Flyway V4 persistence; and a deterministic synthetic signer in test sources only.
 
-**Tests:** exact digest/bytes binding, mismatched amount/destination/chain rejection, allowlists, limits, quorum, expiry, repeated request identity, timeout ambiguity, redaction, and proof that raw keys never cross the port.
+**Tests:** defensive byte copies and redaction; native-mode separation; golden complete-context binding; role/algorithm/network/status/expiry checks; approval gating; exact replay and substitution conflict; provider denial/retry/ambiguity/inquiry/internal-failure recovery; provider-identity conflict; linked attempts; V1-V4 migration, rollback, deterministic concurrency, optimistic fencing, restart reconstruction, and no-secret schema; and no public/runtime signing surface.
 
-**Acceptance gate:** application code can authorize and record a signer decision for the exact child operation/attempt without owning production key material; raw keys never enter the Java application; the local signer and disposable wallets are impossible to enable through production configuration.
+**Acceptance gate:** application code can authorize, durably invoke by stable identity, inquire, and record signer evidence for the exact child operation/attempt without owning production key material. Raw signable/signature bytes are transient and no raw key or credential enters Java, configuration, tests, logs, or persistence. A signature does not advance submission or financial finality.
 
 **Risks:** treating signing as business authorization; mutable approval payloads; test keys escaping fixtures.
 
-**Deferred:** production provider integration and recovery ceremony.
+**Deferred:** isolated local-development signing/runtime composition, HSM/MPC/custody adapters and recovery ceremony, provider credentials, native transaction construction, submission, observation, and all production integration.
 
 ## Phase 5: Ethereum vertical slice
 
@@ -223,9 +223,9 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 ## Publications
 
 - **Volume II - [Digital Banking Engineering Companion](reference/digital-banking-engineering-companion.pdf)** (`published`): vendor-neutral implementation and operations guidance covering durable workflow, Java/Spring, wallets and signing, EVM, Solana, submission and observation, infrastructure, testing, performance, and delivery. It is not production certification or a runnable implementation. Its code-status discussion is pinned to `e921fcb1877b46a6881437f46b1a6ebfa115ae58`; use this current plan, the README, accepted ADRs, source, and tests for live repository status.
-- **Volume III - Digital Banking Reference Implementation** (`planned`): written companion covering architecture-to-code mapping, module walkthroughs, API examples, database schema, code excerpts, build/run/test guides, and local-versus-production implementations.
+- **Volume III - [Digital Banking Reference Implementation](reference/digital-banking-reference-implementation.pdf)** (`published`): repository companion supplied as immutable contextual reference material. Current design, ADRs, contracts, source, tests, and this living plan remain authoritative for implementation status.
 
-Publishing Volume II does not change executable phase status, replace a focused implementation plan or acceptance test, complete Phase 9, or make Volume III complete.
+Publishing Volumes II and III does not change executable phase status, replace a focused implementation plan or acceptance test, complete Phase 9, or imply production readiness.
 
 ## Plans and ADRs
 
@@ -234,6 +234,7 @@ Publishing Volume II does not change executable phase status, replace a focused 
 - Verified Phase 3A plan: [`docs/plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md`](plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md).
 - Active Phase 3B worker/recovery plan: [`docs/plans/active/PHASE_3B_DURABLE_WORKER_AND_RECOVERY.md`](plans/active/PHASE_3B_DURABLE_WORKER_AND_RECOVERY.md).
 - Active Phase 3C transfer plan: [`docs/plans/active/PHASE_3C_TRANSFER_AGGREGATE_AND_MOCK_BANK.md`](plans/active/PHASE_3C_TRANSFER_AGGREGATE_AND_MOCK_BANK.md).
+- Active Phase 4A signing-authority plan: [`docs/plans/active/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md`](plans/active/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md).
 - Active Zelle share-readiness and transfer-roadmap plan: [`docs/plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
 - Accepted build/module choice: [`ADR 0001`](adr/0001-maven-reactor-and-module-boundaries.md).
@@ -290,6 +291,17 @@ The restartable RED-GREEN and validation record is [`docs/plans/active/PHASE_3A_
 
 ## Latest bounded vertical slice
 
+Action Request 11 implements **Phase 4A Durable Signing-Authority Boundary**:
+
+- one immutable signing aggregate with stable request/provider-attempt identities, complete operation/transfer/effect correlation, exact quantity, key-role metadata, policy/approval context, expiry, and append-only lifecycle/evidence;
+- separate EVM 32-byte `secp256k1` digest and Solana serialized-message `Ed25519` provider commands plus inquiry—no generic signer command;
+- versioned canonical intent and resolved-key hashes that make exact replay stable and any bound substitution a conflict;
+- policy/key validation before provider use, a durable provider identity before invocation, inquiry after unresolved or ambiguous outcomes, and linked retry only after evidence proves no signature;
+- one forward-only V4 migration and explicit JDBC repository storing hashes, lengths, encodings, non-secret metadata, and opaque evidence references rather than raw payloads, signatures, keys, or credentials; and
+- a deterministic test-only synthetic provider with success, denial, retryable-no-signature, ambiguity/inquiry, conflict, and infrastructure-failure fixtures.
+
+This internal use case is deliberately not composed into Spring and exposes no REST/OpenAPI path, signer configuration, runtime fallback, real cryptography, or chain effect. HSM/MPC/custody adapters, isolated local-development signing, native transaction construction, submission, and observation remain later slices. The next bounded recommendation is Phase 4B isolated local-development signer composition, followed by the first Ethereum adapter slice; both require their own approval and must retain Phase 4A's durable identity/inquiry boundary.
+
 Action Request 10 implements **Phase 3C Chain-Neutral Transfer Aggregate and Mock-Bank Boundary**:
 
 - one immutable parent with exact quantity, participant scope, server-resolved custody context, separate finalities, and five ordered stable effect identities;
@@ -339,4 +351,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer acceptance boundary and the remaining bank/signer/chain effects and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Phase 4's signing boundary is the next recommended bounded action; it must not be combined with an external bank or chain effect without its own approved slice.
+The implemented transfer and signing-authority boundaries and the remaining bank/provider/chain effects and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Runtime signing composition is the next recommended bounded action; it must not be combined with an external bank or chain effect without its own approved slice.
