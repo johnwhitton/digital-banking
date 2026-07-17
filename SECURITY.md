@@ -4,7 +4,7 @@
 
 This repository is non-production research and reference software. It is not approved for real funds, production settlement, regulated operations, or compliance reliance. It makes no warranty or claim of legal, regulatory, security, custody, or operational certification.
 
-Do not use this repository with mainnet, public testnets, production RPC providers, production custody/HSM/MPC systems, or real-value accounts. Signing and chain integrations remain absent by design.
+Do not use this repository with mainnet, public testnets, production RPC providers, production custody/HSM/MPC systems, or real-value accounts. Production signing and all chain integrations remain absent by design. The only cryptographic signer is the explicitly enabled local-development adapter described below.
 
 ## Durable API boundary
 
@@ -31,7 +31,11 @@ Never commit private keys, seed phrases, API tokens, RPC credentials, HSM creden
 
 ## Development signing
 
-Any future local-development signer must be explicitly test-only, isolated from production paths, limited to deterministic local networks, and unable to load production credentials. Development keys are disposable fixtures, not a staging form of production authority.
+The `local-signer` Spring profile is an explicit development-only exception to the production custody model. When enabled, its isolated adapter generates one secp256k1 key and one Ed25519 key in process memory using secure randomness. It reads no private key, seed, mnemonic, keystore, credential, environment secret, API value, configuration value, repository file, or database row. Its aliases, key versions, public-key fingerprints, roles, and logical networks are non-secret session metadata; private objects never leave the adapter.
+
+The default profile creates no local signer and generates no key. A local signer restart creates new aliases and versions; a pending request bound to the prior session fails closed into manual review rather than using a replacement key. A completed Phase 4A result replays durably without re-signing. EVM signing accepts only an exact 32-byte digest and returns low-`s` secp256k1 evidence; Solana signing accepts only the exact bounded serialized message and returns a 64-byte Ed25519 signature. Neither mode constructs or submits a transaction.
+
+Shutdown releases key references and attempts provider-supported destruction, but Java/provider objects do not prove physical memory zeroization. No stronger erasure claim is made. Local keys and signatures are disposable development evidence, not a staging form of production authority.
 
 Production-oriented signing designs must keep raw keys outside application memory and bind authorization evidence to the exact operation, attempt, chain, asset, destination, amount, fee/expiry bounds, policy version, approvals, and canonical transaction bytes or digest.
 

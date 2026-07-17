@@ -31,7 +31,7 @@ Zelle is only a public case study in the publications. This repository is organi
 
 ### Current implementation boundary
 
-The current repository contains documentation, a plain-Java domain module with exact operation, transfer, and signing-authority invariants, a framework-free application module with use cases and provider-neutral ports, one PostgreSQL persistence adapter, and a Spring Boot control plane. Phase 3A durably accepts participant-scoped mint/burn requests. Phase 3B adds at-least-once PostgreSQL delivery/recovery. Phase 3C durably accepts and reads a participant-scoped transfer with five planned effects and prepares only the first withdrawal. Phase 4A adds durable context-bound signing requests, key/policy checks, provider-request identity, ambiguity inquiry, and redacted evidence without runtime signer composition. The default configuration has no identity or signer provider and leaves the worker disabled. There is no broker publication, external bank/token effect, cryptographic signer implementation, chain adapter, contract/program, Compose environment, or business settlement claim. The [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) records both this implemented boundary and the remaining POC contract.
+The current repository contains documentation, a plain-Java domain module with exact operation, transfer, and signing-authority invariants, a framework-free application module with use cases and provider-neutral ports, PostgreSQL and local-signer adapters, and a Spring Boot control plane. Phase 3A durably accepts participant-scoped mint/burn requests. Phase 3B adds at-least-once PostgreSQL delivery/recovery. Phase 3C durably accepts and reads a participant-scoped transfer with five planned effects and prepares only the first withdrawal. Phase 4A adds durable context-bound signing requests, key/policy checks, provider-request identity, ambiguity inquiry, and redacted evidence. Phase 4B adds real session-only secp256k1 and Ed25519 signing behind an explicit `local-signer` profile. The default configuration has no identity or signer provider and leaves the worker disabled. There is no broker publication, external bank/token effect, production custody, chain adapter, contract/program, Compose environment, or business settlement claim. The [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) records both this implemented boundary and the remaining POC contract.
 
 ## 3. Terminology
 
@@ -147,7 +147,7 @@ flowchart LR
     solana -.-> rust
 ```
 
-The current reactor contains `domain`, `application`, `adapters/persistence-postgres`, and `control-plane`. Its concrete direction is `domain <- application <- persistence-postgres <- control-plane`; the adapter implements application-owned ports and no framework/database type enters domain/application signatures. Later executable slices may add the bank, signer, chain, contract/program, and integration-test locations proposed in [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Those names are a roadmap, not an instruction to create empty modules. ADRs 0002 and 0003 explicitly select `adapters/ethereum-web3j/` and `adapters/solana-java/`; those accepted paths remain authoritative unless superseded by a later ADR, and focused chain plans must reconcile the Action Request's provisional path names before creating code. No module may depend on another chain adapter. The application layer defines capability-aware ports, while adapter-specific native types stay within the adapter and its tests.
+The current reactor contains `domain`, `application`, `adapters/persistence-postgres`, `adapters/signer-local`, and `control-plane`. Its concrete direction is `domain <- application <- adapters <- control-plane`; each adapter implements application-owned ports, and no framework, database, or cryptographic-provider type enters domain/application signatures. Later executable slices may add the bank, chain, contract/program, and integration-test locations proposed in [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Those names are a roadmap, not an instruction to create empty modules. ADRs 0002 and 0003 explicitly select `adapters/ethereum-web3j/` and `adapters/solana-java/`; those accepted paths remain authoritative unless superseded by a later ADR, and focused chain plans must reconcile the Action Request's provisional path names before creating code. No module may depend on another chain adapter. The application layer defines capability-aware ports, while adapter-specific native or provider types stay within the owning adapter and its tests.
 
 ## 7. Mint and burn operation aggregate
 
@@ -305,7 +305,9 @@ The application resolves only an opaque key alias plus non-secret registry versi
 
 Phase 4A version-1 canonicalization length-prefixes and hashes the complete intent, then separately binds the resolved key metadata. Exact replay returns the durable result without consulting changed configuration. Any payload/context/key/policy/approval substitution conflicts. A provider request is durable before invocation; persisted or ambiguous outcomes are inquired by the same provider identity and cannot be blindly resubmitted. Only proof of no signature permits a linked retry. Raw signable material and returned signature bytes are transient defensive copies; PostgreSQL stores their hashes, lengths, encodings, origins, and opaque evidence references only.
 
-The repository includes only a deterministic synthetic provider in test sources. It produces unmistakably synthetic evidence and is neither a runtime bean nor a fallback. Future HSM, MPC, qualified-custody, and isolated local-development adapters implement the port without placing production raw keys, provider credentials, or chain-native SDK types in the domain or application.
+The repository retains a deterministic synthetic provider only in test sources and adds one real local-development adapter under `adapters/signer-local`; see [ADR 0006](adr/0006-local-development-signing-provider.md). The local adapter is disabled by default and becomes a Spring provider/key-registry bean only under explicit profile `local-signer`. It generates one in-memory secp256k1 authority and one JDK Ed25519 authority, assigns random session-scoped aliases/versions and public-key fingerprints, and allowlists roles plus the logical `ETHEREUM` or `SOLANA` network. It reads or persists no private key, seed, keystore, credential, wallet address, raw payload, or raw signature.
+
+The local EVM path signs the exact supplied 32-byte digest without rehashing, normalizes `s`, and returns compact `r || s || recovery-id` bytes. The local Solana path signs the exact bounded serialized message and returns a standard 64-byte Ed25519 signature. Stable provider identity retains same-session inquiry evidence; a restart generates new aliases/versions and sends a stale pending request to manual review. A completed durable Phase 4A result replays without provider invocation. Shutdown releases references and attempts supported destruction without claiming physical zeroization. Future HSM, MPC, and qualified-custody adapters implement the same port without placing production raw keys, provider credentials, or chain-native SDK types in the domain or application.
 
 A signature is authorization evidence only. It does not imply submission, execution, blockchain finality, legal settlement, customer-visible finality, accounting finality, or transfer progression. Phase 4A exposes no public signing endpoint and is not yet composed into the transfer worker.
 
@@ -419,9 +421,9 @@ Retries repeat an idempotent technical read or the exact same safe request ident
 - Value bands, velocity limits, destinations, assets, chains, contracts/programs, methods/instructions, fee caps, and validity windows are versioned policy.
 - High-risk operations require quorum/four-eyes approval over the exact digest.
 - Application code never stores production raw keys; signer adapters receive only provider references and approved payloads.
-- Synthetic signing exists only in test sources; no development or production signer is configured at runtime.
+- Synthetic signing remains test-only. The real local-development signer exists only under explicit profile `local-signer`; the default runtime has no signer. It is session-ephemeral, logical-family allowlisted, visibly classified `LOCAL_EPHEMERAL`, and never a production fallback.
 - The planned transfer accepts only logical allowlisted local network choices; RPC URLs, addresses, signer references, keys, and finality thresholds remain server-owned configuration.
-- Local bank mocks and the development signer are impossible to enable through a production profile. Opaque bank references and wallet roles never become on-chain personal data.
+- No default or production profile activates the local bank mocks or development signer; the signer requires the separate explicit `local-signer` profile. Opaque bank references and wallet roles never become on-chain personal data.
 - Audit evidence binds actor/workload, intent, canonical payload hash, policy/config versions, approvals, exact digest, signer decision, native identity, observations, transitions, and reconciliation.
 - Kill switches prevent new work while leaving evidence inquiry and reconciliation available.
 - Dependencies, contracts, programs, generated bindings, and provider SDKs receive security review before promotion.
@@ -437,17 +439,16 @@ Business audit is durable, complete, append-only evidence for authorization and 
 
 ## 22. Local development and test topology
 
-The runtime topology remains one Spring Boot process plus a private/local PostgreSQL 17 database. Integration tests start the pinned `postgres:17.10-alpine3.23` image through Testcontainers, run all four Flyway migrations from an empty schema, and verify operation, transfer, delivery, and signing-authority rollback, concurrency, replay/conflict, ambiguity, and restart behavior. The polling lifecycle is disabled by default, and no signing-authority service or signer provider is a Spring bean. No reusable/cloud container, Compose service, public database endpoint, embedded database, broker, workflow platform, public chain, runtime mock-bank fallback, or runtime signer fallback is configured.
+The runtime topology remains one Spring Boot process plus a private/local PostgreSQL 17 database. Integration tests start the pinned `postgres:17.10-alpine3.23` image through Testcontainers, run all four Flyway migrations from an empty schema, and verify operation, transfer, delivery, signing-authority, and local-signer replay/restart behavior. The polling lifecycle and local signer are disabled by default. Explicit profile `local-signer` composes the Phase 4A service, PostgreSQL signing repository, local approval fixture, and exactly two ephemeral local keys; it exposes no endpoint and performs no chain effect. No reusable/cloud container, Compose service, public database endpoint, embedded database, broker, workflow platform, public chain, runtime mock-bank fallback, or production signer fallback is configured.
 
 Later phases add components only as needed:
 
 1. runtime source- and destination-bank mock execution/inquiry behind the existing bank port;
-2. isolated local-development signer with disposable wallet authorities behind the Phase 4A port;
-3. Anvil as the local EVM chain for the separate Ethereum demonstration;
-4. local Solana validator plus SPL mint/token accounts for the separate Solana demonstration;
-5. materially independent observer endpoints/processes;
-6. Compose orchestration after individual slices are deterministic; and
-7. end-to-end fixtures and operator runbooks proving all five transfer steps.
+2. Anvil as the local EVM chain for the separate Ethereum demonstration;
+3. local Solana validator plus SPL mint/token accounts for the separate Solana demonstration;
+4. materially independent observer endpoints/processes;
+5. Compose orchestration after individual slices are deterministic; and
+6. end-to-end fixtures and operator runbooks proving all five transfer steps.
 
 Local chains use disposable deterministic fixtures and no public RPC credentials. Tests must cover restarts, duplicate delivery, timeouts, ambiguous effects, reorg/commitment changes, and reconciliation breaks before a slice is verified.
 
@@ -459,7 +460,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - Maven reactor with plain `domain` and Spring `control-plane` modules; see ADR 0001.
 - Framework-free `application` module between `control-plane` and `domain`, with Enforcer dependency guards; see ADR 0001.
 - Health/readiness is the only foundation endpoint.
-- Chain and signer dependencies are deferred until a tested slice.
+- Chain dependencies remain deferred until a tested slice; ADR 0006 confines Bouncy Castle 1.82 to the executable local signer.
 - The common domain/lifecycle slice precedes either chain slice.
 - Ethereum is the first chain slice; Foundry owns EVM contract development and Web3j stays in its Java adapter; see ADR 0002.
 - Solana uses native SVM semantics and classic SPL Token first; Sava must pass a bounded evaluation before selection; see ADR 0003.
@@ -470,6 +471,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - PostgreSQL is the Phase 3 behavioral store; explicit Spring JDBC, HikariCP, Flyway, atomic hashed idempotency/operation/audit/finality/outbox acceptance, and real PostgreSQL Testcontainers are accepted in ADR 0004.
 - PostgreSQL `SKIP LOCKED` claims, opaque expiring leases, fenced outcome updates, durable retry/manual-review evidence, at-least-once handler delivery, and the opt-in Spring worker lifecycle are accepted in ADR 0005.
 - Signing canonicalization version 1, distinct EVM-digest/Solana-message commands, non-secret key metadata, durable provider identity, inquiry-before-retry, redacted evidence persistence, and no runtime fallback implement the already-governed signing boundary without a new provider decision.
+- The explicitly enabled local signer uses Bouncy Castle 1.82 only for secp256k1 and JDK-native Ed25519, generates session-only keys, and returns stale pending work to manual review; see ADR 0006.
 - The single design-first OpenAPI 3.1 YAML resource is authoritative; no runtime documentation generator or UI is added.
 - Spring Security is stateless and deny-by-default: tests inject fixture principals/authorities, while production configuration contains no identity-provider endpoint or credential.
 
@@ -502,7 +504,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 
 ### Deferred
 
-Production readiness, executing transfer effects, runtime bank integration, wallet provisioning/registry, real cryptographic signing and provider integration, chain adapters, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker/workflow topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain deferred. Each future executable slice requires a focused active plan; [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md) defines the remaining end-to-end target.
+Production readiness, executing transfer effects, runtime bank integration, wallet provisioning/registry, production cryptographic custody/provider integration, chain adapters, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker/workflow topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain deferred. Each future executable slice requires a focused active plan; [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md) defines the remaining end-to-end target.
 
 ## 24. Traceability to the source publications
 

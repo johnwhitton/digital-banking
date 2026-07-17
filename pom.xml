@@ -23,11 +23,23 @@
         <module>domain</module>
         <module>application</module>
         <module>adapters/persistence-postgres</module>
+        <module>adapters/signer-local</module>
         <module>control-plane</module>
     </modules>
 
     <properties>
         <java.version>25</java.version>
+        <bouncycastle.version>1.82</bouncycastle.version>
         <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 </project>

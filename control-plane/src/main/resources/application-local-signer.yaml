@@ -1,0 +1,16 @@
+spring:
+    config:
+        activate:
+            on-profile: local-signer
+
+digital-banking:
+    local-signer:
+        evm-roles:
+            - MINT_AUTHORITY
+        evm-networks:
+            - ETHEREUM
+        solana-roles:
+            - MINT_AUTHORITY
+        solana-networks:
+            - SOLANA
+        max-solana-message-bytes: 65536

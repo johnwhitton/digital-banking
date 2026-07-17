@@ -45,13 +45,13 @@ Status vocabulary:
 | Phase 3A durable acceptance and OpenAPI | `verified` | Explicit JDBC plus Flyway atomically records operation, hashed idempotency binding, audit evidence, four finalities, and one pending outbox event before HTTP 202. Real PostgreSQL tests cover rollback, concurrency, replay/conflict, restart, security, and read-back; the 302-test clean reactor gate passes.                                                                     |
 | Phase 3B durable delivery worker        | `verified` | Framework-free delivery contracts plus an opt-in Spring worker durably claim PostgreSQL outbox work, fence leases, record attempts/outcomes, retry bounded failures, and recover expiry; the 335-test offline reactor passes. Phase 3C adds one transactional transfer-preparation handler, but no external business/chain effect is wired.                                          |
 | Phase 3C transfer acceptance            | `verified` | A chain-neutral parent durably owns five ordered effects, server-resolved wallet context, exact amount/currency, scoped replay/conflict, PostgreSQL V3 persistence, transfer APIs, a synthetic mock-bank contract/adapter, and a transactional handler inbox that can prepare only the first withdrawal; the 364-test offline reactor passes. No bank or blockchain effect executes. |
-| Phase 4A signing-authority boundary     | `implemented` | Framework-free request/attempt/key identities, distinct EVM-digest and Solana-message modes, policy/key checks, durable replay/conflict/ambiguity/inquiry, PostgreSQL V4 evidence persistence, and a test-only synthetic provider are implemented. No runtime signer, key material, public endpoint, native transaction, or chain effect exists. |
+| Phase 4 signing boundary               | `implemented` | Phase 4A supplies durable authority, replay/conflict, ambiguity/inquiry, and PostgreSQL V4 evidence. Phase 4B adds one explicitly enabled `local-signer` profile with session-only secp256k1 and Ed25519 keys, exact-material signatures, and no public endpoint or chain effect. Production custody remains absent. |
 
 The current business API includes `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Durable transfer acceptance and effect planning are not bank movement, minting, token transfer, burning, deposit, settlement, or chain execution.
 
 ## Designed, Not Executable
 
-- The durable provider-neutral signing boundary is implemented, but no HSM/MPC/custody signer, development signer, chain adapter, runtime composition, provider credential, or key material exists.
+- The durable provider-neutral signing boundary and isolated local-development signer are implemented. Local private-key objects exist only in the explicitly enabled adapter process and change after restart; no HSM/MPC/custody signer, provider credential, chain adapter, or production key material exists.
 - Phase 3B delivery infrastructure exists and Phase 3C supplies a real transfer-accepted handler/inbox for one bounded internal preparation transition, but the default worker remains disabled and no external effect or broker publication exists.
 - Independent observation, reconciliation, cases, and four-finality authority models are designed, but only the domain records and Phase 3A persistence foundation exist.
 - Ethereum/Foundry/Web3j and native Solana/SPL Token approaches are accepted design directions; no contract, program, SDK, local chain, wallet, or deployment is present.
@@ -72,7 +72,7 @@ The planned [bank-to-bank stablecoin transfer demonstration](docs/TRANSFER_DEMO.
 ## Future Work
 
 - **Transfer workflow execution:** authorize attempts and execute/inquire each bank or token effect through later adapter slices; preserve ambiguity and evidence gates before advancing.
-- **HSM/MPC/custody signer implementations:** isolated local signer plus provider-neutral production authority integrations; raw production keys remain outside application memory.
+- **HSM/MPC/custody signer implementations:** provider-neutral production authority integrations; raw production keys remain outside application memory.
 - **Ethereum/Foundry/Web3j local vertical slice:** authorized mint, ERC-20 transfer, burn, deployment, observation, ambiguity/replacement, and recovery on Anvil.
 - **Solana native-SVM/SPL Token local vertical slice:** mint/account setup, native mint/transfer/burn, lifetime/commitment, observation, and recovery on a local validator.
 - **Independent observation and reconciliation:** versioned native evidence, provider disagreement, breaks/cases, and authorized append-only repair.
@@ -96,8 +96,9 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ├── domain/                    # Plain Java domain boundary
 ├── application/               # Framework-free use cases and ports
 ├── adapters/
-│   └── persistence-postgres/  # Explicit JDBC/Flyway operation, transfer, delivery, and signing evidence
-├── control-plane/             # Spring APIs, reference route/wallet resolution, and opt-in worker
+│   ├── persistence-postgres/  # Explicit JDBC/Flyway operation, transfer, delivery, and signing evidence
+│   └── signer-local/          # Explicit-profile, in-memory local-development signing only
+├── control-plane/             # Spring APIs, reference route/wallet resolution, opt-in worker/signer
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
 │   ├── IMPLEMENTATION.md      # Living delivery plan and current state
@@ -113,7 +114,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 └── SECURITY.md
 ```
 
-Future executable slices may add bank, signer, and chain adapters plus `contracts/evm/`, conditional `programs/solana/`, and `integration-tests/`. They are planned paths, not current modules, and will not be created empty.
+Future executable slices may add bank and chain adapters plus `contracts/evm/`, conditional `programs/solana/`, and `integration-tests/`. They are planned paths, not current modules, and will not be created empty.
 
 ## Build and Inspect the Current Implementation
 
@@ -141,6 +142,17 @@ curl --fail --silent http://localhost:8080/actuator/health/readiness
 ```
 
 The response has status `UP`. Inspect the authoritative contract at `/openapi/token-operations-v1.yaml` and the current implementation evidence in [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md). Business endpoints return 401 in the default repository configuration because no issuer, decoder, local user, password, or token is configured; integration tests inject fixture-only identities and authorities. Stop the application with `Ctrl-C`. No RPC URL, key, wallet, custody account, chain process, or public service is required.
+
+For isolated local signing, add the explicit `local-signer` Spring profile to the same private/local PostgreSQL launch. The profile generates one ephemeral secp256k1 key and one ephemeral Ed25519 key in process memory, emits a development-only warning, and wires the internal Phase 4A service. It reads no key, seed, mnemonic, keystore, or credential; restart creates new aliases and key versions. There is still no public signing endpoint or chain execution.
+
+```bash
+SPRING_PROFILES_ACTIVE=local-signer \
+SPRING_DATASOURCE_URL="${DB_URL}" \
+SPRING_DATASOURCE_USERNAME="${DB_USERNAME}" \
+SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \
+JAVA_HOME=/opt/homebrew/opt/openjdk /opt/homebrew/opt/openjdk/bin/java \
+  -jar control-plane/target/digital-banking-control-plane-0.1.0-SNAPSHOT.jar
+```
 
 ## AI-assisted engineering
 
@@ -188,4 +200,4 @@ Graph queries, reports, plugin advice, and agent suggestions are navigation aids
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3A acceptance, Phase 3B worker/recovery, and Phase 3C transfer-acceptance slices and their limits. The next bounded recommendation is the provider-neutral signing-authority boundary, not chain deployment or end-to-end transfer execution.
+[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices and Phase 4 signing controls with their limits. The next bounded recommendation is the first Ethereum adapter slice under ADR 0002, not end-to-end transfer execution or production custody.
