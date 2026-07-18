@@ -51,7 +51,7 @@ public class LocalEthereumConfiguration {
                 dataSource, properties.rpcUrl(),
                 new Web3jEthereumMintChainAdapter.Configuration(
                         properties.chainId(), properties.contractAddress(),
-                        properties.recipientAddress(), signingAddress,
+                        properties.requiredMintRecipientAddress(), signingAddress,
                         evmKey.alias().value(), evmKey.keyVersion(),
                         properties.maxPriorityFeePerGas(), properties.maxFeePerGas(),
                         properties.gasLimit(), properties.confirmations(),

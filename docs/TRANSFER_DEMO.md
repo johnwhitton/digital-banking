@@ -4,7 +4,7 @@
 
 This document is the authoritative detailed specification for two local-only, non-production USDZELLE demonstrations. It is subordinate to accepted [ADRs](adr/README.md), the canonical [design](DESIGN.md), and executable tests; [the implementation roadmap](IMPLEMENTATION.md) owns phase status and dependencies.
 
-**Status:** `partially implemented`. Phase 3C verifies durable acceptance of one five-effect transfer parent and first-withdrawal preparation. Phases 4A-4B verify durable signing authority plus a session-ephemeral local signer. Phase 5A verifies one separately accepted local-Anvil mint to one configured recipient with durable submission and observation evidence. Phase 5B adds the named, deterministic local owner/admin, bank-settlement, and segregated user-custody identities required by both paths. No bank effect, wallet transfer, redemption, burn execution, reserve record, complete parent saga, Solana adapter, or demonstration below is executable end to end.
+**Status:** `partially implemented`. Phase 3C verifies durable acceptance of one five-effect transfer parent and first-withdrawal preparation. Phases 4A-4B verify durable signing authority plus a session-ephemeral local signer. Phase 5A verifies one separately accepted local-Anvil mint to one configured recipient with durable submission and observation evidence. Phase 5B adds the named, deterministic local owner/admin, bank-settlement, and segregated user-custody identities required by both paths. Phase 5C verifies one separate internal local-Anvil transfer from `USER_WALLET_1` to `USER_WALLET_2`, with exact quantity, source-only signing, durable ambiguity recovery, and independent observation. No runtime bank effect, redemption, burn execution, reserve record, complete parent saga, Solana adapter, public wallet-transfer API, or demonstration below is executable end to end.
 
 Zelle is a public case study only. `USDZELLE` is a reference asset name and does not assert that Early Warning Services issues a stablecoin, accepts deposits, owns reserves, operates wallets, shares reserve income, or selected this architecture.
 
@@ -15,7 +15,7 @@ Zelle is a public case study only. `USDZELLE` is a reference asset name and does
 - **Demo A — settlement-only fiat transfer:** customers hold fiat before and after payment; institutional wallets use USDZELLE only inside the settlement saga.
 - **Demo B — user-held USDZELLE lifecycle:** a user can on-ramp, retain tokens, optionally transfer them, and redeem later. Receipt does not force redemption.
 
-Economic ownership and private-key custody are independent. Compatible models are self-custody, segregated custodial wallets, and omnibus custody with an internal beneficial-balance ledger. Demo B selects segregated local custodial identities: the implemented `local-demo` signer can resolve named user-wallet identities, but no transfer or balance product consumes them yet. This is not self-custody and not production custody.
+Economic ownership and private-key custody are independent. Compatible models are self-custody, segregated custodial wallets, and omnibus custody with an internal beneficial-balance ledger. Demo B selects segregated local custodial identities: the internal Phase 5C primitive consumes two named `local-demo` user-wallet identities, but no balance product or public API exposes it. This is not self-custody and not production custody.
 
 The currently implemented business API remains:
 
@@ -71,7 +71,7 @@ An exact duplicate command or delivery returns the original durable parent/effec
 
 ### Current gaps
 
-Runtime mock-bank debit/credit/inquiry, ERC-20 transfer, redemption receipt, ADMIN burn, six-effect orchestration, compensation execution, supply reconciliation, and a runnable environment are all planned. Phase 5B supplies the named settlement identities only; Phase 5A proves only the separate mint primitive.
+Runtime mock-bank debit/credit/inquiry, bank-settlement ERC-20 transfers, redemption receipt, ADMIN burn, six-effect orchestration, compensation execution, supply reconciliation, and a runnable environment are all planned. Phase 5C proves only a separate user-custody transfer primitive; it does not execute the Phase 3C parent or either institutional transfer in Demo A.
 
 ## Demo B — user-held USDZELLE lifecycle
 
@@ -126,7 +126,7 @@ Success evidence includes parent/child IDs for bank debit/reserve, mint, optiona
 
 ### Current gaps
 
-No user-held balance product, synthetic reserve ledger, runtime bank effect, generic transfer, redemption workflow, ADMIN burn, reserve/supply reconciliation, identity-provider profile, or public API for these operations exists. The named local registry and deterministic signer are custody prerequisites only; neither Phase 5A nor Phase 5B can be described as a reserve-backed on-ramp.
+No user-held balance product, synthetic reserve ledger, runtime bank effect, on-ramp, redemption workflow, ADMIN burn, reserve/supply reconciliation, identity-provider profile, or public API for these operations exists. The Phase 5C transfer is standalone internal infrastructure and cannot be described as a reserve-backed on-ramp or complete Demo B workflow.
 
 ## Shared saga, evidence output, and finality rules
 
@@ -145,7 +145,7 @@ The eventual local evidence summary conceptually includes parent/child operation
 
 ## Ethereum-first and Solana-second realization
 
-Ethereum completes the missing transfer, redemption/burn, bank/reserve, and orchestration phases first. Foundry/Anvil own native EVM execution and Web3j remains inside `adapters/ethereum-web3j/`. Phase 5A currently supports mint only; Phase 5B supplies local wallet custody without enabling chain execution.
+Ethereum completes redemption/burn, bank/reserve, and orchestration phases first. Foundry/Anvil own native EVM execution and Web3j remains inside `adapters/ethereum-web3j/`. Phase 5A supports the bounded mint, Phase 5B supplies local wallet custody, and Phase 5C supplies one bounded user-custody transfer; none composes an end-to-end demonstration.
 
 Solana follows through the same provider-neutral business contracts after the Ethereum demonstrations. Its adapter must preserve native fee payer/authority, accounts, instructions, recent blockhash or durable nonce, signature, slot, commitment, expiry, and SPL Token evidence. ADR 0003 requires a bounded Java-client gate, classic SPL Token first, no Neon baseline, and Rust/Anchor only if existing programs cannot express required behavior.
 

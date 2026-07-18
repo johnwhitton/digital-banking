@@ -11,6 +11,7 @@ import io.github.johnwhitton.digitalbanking.application.port.ChainPort;
 import io.github.johnwhitton.digitalbanking.application.port.SignerPort;
 import io.github.johnwhitton.digitalbanking.application.port.SigningKeyRegistry;
 import io.github.johnwhitton.digitalbanking.application.port.WalletIdentityRegistry;
+import io.github.johnwhitton.digitalbanking.application.port.WalletTransferChainPort;
 import io.github.johnwhitton.digitalbanking.domain.signing.KeyAlias;
 import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
@@ -89,6 +90,7 @@ class LocalDemoProfileIntegrationTest extends PostgresApiIntegrationSupport {
         assertTrue(signingAuthority != null);
         assertEquals(10, wallets.identities().size());
         assertTrue(context.getBeansOfType(ChainPort.class).isEmpty());
+        assertTrue(context.getBeansOfType(WalletTransferChainPort.class).isEmpty());
         assertTrue(mappings.getHandlerMethods().keySet().stream()
                 .noneMatch(mapping -> mapping.toString().toLowerCase(Locale.ROOT)
                         .contains("sign")));

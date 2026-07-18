@@ -20,6 +20,15 @@ class LocalEthereumPropertiesTest {
                 () -> properties("http://user:secret@127.0.0.1:8545", 31_337L));
         assertThrows(IllegalArgumentException.class,
                 () -> properties("http://127.0.0.1:8545", 1L));
+
+        LocalEthereumProperties transferOnly = new LocalEthereumProperties(
+                "http://localhost:8545", 31_337L,
+                "0x1111111111111111111111111111111111111111", "",
+                BigInteger.ONE, BigInteger.TWO, BigInteger.valueOf(180_000),
+                1, "USD_STABLE", "USD", 1, 2,
+                BigInteger.valueOf(1_000_000_000_000L), "local-policy-v1");
+        assertThrows(IllegalArgumentException.class,
+                transferOnly::requiredMintRecipientAddress);
     }
 
     private static LocalEthereumProperties properties(String url, long chainId) {

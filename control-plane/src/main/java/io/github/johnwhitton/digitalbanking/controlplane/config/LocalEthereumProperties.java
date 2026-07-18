@@ -44,7 +44,7 @@ public record LocalEthereumProperties(
             throw new IllegalArgumentException("local Ethereum chain ID must be 31337");
         }
         requireText(contractAddress, "contractAddress");
-        requireText(recipientAddress, "recipientAddress");
+        recipientAddress = recipientAddress == null ? "" : recipientAddress;
         requireNonNegative(maxPriorityFeePerGas, "maxPriorityFeePerGas");
         requireNonNegative(maxFeePerGas, "maxFeePerGas");
         if (maxFeePerGas.compareTo(maxPriorityFeePerGas) < 0) {
@@ -63,6 +63,11 @@ public record LocalEthereumProperties(
             throw new IllegalArgumentException("local Ethereum asset/unit policy is invalid");
         }
         requireText(policyVersion, "policyVersion");
+    }
+
+    String requiredMintRecipientAddress() {
+        requireText(recipientAddress, "recipientAddress");
+        return recipientAddress;
     }
 
     private static void requireText(String value, String field) {

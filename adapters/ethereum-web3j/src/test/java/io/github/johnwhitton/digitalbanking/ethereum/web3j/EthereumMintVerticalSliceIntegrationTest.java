@@ -289,7 +289,7 @@ class EthereumMintVerticalSliceIntegrationTest {
 
     @Test
     void migrationCreatesV5NonceAttemptAndObservationTables() {
-        assertEquals(5, jdbc.sql("""
+        assertEquals(6, jdbc.sql("""
                 SELECT count(*) FROM flyway_schema_history WHERE success
                 """).query(Integer.class).single());
         assertEquals(3, jdbc.sql("""
@@ -589,7 +589,7 @@ class EthereumMintVerticalSliceIntegrationTest {
                 policyVersion);
     }
 
-    private static String deployReferenceToken(Web3j client, String admin) throws Exception {
+    static String deployReferenceToken(Web3j client, String admin) throws Exception {
         String bytecode = forgeBytecode();
         String constructor = FunctionEncoder.encodeConstructor(List.of(new Address(admin)));
         EthSendTransaction sent = client.ethSendTransaction(
@@ -609,7 +609,7 @@ class EthereumMintVerticalSliceIntegrationTest {
         return contract;
     }
 
-    private static void grantMinter(
+    static void grantMinter(
             Web3j client, String admin, String contract, String signingAddress) throws Exception {
         byte[] role = Numeric.hexStringToByteArray(Hash.sha3String("MINTER_ROLE"));
         Function grant = new Function(
@@ -647,7 +647,7 @@ class EthereumMintVerticalSliceIntegrationTest {
                 value, function.getOutputParameters()).getFirst().getValue();
     }
 
-    private static TransactionReceipt waitForReceipt(Web3j client, String hash) throws Exception {
+    static TransactionReceipt waitForReceipt(Web3j client, String hash) throws Exception {
         for (int attempt = 0; attempt < 100; attempt++) {
             Optional<TransactionReceipt> receipt = client.ethGetTransactionReceipt(hash)
                     .send().getTransactionReceipt();
@@ -676,7 +676,7 @@ class EthereumMintVerticalSliceIntegrationTest {
         return output;
     }
 
-    private static final class AnvilNode implements AutoCloseable {
+    static final class AnvilNode implements AutoCloseable {
 
         private final Process process;
         private final String endpoint;

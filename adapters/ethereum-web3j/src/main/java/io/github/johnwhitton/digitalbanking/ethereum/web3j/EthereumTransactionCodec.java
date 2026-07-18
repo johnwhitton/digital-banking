@@ -18,7 +18,7 @@ import org.web3j.crypto.Sign;
 import org.web3j.crypto.TransactionEncoder;
 import org.web3j.utils.Numeric;
 
-/** Ethereum-native EIP-1559 and ERC-20 mint encoding kept inside the adapter. */
+/** Ethereum-native EIP-1559 and bounded ERC-20 encoding kept inside the adapter. */
 public final class EthereumTransactionCodec {
 
     private static final BigInteger CURVE_ORDER = Sign.CURVE_PARAMS.getN();
@@ -32,6 +32,16 @@ public final class EthereumTransactionCodec {
                 List.of(new Address(recipient), new Uint256(atomicAmount)),
                 List.of());
         return FunctionEncoder.encode(mint);
+    }
+
+    public String transferCalldata(String destination, BigInteger atomicAmount) {
+        requireAddress(destination, "destination");
+        requirePositive(atomicAmount, "atomicAmount");
+        Function transfer = new Function(
+                "transfer",
+                List.of(new Address(destination), new Uint256(atomicAmount)),
+                List.of());
+        return FunctionEncoder.encode(transfer);
     }
 
     public String addressFromPublicKey(byte[] uncompressedPublicKey) {

@@ -53,7 +53,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 4. Signing boundary                    | `verified`    | Phase 4A provides durable authority/evidence; Phase 4B adds explicit-profile, session-ephemeral secp256k1/Ed25519 signing. Production custody remains absent. |
 | 5A. Local Ethereum mint                | `verified`    | One accepted mint completes on local Anvil with durable signing/submission/observation evidence. |
 | 5B. Local multi-wallet custody         | `verified`    | Versioned named ADMIN, bank, redemption, and user identities plus local-demo-only configured signing passed the 426-test offline reactor. |
-| 5C. Ethereum wallet transfer           | `planned`     | Generic exact ERC-20 transfer through the existing provider-neutral lifecycle. |
+| 5C. Ethereum wallet transfer           | `verified`    | One internal exact user-custody ERC-20 transfer reuses the durable signing, submission, ambiguity, and observation lifecycle on Anvil. |
 | 5D. Ethereum redemption and burn       | `planned`     | Confirm redemption receipt, then ADMIN burns only its redeemed balance. |
 | 6A. Synthetic reserves and mock banks  | `planned`     | Durable synthetic balances, reserve liability, inquiry, replay, and reconciliation. |
 | 6B. User-held workflows                | `planned`     | On-ramp and redemption parents complete Demo B locally. |
@@ -65,7 +65,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 7D. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
 | 8. Final reference review              | `planned`     | Architecture, code, security, recovery, API/demo, and share-readiness review. |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated session-ephemeral local provider, Phase 5A's bounded local-Anvil mint to one configured recipient, and Phase 5B's immutable configured local wallet registry and deterministic signer. The Phase 5B closeout records the current complete Maven gate: 426 passing tests across seven modules; the unchanged Foundry contract suite last recorded five passing tests in Phase 5A. The default runtime has no identity provider, signer, or chain client. Profiles `local-signer` plus `local-ethereum` compose the mint handler, require explicit loopback/local-chain configuration, and expose no new public endpoint; the separate `local-demo` profile supplies named POC-only custody identities without enabling chain execution. No dynamic or persistent wallet-management service, reserve subsystem, runtime bank effect, wallet transfer, burn execution, parent orchestration, demo environment, or Solana adapter exists. Both [USDZELLE demonstrations](TRANSFER_DEMO.md) remain future work. Each planned phase below requires its own separately authorized plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated session-ephemeral local provider, Phase 5A's bounded local-Anvil mint to one configured recipient, Phase 5B's immutable configured local wallet registry and deterministic signer, and Phase 5C's internal standalone transfer between two server-resolved user-custody wallets. The Phase 5C closeout records 436 passing tests across the seven-module offline reactor; the unchanged Foundry suite last recorded five passing tests in Phase 5A. Profiles `local-signer` plus `local-ethereum` compose the mint handler; profiles `local-demo` plus `local-ethereum` compose the wallet-transfer handler. Both require explicit loopback/local-chain configuration and expose no new public endpoint. The default runtime has no identity provider, signer, or chain client. No dynamic or persistent wallet-management service, reserve subsystem, runtime bank effect, Ethereum burn, parent orchestration, demo environment, or Solana adapter exists. Both [USDZELLE demonstrations](TRANSFER_DEMO.md) remain future work. Each planned phase below requires its own separately authorized plan.
 
 ## Phase 1: Foundation
 
@@ -177,7 +177,7 @@ Phases 4-8 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 **Risks:** unsafe admin/upgrade authority, fake finality, submit/observe provider coupling, fixture keys presented as production patterns.
 
-**Deferred:** Ethereum wallet transfer, burn, replacement/cancellation, longer-lived reorg monitoring, parent-transfer integration, public networks, production contracts/deployment/admin, and provider/custody selection.
+**Deferred:** Ethereum wallet transfer, burn, replacement/cancellation, longer-lived reorg monitoring, parent-transfer integration, public networks, production contracts/deployment/admin, and provider/custody selection. Phase 5C later implements a separate user-custody transfer path without changing this Phase 5A boundary.
 
 ### Phase 5B: local multi-wallet custody and configured signer
 
@@ -197,17 +197,17 @@ Phases 4-8 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 ### Phase 5C: Ethereum generic wallet transfer
 
-**Status:** `planned`
+**Status:** `verified`
 
 **Dependency:** Phase 5B and the verified Phase 5A native attempt/observation seam.
 
-**Plan:** not created until separately authorized.
+**Plan:** completed at [`docs/plans/completed/PHASE_5C_ETHEREUM_WALLET_TRANSFER.md`](plans/completed/PHASE_5C_ETHEREUM_WALLET_TRANSFER.md).
 
-**Deliverables:** standard ERC-20 transfer from a server-resolved source wallet; the same provider-neutral application contract for bank-settlement and user-wallet aliases; durable nonce and EIP-1559 signing; submit-once ambiguity recovery; independent receipt, exact event, confirmation, and canonicality observation; and participant-safe status evidence.
+**Delivered boundary:** one internal standalone command resolves distinct enabled `USER_CUSTODY` source and destination identities server-side, persists their opaque references, public addresses, registry/key versions, exact two-decimal quantity, route/policy, four finalities, outbox, and one stable attempt. The source key alone authorizes the exact ERC-20 `transfer(address,uint256)` digest through Phase 4A. PostgreSQL V6 reuses the Phase 5A per-source nonce cursor, adds normalized transfer attempt/observation evidence, and preserves submit-once ambiguity recovery. Independent local-Anvil observation verifies the exact sender, contract, nonce, calldata, successful receipt, one non-removed `Transfer` event, confirmation count, and canonical block before advancing only blockchain finality and narrow technical completion.
 
-**Exit gate:** an exact transfer succeeds on Anvil, redelivery cannot duplicate it, and both bank and user wallet aliases use the same bounded adapter path.
+**Exit gate:** an exact `100.00` transfer (`10,000` atomic units) moves the complete fixture balance from `USER_WALLET_1` to `USER_WALLET_2` on Anvil without changing supply; redelivery cannot resubmit it, response loss recovers by the retained transaction identity, per-source nonce allocation is concurrency-safe, and changed source authority metadata fails before native preparation or signing.
 
-**Non-goals:** burn, redemption payout, parent orchestration, arbitrary caller-selected wallets, or production/public networks.
+**Non-goals:** bank-wallet transfer, burn, redemption payout, parent orchestration, public API/OpenAPI changes, arbitrary caller-selected wallets or calldata, replacement transactions, or production/public networks.
 
 ### Phase 5D: Ethereum redemption and ADMIN burn
 
@@ -374,6 +374,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Completed Phase 4B local signer plan: [`docs/plans/completed/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md`](plans/completed/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md).
 - Completed Phase 5A local Ethereum mint plan: [`docs/plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md`](plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
 - Completed Phase 5B configured local custody plan: [`docs/plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md`](plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md).
+- Completed Phase 5C local Ethereum wallet-transfer plan: [`docs/plans/completed/PHASE_5C_ETHEREUM_WALLET_TRANSFER.md`](plans/completed/PHASE_5C_ETHEREUM_WALLET_TRANSFER.md).
 - Completed dual-product-path and delivery-roadmap alignment: [`docs/plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md`](plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md).
 - Completed Zelle share-readiness and transfer-roadmap plan: [`docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
@@ -436,6 +437,17 @@ The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A
 
 ## Latest bounded vertical slice
 
+Action Request 16 implements **Phase 5C Local Ethereum Wallet Transfer**:
+
+- one internal standalone acceptance service with exact quantities, scoped replay/conflict, immutable server-resolved source/destination custody context, four finalities, and no endpoint or OpenAPI change;
+- one forward-only V6 migration for wallet-transfer aggregate, outbox/inbox, attempt, submission, ambiguity, and normalized observation facts while V1-V5 remain unchanged;
+- one direct ERC-20 `transfer(address,uint256)` EIP-1559 path that reuses Phase 5A encoding, nonce, submit-once, inquiry, and canonical observation semantics without adding arbitrary calldata or replacement behavior;
+- source-only Phase 4A authorization fenced by accepted and current registry/key versions, with the destination, ADMIN, owner, and bank keys unable to substitute;
+- exact transaction/receipt/single-event/canonicality observation that advances blockchain finality only; and
+- consolidated real-PostgreSQL and real-Anvil evidence for exact balance movement, unchanged supply, response-loss recovery without resubmission, authority rotation fencing, and per-source concurrent nonces.
+
+This slice adds no public API/OpenAPI, Solidity, dependency, burn, redemption, bank/reserve, parent-orchestration, Compose, public-network, production-custody, or Solana behavior. Its execution record is the [completed Phase 5C plan](plans/completed/PHASE_5C_ETHEREUM_WALLET_TRANSFER.md); Phase 5D redemption receipt and ADMIN burn is the next bounded recommendation.
+
 Action Request 15 implements **Phase 5B Local Multi-Wallet Custody and Configured Signing**:
 
 - one immutable provider-neutral wallet registry carrying server-owned reference/aliases, owner category, Ethereum network, normalized derived address, key reference, registry/key version, explicit purpose set, and enabled status;
@@ -445,7 +457,7 @@ Action Request 15 implements **Phase 5B Local Multi-Wallet Custody and Configure
 - one safe tracked `.env.example` plus an ignored mode-`0600` `.env.local-anvil` local artifact boundary, with redacted property diagnostics and no dotenv dependency; and
 - focused generated-key tests for wallet/purpose isolation, restart stability, rotation fencing, configuration failures, redaction, profile conflict/readiness, default/ephemeral isolation, and absence of chain/public signing reachability.
 
-This slice adds no API/OpenAPI, migration, dependency, contract, RPC, transaction, transfer, redemption, burn, reserve, bank, parent-orchestration, public-network, production-custody, or Solana behavior. Its execution record is the [completed Phase 5B plan](plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md); Phase 5C generic Ethereum wallet transfer is the next bounded recommendation.
+This slice adds no API/OpenAPI, migration, dependency, contract, RPC, transaction, transfer, redemption, burn, reserve, bank, parent-orchestration, public-network, production-custody, or Solana behavior. Its execution record is the [completed Phase 5B plan](plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md); Phase 5C now consumes its user-custody identities through the separately bounded transfer path.
 
 Action Request 13 implements **Phase 5A Local Ethereum Mint Vertical Slice**:
 
@@ -456,7 +468,7 @@ Action Request 13 implements **Phase 5A Local Ethereum Mint Vertical Slice**:
 - explicit `local-ethereum` plus `local-signer` composition fenced to uncredentialed loopback HTTP and chain `31337`, with no default contract/recipient address; and
 - Foundry, independent transaction-vector, real PostgreSQL, real Anvil, concurrent nonce, duplicate, response-loss, revert, default-context, and configuration evidence under [ADR 0007](adr/0007-local-ethereum-mint-vertical-slice.md) and the [completed Phase 5A plan](plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
 
-This is one local development mint effect, not either complete demonstration. It neither executes an accepted transfer effect nor implements burn, wallet transfer, replacement/cancellation, production custody, hosted/public RPC, legal/customer/accounting finality, or settlement. Phase 5B now supplies the named least-authority local identities without changing this mint path; Phase 5C remains the next chain effect.
+This is one local development mint effect, not either complete demonstration. It neither executes an accepted Phase 3C transfer effect nor implements burn, replacement/cancellation, production custody, hosted/public RPC, legal/customer/accounting finality, or settlement. Phase 5B supplies the named least-authority local identities without changing this mint path; Phase 5C adds a separate internal user-custody transfer primitive.
 
 The preceding Action Request 12 implements **Phase 4B Isolated Local-Development Signer**:
 
@@ -529,4 +541,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum mint, configured local-custody foundation, remaining bank/provider/chain effects, and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 5B closeout, the next recommended bounded action is Phase 5C Ethereum generic wallet transfer; it must add no burn, reserve, bank, parent-orchestration, or public-network behavior.
+The implemented transfer/signing boundaries, bounded local-Ethereum mint, configured local-custody foundation, internal local-Ethereum user-wallet transfer, remaining bank/provider/chain effects, and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 5C closeout, the next recommended bounded action is Phase 5D Ethereum redemption receipt and ADMIN burn; it must add no bank payout, reserve release, parent orchestration, or public-network behavior.

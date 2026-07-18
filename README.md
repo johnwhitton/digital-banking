@@ -48,12 +48,13 @@ Status vocabulary:
 | Phase 4 signing boundary               | `verified` | Phase 4A supplies durable authority, replay/conflict, ambiguity/inquiry, and PostgreSQL V4 evidence. Phase 4B adds one explicitly enabled `local-signer` profile with session-only secp256k1 and Ed25519 keys, exact-material signatures, and no public endpoint or chain effect. Production custody remains absent. |
 | Phase 5A local Ethereum mint           | `verified` | One explicit `local-ethereum` + `local-signer` path processes an accepted mint on Anvil through a durable nonce/attempt fence, exact EIP-1559 signing, submit-once ambiguity recovery, and independent receipt/event/canonicality observation. It advances only technical operation state and blockchain finality. |
 | Phase 5B configured local custody      | `verified` | The opt-in `local-demo` profile requires ten deterministic, server-owned EVM identities behind one immutable provider-neutral registry. Keys are supplied only from ignored local process configuration, addresses and stable public versions are derived from those keys, purpose/address/version mismatches fail closed, and no API or chain effect is added. |
+| Phase 5C local Ethereum wallet transfer | `verified` | One internal, standalone `USER_WALLET_1` to `USER_WALLET_2` transfer uses exact atomic units, server-resolved custody identities, source-only authorization, per-source durable nonces, submit-once ambiguity recovery, and independent transaction/event/canonicality observation on Anvil. No endpoint or parent-saga behavior is added. |
 
-The current full offline reactor result is **426 passing Maven tests across seven modules**. The unchanged Foundry contract suite last recorded **five passing tests** in the Phase 5A closeout and was not rerun because Phase 5B changes no Solidity or chain effect. The current business API includes `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Durable transfer acceptance and effect planning are not bank movement, minting, token transfer, burning, deposit, settlement, or chain execution.
+The current full offline reactor result is **436 passing Maven tests across seven modules**. The unchanged Foundry contract suite last recorded **five passing tests** in the Phase 5A closeout and was not rerun because Phase 5C changes no Solidity. The current business API includes `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Durable Phase 3C transfer acceptance and effect planning still do not execute bank movement or blockchain effects; the Phase 5C transfer remains a separate internal local primitive.
 
 ## Designed, Not Executable
 
-- Burn requests are durably accepted but are not executed on Ethereum, and wallet-to-wallet Ethereum transfer is not implemented.
+- Burn requests are durably accepted but are not executed on Ethereum. The Phase 5C wallet transfer is an internal local-Anvil primitive, not a public product or an executed Phase 3C parent effect.
 - The settlement-only bank-to-bank parent flow is not orchestrated end to end. Phase 3C records its existing five-effect aggregate and first-withdrawal preparation; the future six-step Demo A adds a distinct redemption transfer before ADMIN burn, and mock-bank effects are not executed at runtime.
 - Default business endpoints have no runtime identity provider and therefore deny access.
 - The durable provider-neutral signing boundary, session-ephemeral signer, and configured local-custody signer are limited to their explicit local profiles; no production HSM, MPC, secret-manager, or custody signer exists.
@@ -67,11 +68,11 @@ The reference architecture supports two distinct USDZELLE outcomes without confl
 | Path | Customer outcome | On-chain holders/signers | Current state | Target |
 | --- | --- | --- | --- | --- |
 | Settlement-only | User sends and receives fiat; USDZELLE is an institutional settlement asset inside the saga | `ADMIN` plus bank settlement and redemption wallets | Phase 3C parent/effect acceptance, local mint, and named local wallet/signing identities are implemented; remaining effects and orchestration are planned | Demo A on Ethereum, then Solana |
-| User-held USDZELLE | User can acquire, hold, optionally transfer, and later redeem USDZELLE | `ADMIN` plus segregated custodial user wallets in the local POC | Local mint and segregated local custody identities are implemented; reserve, transfer, redemption, and burn are planned | Demo B on Ethereum, then Solana |
+| User-held USDZELLE | User can acquire, hold, optionally transfer, and later redeem USDZELLE | `ADMIN` plus segregated custodial user wallets in the local POC | Local mint, segregated local custody identities, and one standalone user-wallet transfer primitive are implemented; reserve, on-ramp, redemption, and burn remain planned | Demo B on Ethereum, then Solana |
 
 ```text
-Implemented now: domain + durable API/worker + transfer parent + signing + local Ethereum mint + configured local custody
-Next: Ethereum transfer -> Ethereum redemption/burn
+Implemented now: domain + durable API/worker + transfer parent + signing + local Ethereum mint + configured local custody + local user-wallet transfer
+Next: Ethereum redemption/burn
 Then: synthetic reserve/mock banks -> both Ethereum demos
 After Ethereum: native Solana parity -> both Solana demos
 Finally: code/security/share-readiness review
@@ -79,7 +80,7 @@ Finally: code/security/share-readiness review
 
 The authoritative [design](docs/DESIGN.md) owns architecture and custody/reserve boundaries; the [implementation roadmap](docs/IMPLEMENTATION.md) owns phase status and completed-plan links; the [demo contract](docs/TRANSFER_DEMO.md) specifies Demo A and Demo B; and the [plan lifecycle](docs/plans/README.md) governs authorization and closeout. No future phase is active until separately authorized.
 
-The `local-demo` profile now composes an immutable startup registry for `CONTRACT_OWNER`/`CONTRACT_DEPLOYER`, `ADMIN`/`ADMIN_REDEMPTION`, four bank-settlement wallets, and four user wallets. It does not persist keys, dynamically manage wallets, activate the Phase 5A chain path, or execute a transfer. The local Phase 5A mint continues to use the separate session-ephemeral signer. The reserve subsystem, executable wallet transfer, Ethereum burn, runtime bank effect, complete parent orchestration, Docker Compose/demo script, Solana adapter, production custody, public networks/RPC, real funds or reserve assets, yield, revenue sharing, and accounting/legal/customer-finality claims remain absent.
+The `local-demo` profile composes an immutable startup registry for `CONTRACT_OWNER`/`CONTRACT_DEPLOYER`, `ADMIN`/`ADMIN_REDEMPTION`, four bank-settlement wallets, and four user wallets. Combined with `local-ethereum`, it can execute the bounded internal user-wallet transfer; it still does not persist keys, dynamically manage wallets, activate the separate Phase 5A mint path, or expose a transfer endpoint. The reserve subsystem, Ethereum burn, runtime bank effect, complete parent orchestration, Docker Compose/demo script, Solana adapter, production custody, public networks/RPC, real funds or reserve assets, yield, revenue sharing, and accounting/legal/customer-finality claims remain absent.
 
 ## On-Chain Development Approach
 
@@ -176,7 +177,7 @@ JAVA_HOME=/opt/homebrew/opt/openjdk /opt/homebrew/opt/openjdk/bin/java \
   -jar control-plane/target/digital-banking-control-plane-0.1.0-SNAPSHOT.jar
 ```
 
-`local-demo` accepts only chain ID `31337`, derives and validates every address, fails when a required identity is incomplete, and is mutually exclusive with `local-signer`. It creates no RPC client, contract action, transaction, business endpoint, or automatic Phase 5A composition. These environment variables are acceptable only for this local reference profile; production custody requires workload identity/secret management plus HSM, MPC, or custody infrastructure behind the same signer port.
+`local-demo` accepts only chain ID `31337`, derives and validates every address, fails when a required identity is incomplete, and is mutually exclusive with `local-signer`. Alone it creates no RPC client or chain effect; combined with `local-ethereum`, it composes only the internal Phase 5C user-wallet transfer worker and still exposes no new business endpoint. These environment variables are acceptable only for this local reference profile; production custody requires workload identity/secret management plus HSM, MPC, or custody infrastructure behind the same signer port.
 
 The self-contained Phase 5A proof is the Ethereum adapter integration suite. It starts a random-session Anvil node, deploys and configures the local reference token through unlocked development RPC accounts, uses the ephemeral signer for mint authorization, and tears everything down without a committed private key:
 
@@ -244,4 +245,4 @@ Graph queries, reports, plugin advice, and agent suggestions are navigation aids
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5A local mint, Phase 5B configured local custody, and separately authorized future phases with their limits. The next bounded recommendation is Phase 5C Ethereum generic wallet transfer—not end-to-end orchestration, burn, or production custody.
+[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5A local mint, Phase 5B configured local custody, Phase 5C local user-wallet transfer, and separately authorized future phases with their limits. The next bounded recommendation is Phase 5D Ethereum redemption and ADMIN burn—not end-to-end orchestration, bank/reserve behavior, or production custody.

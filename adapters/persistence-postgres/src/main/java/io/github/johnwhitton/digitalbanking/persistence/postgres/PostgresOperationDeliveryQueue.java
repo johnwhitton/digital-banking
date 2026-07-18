@@ -28,16 +28,16 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
 
     private final JdbcClient jdbc;
     private final TransactionTemplate transaction;
-    private final boolean mintOnly;
+    private final Filter filter;
 
     public PostgresOperationDeliveryQueue(DataSource dataSource) {
-        this(dataSource, false);
+        this(dataSource, Filter.ALL);
     }
 
-    private PostgresOperationDeliveryQueue(DataSource dataSource, boolean mintOnly) {
+    private PostgresOperationDeliveryQueue(DataSource dataSource, Filter filter) {
         Objects.requireNonNull(dataSource, "dataSource");
         this.jdbc = JdbcClient.create(dataSource);
-        this.mintOnly = mintOnly;
+        this.filter = Objects.requireNonNull(filter, "filter");
         this.transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         this.transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
         this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -45,7 +45,12 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
 
     /** Queue view used by the bounded Phase 5A worker; unsupported outbox rows remain untouched. */
     public static PostgresOperationDeliveryQueue mintOnly(DataSource dataSource) {
-        return new PostgresOperationDeliveryQueue(dataSource, true);
+        return new PostgresOperationDeliveryQueue(dataSource, Filter.MINT);
+    }
+
+    /** Queue view used by Phase 5C; all other accepted work remains untouched. */
+    public static PostgresOperationDeliveryQueue walletTransfersOnly(DataSource dataSource) {
+        return new PostgresOperationDeliveryQueue(dataSource, Filter.WALLET_TRANSFER);
     }
 
     @Override
@@ -72,7 +77,9 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
             String workerId, Instant claimedAt, Instant leaseExpiresAt, int limit) {
         List<Candidate> candidates = jdbc.sql("""
                 SELECT candidate.event_id,
-                       COALESCE(candidate.operation_id, candidate.transfer_id) AS aggregate_id,
+                       COALESCE(candidate.operation_id, candidate.transfer_id,
+                                (to_jsonb(candidate)->>'wallet_transfer_id')::uuid)
+                           AS aggregate_id,
                        candidate.event_type, candidate.event_version,
                        candidate.payload_schema_version,
                        candidate.delivery_attempt_count, candidate.lease_id
@@ -81,19 +88,25 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                             AND candidate.available_at <= :now)
                         OR (candidate.status = 'IN_PROGRESS'
                             AND candidate.lease_expires_at <= :now))
-                  AND (:mintOnly = FALSE OR (
-                      candidate.event_type = 'TokenOperationAccepted'
-                      AND EXISTS (
-                          SELECT 1 FROM token_operation supported_operation
-                          WHERE supported_operation.operation_id = candidate.operation_id
-                            AND supported_operation.operation_kind = 'MINT')))
+                  AND (:filter = 'ALL'
+                      OR (:filter = 'MINT'
+                          AND candidate.event_type = 'TokenOperationAccepted'
+                          AND EXISTS (
+                              SELECT 1 FROM token_operation supported_operation
+                              WHERE supported_operation.operation_id = candidate.operation_id
+                                AND supported_operation.operation_kind = 'MINT'))
+                      OR (:filter = 'WALLET_TRANSFER'
+                          AND candidate.event_type = 'WalletTransferAccepted'))
                   AND NOT EXISTS (
                       SELECT 1
                       FROM operation_outbox prior
                       WHERE ((prior.operation_id = candidate.operation_id
                                 AND candidate.operation_id IS NOT NULL)
                             OR (prior.transfer_id = candidate.transfer_id
-                                AND candidate.transfer_id IS NOT NULL))
+                                AND candidate.transfer_id IS NOT NULL)
+                            OR ((to_jsonb(prior)->>'wallet_transfer_id')
+                                    = (to_jsonb(candidate)->>'wallet_transfer_id')
+                                AND (to_jsonb(candidate)->>'wallet_transfer_id') IS NOT NULL))
                         AND (prior.created_at, prior.event_id)
                             < (candidate.created_at, candidate.event_id)
                         AND prior.status IN ('PENDING', 'IN_PROGRESS'))
@@ -108,7 +121,7 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                 """)
                 .param("now", utc(claimedAt))
                 .param("limit", limit)
-                .param("mintOnly", mintOnly)
+                .param("filter", filter.name())
                 .query((row, rowNumber) -> new Candidate(
                         row.getObject("event_id", UUID.class),
                         row.getObject("aggregate_id", UUID.class),
@@ -345,18 +358,25 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                     AND candidate.available_at <= :now)
                                 OR (candidate.status = 'IN_PROGRESS'
                                     AND candidate.lease_expires_at <= :now))
-                          AND (:mintOnly = FALSE OR (
-                              candidate.event_type = 'TokenOperationAccepted'
-                              AND EXISTS (
-                                  SELECT 1 FROM token_operation supported_operation
-                                  WHERE supported_operation.operation_id = candidate.operation_id
-                                    AND supported_operation.operation_kind = 'MINT')))
+                          AND (:filter = 'ALL'
+                              OR (:filter = 'MINT'
+                                  AND candidate.event_type = 'TokenOperationAccepted'
+                                  AND EXISTS (
+                                      SELECT 1 FROM token_operation supported_operation
+                                      WHERE supported_operation.operation_id = candidate.operation_id
+                                        AND supported_operation.operation_kind = 'MINT'))
+                              OR (:filter = 'WALLET_TRANSFER'
+                                  AND candidate.event_type = 'WalletTransferAccepted'))
                           AND NOT EXISTS (
                               SELECT 1 FROM operation_outbox prior
                               WHERE ((prior.operation_id = candidate.operation_id
                                         AND candidate.operation_id IS NOT NULL)
                                     OR (prior.transfer_id = candidate.transfer_id
-                                        AND candidate.transfer_id IS NOT NULL))
+                                        AND candidate.transfer_id IS NOT NULL)
+                                    OR ((to_jsonb(prior)->>'wallet_transfer_id')
+                                            = (to_jsonb(candidate)->>'wallet_transfer_id')
+                                        AND (to_jsonb(candidate)->>'wallet_transfer_id')
+                                            IS NOT NULL))
                                 AND (prior.created_at, prior.event_id)
                                     < (candidate.created_at, candidate.event_id)
                                 AND prior.status IN ('PENDING', 'IN_PROGRESS')))
@@ -364,7 +384,7 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                     FROM eligible
                     """)
                     .param("now", utc(measuredAt))
-                    .param("mintOnly", mintOnly)
+                    .param("filter", filter.name())
                     .query((row, rowNumber) -> new MetricsRow(
                             row.getLong("eligible_count"),
                             instantOrNull(row.getObject("oldest_at", OffsetDateTime.class))))
@@ -373,15 +393,18 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                     SELECT count(*)
                     FROM operation_outbox candidate
                     WHERE status = 'IN_PROGRESS' AND lease_expires_at > :now
-                      AND (:mintOnly = FALSE OR (
-                          candidate.event_type = 'TokenOperationAccepted'
-                          AND EXISTS (
-                              SELECT 1 FROM token_operation supported_operation
-                              WHERE supported_operation.operation_id = candidate.operation_id
-                                AND supported_operation.operation_kind = 'MINT')))
+                      AND (:filter = 'ALL'
+                          OR (:filter = 'MINT'
+                              AND candidate.event_type = 'TokenOperationAccepted'
+                              AND EXISTS (
+                                  SELECT 1 FROM token_operation supported_operation
+                                  WHERE supported_operation.operation_id = candidate.operation_id
+                                    AND supported_operation.operation_kind = 'MINT'))
+                          OR (:filter = 'WALLET_TRANSFER'
+                              AND candidate.event_type = 'WalletTransferAccepted'))
                     """)
                     .param("now", utc(measuredAt))
-                    .param("mintOnly", mintOnly)
+                    .param("filter", filter.name())
                     .query(Long.class).single();
             Duration oldestAge = eligible.oldestAt() == null
                     ? Duration.ZERO : Duration.between(eligible.oldestAt(), measuredAt);
@@ -433,4 +456,10 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
             UUID currentLeaseId) { }
 
     private record MetricsRow(long eligibleCount, Instant oldestAt) { }
+
+    private enum Filter {
+        ALL,
+        MINT,
+        WALLET_TRANSFER
+    }
 }

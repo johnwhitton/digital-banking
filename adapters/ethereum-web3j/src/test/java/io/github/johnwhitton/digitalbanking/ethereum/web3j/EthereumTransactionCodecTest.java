@@ -38,6 +38,18 @@ class EthereumTransactionCodecTest {
     }
 
     @Test
+    void encodesExactDirectTransferWithoutAnArbitraryCallSurface() {
+        String calldata = codec.transferCalldata(RECIPIENT, BigInteger.valueOf(10_000));
+
+        assertEquals("a9059cbb", calldata.substring(2, 10));
+        assertEquals("0".repeat(24) + RECIPIENT.substring(2),
+                calldata.substring(10, 74));
+        assertEquals("0".repeat(60) + "2710", calldata.substring(74));
+        assertThrows(IllegalArgumentException.class,
+                () -> codec.transferCalldata(RECIPIENT, BigInteger.ZERO));
+    }
+
+    @Test
     void encodesOnlyLowSCompactSignatureFromExpectedSigner() throws Exception {
         ECKeyPair key = Keys.createEcKeyPair();
         EthereumTransactionCodec.Transaction transaction = transaction();
