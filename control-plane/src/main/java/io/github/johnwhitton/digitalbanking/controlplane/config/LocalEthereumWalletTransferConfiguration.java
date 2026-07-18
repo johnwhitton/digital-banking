@@ -12,17 +12,21 @@ import io.github.johnwhitton.digitalbanking.application.delivery.OperationDelive
 import io.github.johnwhitton.digitalbanking.application.delivery.RedemptionAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.WalletTransferAcceptedDeliveryHandler;
+import io.github.johnwhitton.digitalbanking.application.delivery.UsdzelleWorkflowAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.port.AssetUnitCatalog;
 import io.github.johnwhitton.digitalbanking.application.port.ClockPort;
 import io.github.johnwhitton.digitalbanking.application.port.IdGenerator;
 import io.github.johnwhitton.digitalbanking.application.port.OperationRepository;
 import io.github.johnwhitton.digitalbanking.application.port.TransferIdentityGenerator;
+import io.github.johnwhitton.digitalbanking.application.port.UsdzelleWorkflowContextResolver;
+import io.github.johnwhitton.digitalbanking.application.port.UsdzelleWorkflowRepository;
 import io.github.johnwhitton.digitalbanking.application.port.WalletIdentityRegistry;
 import io.github.johnwhitton.digitalbanking.application.port.WalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationKind;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningRequest;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
+import io.github.johnwhitton.digitalbanking.domain.workflow.UsdzelleWorkflow;
 import io.github.johnwhitton.digitalbanking.ethereum.web3j.PostgresWalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.ethereum.web3j.Web3jEthereumBurnChainAdapter;
 import io.github.johnwhitton.digitalbanking.ethereum.web3j.Web3jEthereumWalletTransferChainAdapter;
@@ -32,6 +36,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 /** Local-only composition for the standalone user-wallet transfer slice. */
 @Configuration(proxyBeanMethods = false)
@@ -88,6 +93,7 @@ public class LocalEthereumWalletTransferConfiguration {
     }
 
     @Bean
+    @Primary
     OperationDeliveryHandler localEthereumWalletTransferDeliveryHandler(
             OperationRepository operations,
             WalletTransferRepository transfers,
@@ -98,7 +104,11 @@ public class LocalEthereumWalletTransferConfiguration {
             WalletIdentityRegistry wallets,
             ClockPort clock,
             IdGenerator ids,
-            LocalEthereumProperties properties) {
+            LocalEthereumProperties properties,
+            UsdzelleWorkflowRepository workflows,
+            UsdzelleWorkflowContextResolver workflowContexts,
+            @Qualifier("localUsdzelleMintHandler") OperationDeliveryHandler mintHandler,
+            UsdzelleWorkflowAcceptedDeliveryHandler workflowHandler) {
         WalletIdentityRegistry.WalletIdentity admin = wallets.resolve(ADMIN_REDEMPTION);
         var custodyHandler = new WalletTransferAcceptedDeliveryHandler(
                 transfers, transferChain, signing, wallets, clock, Duration.ofMinutes(5));
@@ -109,11 +119,55 @@ public class LocalEthereumWalletTransferConfiguration {
                         REDEMPTION_POLICY_VERSION, OperationKind.BURN,
                         SigningRequest.Action.BURN,
                         SigningRequest.KeyRole.BURN_AUTHORITY));
-        return new RedemptionAcceptedDeliveryHandler(
+        var standaloneRedemption = new RedemptionAcceptedDeliveryHandler(
                 operations, transfers, acceptance, burnHandler, custodyHandler,
                 new WalletReference("synthetic-wallet:"
                         + properties.redemptionSourceWallet()),
                 ADMIN_REDEMPTION);
+        return delivery -> {
+            if (UsdzelleWorkflowAcceptedDeliveryHandler.EVENT_TYPE.equals(
+                    delivery.eventType())) {
+                return workflowHandler.handle(delivery);
+            }
+            if (WalletTransferAcceptedDeliveryHandler.EVENT_TYPE.equals(
+                    delivery.eventType())) {
+                return custodyHandler.handle(delivery);
+            }
+            if (TokenOperationAcceptedDeliveryHandler.EVENT_TYPE.equals(
+                    delivery.eventType())) {
+                var operation = operations.findById(delivery.operationId())
+                        .orElseThrow(() -> new IllegalArgumentException(
+                                "token operation was not found"));
+                if (operation.acceptanceContext().businessCorrelation()
+                        .startsWith("usdzelle:")) {
+                    verifyWorkflowContext(operation, workflows, workflowContexts);
+                }
+                if (operation.kind() == OperationKind.MINT) {
+                    return mintHandler.handle(delivery);
+                }
+                if (operation.acceptanceContext().businessCorrelation()
+                        .startsWith("usdzelle:")) {
+                    return burnHandler.handle(delivery);
+                }
+            }
+            return standaloneRedemption.handle(delivery);
+        };
+    }
+
+    private static void verifyWorkflowContext(
+            io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation operation,
+            UsdzelleWorkflowRepository workflows,
+            UsdzelleWorkflowContextResolver contexts) {
+        String[] correlation = operation.acceptanceContext()
+                .businessCorrelation().split(":", 3);
+        if (correlation.length != 3) {
+            throw new IllegalStateException("workflow child correlation is invalid");
+        }
+        UsdzelleWorkflow workflow = workflows.findById(new UsdzelleWorkflow.Id(
+                        java.util.UUID.fromString(correlation[1])))
+                .orElseThrow(() -> new IllegalStateException(
+                        "workflow child parent is unavailable"));
+        contexts.verifyAccepted(workflow);
     }
 
     @Bean

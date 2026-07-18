@@ -83,7 +83,8 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
         List<Candidate> candidates = jdbc.sql("""
                 SELECT candidate.event_id,
                        COALESCE(candidate.operation_id, candidate.transfer_id,
-                                (to_jsonb(candidate)->>'wallet_transfer_id')::uuid)
+                                (to_jsonb(candidate)->>'wallet_transfer_id')::uuid,
+                                (to_jsonb(candidate)->>'workflow_id')::uuid)
                            AS aggregate_id,
                        candidate.event_type, candidate.event_version,
                        candidate.payload_schema_version,
@@ -103,12 +104,13 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                       OR (:filter = 'WALLET_TRANSFER'
                           AND candidate.event_type = 'WalletTransferAccepted')
                       OR (:filter = 'LOCAL_ETHEREUM_DEMO'
-                          AND (candidate.event_type = 'WalletTransferAccepted'
+                          AND (candidate.event_type IN (
+                                'WalletTransferAccepted', 'UsdzelleWorkflowAccepted')
                             OR (candidate.event_type = 'TokenOperationAccepted'
                                 AND EXISTS (
                                     SELECT 1 FROM token_operation supported_operation
                                     WHERE supported_operation.operation_id = candidate.operation_id
-                                      AND supported_operation.operation_kind = 'BURN')))))
+                                      AND supported_operation.operation_kind IN ('MINT', 'BURN'))))))
                   AND NOT EXISTS (
                       SELECT 1
                       FROM operation_outbox prior
@@ -118,7 +120,10 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                 AND candidate.transfer_id IS NOT NULL)
                             OR ((to_jsonb(prior)->>'wallet_transfer_id')
                                     = (to_jsonb(candidate)->>'wallet_transfer_id')
-                                AND (to_jsonb(candidate)->>'wallet_transfer_id') IS NOT NULL))
+                                AND (to_jsonb(candidate)->>'wallet_transfer_id') IS NOT NULL)
+                            OR ((to_jsonb(prior)->>'workflow_id')
+                                    = (to_jsonb(candidate)->>'workflow_id')
+                                AND (to_jsonb(candidate)->>'workflow_id') IS NOT NULL))
                         AND (prior.created_at, prior.event_id)
                             < (candidate.created_at, candidate.event_id)
                         AND prior.status IN ('PENDING', 'IN_PROGRESS'))
@@ -350,8 +355,97 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                     .param("attemptNumber", delivery.attemptNumber())
                     .param("leaseId", delivery.leaseId());
             requireOne(history.update(), "delivery attempt outcome");
+            if (reviewReason != null
+                    && "UsdzelleWorkflowAccepted".equals(delivery.eventType())) {
+                synchronizeWorkflowManualReview(
+                        delivery, recordedAt);
+            }
             return LeaseUpdateResult.UPDATED;
         }));
+    }
+
+    private void synchronizeWorkflowManualReview(
+            OperationDelivery delivery,
+            Instant recordedAt) {
+        var retained = jdbc.sql("""
+                        SELECT workflow.workflow_id, workflow.aggregate_version,
+                               workflow.workflow_status, step.step_id
+                        FROM operation_outbox outbox
+                        JOIN usdzelle_workflow workflow
+                          ON workflow.workflow_id = outbox.workflow_id
+                        JOIN LATERAL (
+                            SELECT candidate.step_id
+                            FROM usdzelle_workflow_step candidate
+                            WHERE candidate.workflow_id = workflow.workflow_id
+                              AND candidate.step_status <> 'COMPLETED'
+                            ORDER BY candidate.step_sequence
+                            LIMIT 1) step ON true
+                        WHERE outbox.event_id = :eventId
+                          AND workflow.workflow_status NOT IN (
+                              'COMPLETED', 'MANUAL_REVIEW', 'FAILED_NO_EFFECT')
+                        FOR UPDATE OF workflow
+                        """)
+                .param("eventId", delivery.deliveryId())
+                .query((row, number) -> new WorkflowReview(
+                        row.getObject("workflow_id", UUID.class),
+                        row.getLong("aggregate_version"),
+                        row.getString("workflow_status"),
+                        row.getObject("step_id", UUID.class)))
+                .optional();
+        if (retained.isEmpty()) {
+            return;
+        }
+        WorkflowReview review = retained.orElseThrow();
+        long nextVersion = review.version() + 1;
+        String evidence = "internal:usdzelle:delivery-manual-review:"
+                + delivery.deliveryId();
+        requireOne(jdbc.sql("""
+                        UPDATE usdzelle_workflow
+                        SET workflow_status = 'MANUAL_REVIEW',
+                            aggregate_version = :nextVersion,
+                            updated_at = :recordedAt
+                        WHERE workflow_id = :workflowId
+                          AND aggregate_version = :expectedVersion
+                        """)
+                .param("nextVersion", nextVersion)
+                .param("recordedAt", utc(recordedAt))
+                .param("workflowId", review.workflowId())
+                .param("expectedVersion", review.version()).update(),
+                "workflow manual-review update");
+        requireOne(jdbc.sql("""
+                        UPDATE usdzelle_workflow_step
+                        SET step_status = 'MANUAL_REVIEW',
+                            evidence_reference = :evidence
+                        WHERE workflow_id = :workflowId AND step_id = :stepId
+                        """)
+                .param("evidence", evidence)
+                .param("workflowId", review.workflowId())
+                .param("stepId", review.stepId()).update(),
+                "workflow step manual-review update");
+        jdbc.sql("""
+                        INSERT INTO usdzelle_workflow_transition (
+                            workflow_id, aggregate_version, transition_id,
+                            from_status, to_status, step_id,
+                            evidence_reference, recorded_at)
+                        VALUES (:workflowId, :version, :transitionId,
+                            :fromStatus, 'MANUAL_REVIEW', :stepId,
+                            :evidence, :recordedAt)
+                        """)
+                .param("workflowId", review.workflowId())
+                .param("version", nextVersion)
+                .param("transitionId", delivery.deliveryId())
+                .param("fromStatus", review.status())
+                .param("stepId", review.stepId())
+                .param("evidence", evidence)
+                .param("recordedAt", utc(recordedAt)).update();
+        jdbc.sql("""
+                        INSERT INTO usdzelle_workflow_evidence (
+                            workflow_id, aggregate_version, evidence_reference)
+                        VALUES (:workflowId, :version, :evidence)
+                        """)
+                .param("workflowId", review.workflowId())
+                .param("version", nextVersion)
+                .param("evidence", evidence).update();
     }
 
     @Override
@@ -380,12 +474,15 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                               OR (:filter = 'WALLET_TRANSFER'
                                   AND candidate.event_type = 'WalletTransferAccepted')
                               OR (:filter = 'LOCAL_ETHEREUM_DEMO'
-                                  AND (candidate.event_type = 'WalletTransferAccepted'
+                                  AND (candidate.event_type IN (
+                                        'WalletTransferAccepted',
+                                        'UsdzelleWorkflowAccepted')
                                     OR (candidate.event_type = 'TokenOperationAccepted'
                                         AND EXISTS (
                                             SELECT 1 FROM token_operation supported_operation
                                             WHERE supported_operation.operation_id = candidate.operation_id
-                                              AND supported_operation.operation_kind = 'BURN')))))
+                                              AND supported_operation.operation_kind
+                                                  IN ('MINT', 'BURN'))))))
                           AND NOT EXISTS (
                               SELECT 1 FROM operation_outbox prior
                               WHERE ((prior.operation_id = candidate.operation_id
@@ -395,6 +492,10 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                     OR ((to_jsonb(prior)->>'wallet_transfer_id')
                                             = (to_jsonb(candidate)->>'wallet_transfer_id')
                                         AND (to_jsonb(candidate)->>'wallet_transfer_id')
+                                            IS NOT NULL)
+                                    OR ((to_jsonb(prior)->>'workflow_id')
+                                            = (to_jsonb(candidate)->>'workflow_id')
+                                        AND (to_jsonb(candidate)->>'workflow_id')
                                             IS NOT NULL))
                                 AND (prior.created_at, prior.event_id)
                                     < (candidate.created_at, candidate.event_id)
@@ -422,12 +523,15 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                           OR (:filter = 'WALLET_TRANSFER'
                               AND candidate.event_type = 'WalletTransferAccepted')
                           OR (:filter = 'LOCAL_ETHEREUM_DEMO'
-                              AND (candidate.event_type = 'WalletTransferAccepted'
+                              AND (candidate.event_type IN (
+                                    'WalletTransferAccepted',
+                                    'UsdzelleWorkflowAccepted')
                                 OR (candidate.event_type = 'TokenOperationAccepted'
                                     AND EXISTS (
                                         SELECT 1 FROM token_operation supported_operation
                                         WHERE supported_operation.operation_id = candidate.operation_id
-                                          AND supported_operation.operation_kind = 'BURN')))))
+                                          AND supported_operation.operation_kind
+                                              IN ('MINT', 'BURN'))))))
                     """)
                     .param("now", utc(measuredAt))
                     .param("filter", filter.name())
@@ -482,6 +586,9 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
             UUID currentLeaseId) { }
 
     private record MetricsRow(long eligibleCount, Instant oldestAt) { }
+
+    private record WorkflowReview(
+            UUID workflowId, long version, String status, UUID stepId) { }
 
     private enum Filter {
         ALL,

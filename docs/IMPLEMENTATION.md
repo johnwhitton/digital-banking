@@ -56,7 +56,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 5C. Ethereum wallet transfer           | `verified`    | One internal exact user-custody ERC-20 transfer reuses the durable signing, submission, ambiguity, and observation lifecycle on Anvil. |
 | 5D. Ethereum redemption and burn       | `verified`    | One local user-to-ADMIN custody transfer gates one exact ADMIN own-balance burn with durable one-time evidence and supply reconciliation. |
 | 6A. Synthetic reserves and mock banks  | `verified` | Exact local USD withdrawals/deposits/inquiry plus closed reserve/liability posting, authoritative one-time evidence consumption, durable reversals, and reserve/supply reconciliation pass focused and full offline gates. |
-| 6B. User-held workflows                | `planned`     | On-ramp and redemption parents complete Demo B locally. |
+| 6B. User-held workflows                | `verified` | Separate acquisition and redemption parents compose exact synthetic bank, accounting, custody, mint/burn, payout-before-burn, and reconciliation boundaries under the combined local profiles; the 487-test offline reactor is green. |
 | 6C. Settlement-only orchestration      | `planned`     | Six-effect fiat-to-fiat parent completes Demo A locally. |
 | 6D. Ethereum demo environment          | `planned`     | Reproducible local environment, commands, cleanup, and evidence summaries for both demos. |
 | 7A. Native Solana semantic gate        | `planned`     | Local tooling and Java-client/native-contract mapping gate. |
@@ -65,7 +65,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 7D. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
 | 8. Final reference review              | `planned`     | Architecture, code, security, recovery, API/demo, and share-readiness review. |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil mint/custody/transfer/redemption/burn primitives, and Phase 6A's independently executable exact-USD synthetic bank effects plus internal reserve/liability posting and reconciliation. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the separate local mock-bank contract; combined with `local-ethereum` it also composes the existing transfer/redemption/burn handler. `local-signer` plus `local-ethereum` composes the separate mint handler. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, or accounting service. No dynamic wallet management, automatic bank/accounting/chain orchestration, real payout/reserve, complete parent, demo environment, or Solana adapter exists. Both [USDZELLE demonstrations](TRANSFER_DEMO.md) remain future work. Each planned phase below requires its own separately authorized plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil mint/custody/transfer/redemption/burn primitives, Phase 6A's exact-USD synthetic bank and reserve/liability accounting primitives, and Phase 6B's separate configured user-held acquisition/redemption parents. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the separate local mock-bank contract; combined with `local-ethereum` it composes the existing chain handlers plus participant-scoped `/v1/usdzelle` workflow resources. `local-signer` plus `local-ethereum` composes the separate Phase 5A mint handler. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. No dynamic wallet management, real bank/reserve, settlement-only parent execution, reproducible demo environment, or Solana adapter exists. Demo B's workflow core exists locally, while both complete operator demonstrations remain future work. Each planned phase below requires its own separately authorized plan.
 
 ## Phase 1: Foundation
 
@@ -241,17 +241,17 @@ Phases 4-8 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 ### Phase 6B: user-held on-ramp and redemption workflows
 
-**Status:** `planned`
+**Status:** `verified`
 
 **Dependency:** Phases 6A and 5D.
 
-**Plan:** not created until separately authorized.
+**Plan:** completed at [`docs/plans/completed/PHASE_6B_USER_HELD_ONRAMP_AND_REDEMPTION.md`](plans/completed/PHASE_6B_USER_HELD_ONRAMP_AND_REDEMPTION.md).
 
-**Deliverables:** an on-ramp parent coordinating synthetic bank debit/reserve credit with mint to a segregated user wallet; a redemption parent coordinating transfer to `ADMIN_REDEMPTION`, synthetic bank payout, ADMIN burn, and reserve release; optional user-to-user transfer through Phase 5C; durable child correlation, evidence, ambiguity handling, compensation/manual-review decisions, and four distinct finalities.
+**Delivered boundary:** two explicit plain-Java parents with immutable accepted bank, exact USD/token, user/ADMIN wallet, local network/contract, and policy context; V9 normalized workflow/idempotency/step/transition/child/evidence/conclusion persistence; atomic outbox acceptance, database-authoritative concurrent replay/conflict, restart reconstruction, leases, and one-step delivery; acquisition ordering of withdrawal, reserve funding, mint, mint accounting, and reconciliation; redemption ordering of custody, custody accounting, payout, payout accounting, ADMIN burn, and reconciliation; existing bank inquiry plus mint/transfer/burn ambiguity/observation machinery; and local-profile participant POST/GET resources with distinct acquire/redeem/read authorities and a minimized OpenAPI contract. The configured proof maps only `USER_1`; optional user-to-user transfer remains its separate internal Phase 5C operation.
 
-**Exit gate:** Demo B proves exact customer-bank, wallet, supply, and reserve before/after states; a user can retain USDZELLE without forced off-ramp; replay and restart cannot duplicate value effects.
+**Exit gate:** the consolidated real-PostgreSQL/Anvil test proves acquisition from bank `10,000` cents and zero reserve/supply to user `10,000` atomic units, followed by a separately accepted redemption back to bank `10,000` and zero reserve/liability/custody/supply. It proves payout accounting precedes burn confirmation and exact replay does not create a second deposit. Focused gates are green; final independent/Ponytail review and the one full offline reactor remain before verification.
 
-**Non-goals:** settlement-only orchestration, self-custody production support, omnibus subledgering, real bank/reserve integration, or public networks.
+**Non-goals:** settlement-only orchestration, public user-to-user transfer, automatic compensation, self-custody production support, omnibus subledgering, real bank/reserve integration, production identity/custody, public networks, or Solana.
 
 ### Phase 6C: settlement-only fiat transfer orchestration
 
@@ -438,6 +438,17 @@ The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A
 
 ## Latest bounded vertical slice
 
+Action Request 19 implements **Phase 6B User-Held On-Ramp and Redemption Orchestration**:
+
+- separate exact acquisition and redemption parents with immutable participant, bank, asset/unit, user/ADMIN wallet, local contract/network, and policy context;
+- forward-only V9 normalized workflow/idempotency/step/history/child/evidence/conclusion persistence plus the existing outbox lease/recovery boundary;
+- one-step orchestration reusing authoritative synthetic bank, accounting, mint, redemption-custody, burn, observation, and reconciliation services without copying child truth;
+- payout-before-burn after confirmed custody accounting, with one retained payout identity and an explicit paid ADMIN-custody-pending-burn recovery position;
+- participant-scoped local-profile acquisition/redemption POST/GET resources, distinct acquire/redeem/read authorities, minimized status projection, OpenAPI, and bounded metrics; and
+- one consolidated fresh PostgreSQL/Anvil proof that acquires and later redeems exact `10,000` cents/base units, pays once, and returns bank/reserve/liability/custody/supply to the expected zero-net state.
+
+This slice adds no settlement-only parent, public user-wallet API, automatic compensation, dependency, contract change, demo script/environment, real banking/reserve/custody, public network, Solana behavior, or production claim. Its one Ponytail review, one independent review with focused remediation, and 487-test offline reactor are green; Phase 6C settlement-only orchestration is next after closeout.
+
 Action Request 18 implements **Phase 6A Synthetic Reserves and Executable Mock Banks**:
 
 - exact integer USD cents plus deterministic version-fenced `local-demo` fixtures for four bank identities and the two authorized participant accounts;
@@ -446,7 +457,7 @@ Action Request 18 implements **Phase 6A Synthetic Reserves and Executable Mock B
 - forward-only V8 normalized bank, journal, one-time evidence-consumption, custody/supply-position, and reconciliation persistence with append-only and balanced-entry database enforcement; and
 - the ADR 0009 closed four-account posting model, trusted durable evidence verification, both payout/burn orderings, and explicit reserve-ledger/chain-supply/incomplete/stale break results.
 
-This slice invokes bank and accounting primitives independently. It adds no parent orchestration, automatic mint/transfer/burn, chain/Solidity/signing change, real banking/reserves, audited statement, attestation, accounting finality, public network, Compose, Solana, or production claim. Phase 6B user-held on-ramp and redemption workflows are next after closeout.
+This slice invokes bank and accounting primitives independently. It adds no parent orchestration, automatic mint/transfer/burn, chain/Solidity/signing change, real banking/reserves, audited statement, attestation, accounting finality, public network, Compose, Solana, or production claim. Phase 6B subsequently composes these primitives only for the user-held local path.
 
 Action Request 17 implements **Phase 5D Local Ethereum Redemption Custody and Burn**:
 
@@ -562,4 +573,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, and independent synthetic-bank/accounting primitives—plus the remaining workflows and two end-to-end demonstrations—are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 6A closeout, the next recommended bounded action is Phase 6B user-held on-ramp and redemption workflows; it must compose existing primitives without adding settlement-only orchestration, public-network behavior, or production custody.
+The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, and Phase 6B user-held parents—plus the remaining settlement workflow and two operator demonstrations—are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 6B closeout, the next recommended bounded action is Phase 6C settlement-only orchestration; it must preserve the distinct user-held path and add no public-network or production-custody behavior.

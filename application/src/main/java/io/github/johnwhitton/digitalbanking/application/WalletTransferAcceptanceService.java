@@ -63,7 +63,7 @@ public final class WalletTransferAcceptanceService {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(request, "request");
         try {
-            String digest = canonicalDigest(participant, request);
+            String digest = canonicalDigest(participant, request, "WALLET_TRANSFER");
             var retained = transfers.findByIdempotency(participant, key.sha256());
             if (retained.isPresent()) {
                 WalletTransferOperation existing = retained.orElseThrow();
@@ -174,6 +174,62 @@ public final class WalletTransferAcceptanceService {
         }
     }
 
+    public WalletTransferRepository.Acceptance acceptRedemptionCustody(
+            ParticipantScope participant, IdempotencyKey key, Request request) {
+        Objects.requireNonNull(participant, "participant");
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(request, "request");
+        try {
+            String digest = canonicalDigest(
+                    participant, request, "REDEMPTION_CUSTODY");
+            var retained = transfers.findByIdempotency(participant, key.sha256());
+            if (retained.isPresent()) {
+                WalletTransferOperation existing = retained.orElseThrow();
+                if (existing.purpose()
+                                != WalletTransferOperation.Purpose.REDEMPTION_CUSTODY
+                        || existing.commandVersion() != COMMAND_VERSION
+                        || !existing.commandDigest().equals(digest)) {
+                    throw new IdempotencyConflictException();
+                }
+                return new WalletTransferRepository.Acceptance(existing, true);
+            }
+            var unit = assets.find(
+                            request.assetId(), request.unitId(), request.unitVersion())
+                    .orElseThrow(UnknownAssetUnitException::new);
+            TokenQuantity quantity = TokenQuantity.parse(request.amount(), unit);
+            WalletIdentityRegistry.WalletIdentity source = wallets.resolve(request.source());
+            WalletIdentityRegistry.WalletIdentity destination =
+                    wallets.resolve(request.destination());
+            validateResolution(request.source(), source);
+            validateRedemptionDestination(request.destination(), destination);
+            if (source.normalizedAddress().equals(destination.normalizedAddress())) {
+                throw new IllegalArgumentException(
+                        "redemption source and ADMIN destination must differ");
+            }
+            var operationId = operationIds.nextOperationId();
+            var acceptedAt = clock.now().truncatedTo(ChronoUnit.MICROS);
+            WalletTransferOperation proposed = new WalletTransferOperation(
+                    operationId, transferIds.nextTransferId(), transferIds.nextEffectId(),
+                    participant, key.sha256(), COMMAND_VERSION, digest, quantity,
+                    WalletTransferOperation.Purpose.REDEMPTION_CUSTODY,
+                    WalletTransferOperation.WalletSnapshot.from(source, request.source()),
+                    WalletTransferOperation.WalletSnapshot.from(
+                            destination, request.destination()),
+                    SettlementNetwork.ETHEREUM, policy.contractAddress(),
+                    policy.contractVersion(), policy.finalityPolicyVersion(),
+                    operationIds.nextAttemptId(), WalletTransferOperation.Status.ACCEPTED,
+                    0, acceptedAt, acceptedAt,
+                    java.util.List.of(new EvidenceRef(
+                            "internal:workflow-redemption-custody:accepted:" + operationId)),
+                    WalletTransferOperation.initialFinalities());
+            return transfers.acceptRedemptionCustody(proposed);
+        } catch (IdempotencyConflictException | UnknownAssetUnitException failure) {
+            throw failure;
+        } catch (IllegalArgumentException failure) {
+            throw new InvalidRequestException(failure);
+        }
+    }
+
     private static void validateResolution(
             WalletReference requested, WalletIdentityRegistry.WalletIdentity resolved) {
         if (!resolved.reference().equals(requested)
@@ -207,12 +263,13 @@ public final class WalletTransferAcceptanceService {
 
     private static String canonicalDigest(
             ParticipantScope participant,
-            Request request) {
+            Request request,
+            String purpose) {
         try {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             try (DataOutputStream output = new DataOutputStream(buffer)) {
                 output.writeInt(COMMAND_VERSION);
-                write(output, "WALLET_TRANSFER");
+                write(output, purpose);
                 write(output, participant.tenantId());
                 write(output, participant.participantId());
                 write(output, request.amount());

@@ -39,7 +39,8 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
                                 "/actuator/health", "/actuator/health/**",
-                                "/openapi/token-operations-v1.yaml")
+                                "/openapi/token-operations-v1.yaml",
+                                "/openapi/usdzelle-workflows-v1.yaml")
                         .permitAll()
                         .requestMatchers(HttpMethod.POST, "/v1/token-operations/mints")
                         .hasAuthority("token:mint")
@@ -51,6 +52,14 @@ public class SecurityConfiguration {
                         .hasAuthority("transfer:create")
                         .requestMatchers(HttpMethod.GET, "/v1/transfers/*")
                         .hasAuthority("transfer:read")
+                        .requestMatchers(HttpMethod.POST, "/v1/usdzelle/acquisitions")
+                        .hasAuthority("usdzelle:acquire")
+                        .requestMatchers(HttpMethod.POST, "/v1/usdzelle/redemptions")
+                        .hasAuthority("usdzelle:redeem")
+                        .requestMatchers(HttpMethod.GET,
+                                "/v1/usdzelle/acquisitions/*",
+                                "/v1/usdzelle/redemptions/*")
+                        .hasAuthority("usdzelle:read")
                         .requestMatchers(HttpMethod.POST,
                                 "/local/v1/mock-banks/*/accounts/*/withdrawals")
                         .hasAuthority("local-bank:debit")

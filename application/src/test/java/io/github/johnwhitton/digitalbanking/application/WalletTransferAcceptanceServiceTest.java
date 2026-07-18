@@ -181,6 +181,26 @@ class WalletTransferAcceptanceServiceTest {
         assertEquals(accepted.operation(), replay.operation());
     }
 
+    @Test
+    void acceptsWorkflowCustodyBeforeTheLaterBurnExists() {
+        InMemoryRepository repository = new InMemoryRepository();
+        WalletTransferAcceptanceService service = service(repository, Map.of(
+                SOURCE, identity(SOURCE, "0x1111111111111111111111111111111111111111"),
+                ADMIN_REDEMPTION, adminIdentity()));
+        IdempotencyKey key = new IdempotencyKey("workflow-custody-1");
+
+        var accepted = service.acceptRedemptionCustody(
+                PARTICIPANT, key, request("100", SOURCE, ADMIN_REDEMPTION));
+        var replayed = service.acceptRedemptionCustody(
+                PARTICIPANT, key, request("100", SOURCE, ADMIN_REDEMPTION));
+
+        assertEquals(WalletTransferOperation.Purpose.REDEMPTION_CUSTODY,
+                accepted.operation().purpose());
+        assertEquals(new BigInteger("10000"),
+                accepted.operation().quantity().atomicUnits());
+        assertTrue(replayed.replayed());
+    }
+
     private static void assertInvalid(
             WalletIdentityRegistry.WalletIdentity source,
             WalletIdentityRegistry.WalletIdentity destination) {
@@ -305,6 +325,11 @@ class WalletTransferAcceptanceServiceTest {
 
         @Override public Acceptance acceptRedemption(
                 WalletTransferOperation proposed, OperationId burnOperationId) {
+            return accept(proposed);
+        }
+
+        @Override public Acceptance acceptRedemptionCustody(
+                WalletTransferOperation proposed) {
             return accept(proposed);
         }
 

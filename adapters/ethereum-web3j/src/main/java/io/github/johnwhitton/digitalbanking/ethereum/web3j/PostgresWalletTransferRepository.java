@@ -74,6 +74,15 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
         return accept(proposed, burnOperationId);
     }
 
+    @Override
+    public Acceptance acceptRedemptionCustody(WalletTransferOperation proposed) {
+        Objects.requireNonNull(proposed, "proposed");
+        if (proposed.purpose() != WalletTransferOperation.Purpose.REDEMPTION_CUSTODY) {
+            throw new IllegalArgumentException("redemption custody purpose is required");
+        }
+        return accept(proposed, null);
+    }
+
     private Acceptance accept(
             WalletTransferOperation proposed, OperationId burnOperationId) {
         return Objects.requireNonNull(transaction.execute(status -> {

@@ -4,6 +4,21 @@ spring:
             on-profile: local-demo
 
 digital-banking:
+    usdzelle-workflow:
+        enabled: true
+        workflow-version: phase-6b-v1
+        payout-policy-version: payout-before-burn-v1
+        conversion-policy-version: usd-usdzelle-cent-v1
+        fee-policy-version: no-fee-local-v1
+        finality-policy-version: local-ethereum-finality-v1
+        reconciliation-policy-version: reserve-chain-reconciliation-v1
+        participants:
+            - tenant-id: local-demo
+              participant-id: USER_1
+              bank-id: BANK_1
+              bank-account-id: USER_1_BANK_ACCOUNT
+              bank-account-reference: synthetic-bank:USER_1_BANK_ACCOUNT
+              user-wallet-reference: synthetic-wallet:USER_WALLET_1
     local-finance:
         enabled: true
         fixture-version: phase-6a-v1
@@ -12,7 +27,7 @@ digital-banking:
         bank-policy-version: synthetic-bank-v1
         accounting-policy-version: reserve-accounting-v1
         mint-evidence-policy-version: local-ethereum-mint-v1
-        custody-evidence-policy-version: local-ethereum-redemption-v1
+        custody-evidence-policy-version: local-ethereum-wallet-transfer-v1
         burn-evidence-policy-version: local-ethereum-redemption-v1
         chain-asset-id: USD_STABLE
         settlement-network: LOCAL_ANVIL

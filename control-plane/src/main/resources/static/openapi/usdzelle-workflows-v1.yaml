@@ -1,0 +1,225 @@
+openapi: 3.1.0
+info:
+  title: Local User-Held USDZELLE Workflow API
+  version: 1.0.0
+  description: >-
+    Participant-scoped asynchronous acquisition and redemption for the synthetic,
+    loopback-only reference environment. Acceptance is not financial settlement.
+servers:
+  - url: /
+paths:
+  /v1/usdzelle/acquisitions:
+    post:
+      operationId: acceptUsdzelleAcquisition
+      security:
+        - bearerAuth: [usdzelle:acquire]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowRequest'
+            example:
+              amount: '100'
+              currency: USD
+              bankAccountReference: synthetic-bank:USER_1_BANK_ACCOUNT
+              settlementNetwork: ETHEREUM
+      responses:
+        '202':
+          description: Durable parent accepted or exactly replayed.
+          headers:
+            Location:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Workflow'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /v1/usdzelle/acquisitions/{workflowId}:
+    get:
+      operationId: getUsdzelleAcquisition
+      security:
+        - bearerAuth: [usdzelle:read]
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      responses:
+        '200':
+          description: Participant-safe parent progress.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Workflow'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /v1/usdzelle/redemptions:
+    post:
+      operationId: acceptUsdzelleRedemption
+      security:
+        - bearerAuth: [usdzelle:redeem]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowRequest'
+            example:
+              amount: '100'
+              currency: USD
+              bankAccountReference: synthetic-bank:USER_1_BANK_ACCOUNT
+              settlementNetwork: ETHEREUM
+      responses:
+        '202':
+          description: Durable parent accepted or exactly replayed.
+          headers:
+            Location:
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Workflow'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /v1/usdzelle/redemptions/{workflowId}:
+    get:
+      operationId: getUsdzelleRedemption
+      security:
+        - bearerAuth: [usdzelle:read]
+      parameters:
+        - $ref: '#/components/parameters/WorkflowId'
+      responses:
+        '200':
+          description: Participant-safe parent progress.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Workflow'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: externally-validated-participant-token
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[!-~]+$'
+    WorkflowId:
+      name: workflowId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Problem:
+      description: Classified RFC 9457-style problem response.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    WorkflowRequest:
+      type: object
+      additionalProperties: false
+      required: [amount, currency, bankAccountReference]
+      properties:
+        amount:
+          type: string
+          pattern: '^(0|[1-9][0-9]*)(\.[0-9]*[1-9])?$'
+          maxLength: 512
+        currency:
+          type: string
+          const: USD
+        bankAccountReference:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
+        settlementNetwork:
+          type: string
+          enum: [ETHEREUM]
+    Workflow:
+      type: object
+      additionalProperties: false
+      required:
+        - workflowId
+        - kind
+        - amount
+        - currency
+        - status
+        - version
+        - acceptedAt
+        - updatedAt
+        - progress
+        - steps
+      properties:
+        workflowId: {type: string, format: uuid}
+        kind: {type: string, enum: [ACQUISITION, REDEMPTION]}
+        amount: {type: string}
+        currency: {type: string, const: USD}
+        status: {type: string}
+        version: {type: integer, format: int64, minimum: 0}
+        acceptedAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        progress: {$ref: '#/components/schemas/Progress'}
+        steps:
+          type: array
+          minItems: 5
+          maxItems: 6
+          items: {$ref: '#/components/schemas/Step'}
+    Progress:
+      type: object
+      additionalProperties: false
+      required:
+        - bankEffectStatus
+        - blockchainEffectStatus
+        - accountingPostingStatus
+        - reconciliationStatus
+        - manualReviewRequired
+      properties:
+        bankEffectStatus: {type: string, enum: [PENDING, CONFIRMED]}
+        blockchainEffectStatus: {type: string, enum: [PENDING, CONFIRMED]}
+        accountingPostingStatus: {type: string, enum: [PENDING, POSTED]}
+        reconciliationStatus: {type: string}
+        manualReviewRequired: {type: boolean}
+    Step:
+      type: object
+      additionalProperties: false
+      required: [kind, status]
+      properties:
+        kind: {type: string}
+        status:
+          type: string
+          enum:
+            - PENDING
+            - ELIGIBLE
+            - ACTIVE
+            - UNKNOWN
+            - COMPLETED
+            - FAILED_NO_EFFECT
+            - MANUAL_REVIEW
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, detail]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        instance: {type: string, format: uri}

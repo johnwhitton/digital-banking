@@ -4,7 +4,7 @@
 
 This document is the authoritative detailed specification for two local-only, non-production USDZELLE demonstrations. It is subordinate to accepted [ADRs](adr/README.md), the canonical [design](DESIGN.md), and executable tests; [the implementation roadmap](IMPLEMENTATION.md) owns phase status and dependencies.
 
-**Status:** `partially implemented`. Phase 3C verifies durable acceptance of one five-effect transfer parent and first-withdrawal preparation. Phases 4A-4B verify durable signing authority plus a session-ephemeral local signer. Phases 5A-5D verify separate local-Anvil mint, configured custody, user transfer, redemption custody, and ADMIN burn primitives. Phase 6A adds independently executable exact-USD synthetic withdrawals/deposits/inquiry and a closed reserve/liability ledger that consumes durable bank/confirmed-chain evidence once and records reserve/supply reconciliation outcomes. No on-ramp, payout/burn ordering workflow, settlement parent, Solana adapter, public wallet-transfer API, or demonstration below is executable end to end.
+**Status:** `partially implemented`. Phase 3C verifies durable acceptance of one five-effect transfer parent and first-withdrawal preparation. Phases 4A-4B verify durable signing authority plus a session-ephemeral local signer. Phases 5A-5D verify separate local-Anvil mint, configured custody, user transfer, redemption custody, and ADMIN burn primitives. Phase 6A adds exact-USD synthetic bank and reserve/liability accounting primitives. Phase 6B verifies separate local acquisition and redemption parents for the configured participant, with server-owned custody, payout-before-burn, and reconciliation, through the consolidated PostgreSQL+Anvil proof and full offline repository gate. Settlement-only orchestration, a reproducible demonstration environment, Solana, and a public wallet-transfer API remain absent.
 
 Zelle is a public case study only. `USDZELLE` is a reference asset name and does not assert that Early Warning Services issues a stablecoin, accepts deposits, owns reserves, operates wallets, shares reserve income, or selected this architecture.
 
@@ -17,14 +17,21 @@ Zelle is a public case study only. `USDZELLE` is a reference asset name and does
 
 Economic ownership and private-key custody are independent. Compatible models are self-custody, segregated custodial wallets, and omnibus custody with an internal beneficial-balance ledger. Demo B selects segregated local custodial identities: the internal Phase 5C primitive consumes two named `local-demo` user-wallet identities, but no balance product or public API exposes it. This is not self-custody and not production custody.
 
-The currently implemented business API remains:
+The default-profile business API remains:
 
 ```text
 POST /v1/transfers
 GET  /v1/transfers/{transferId}
 ```
 
-It accepts opaque source/destination synthetic bank references, exact amount/currency, an optional allowlisted logical network, and a scoped idempotency key. The server resolves participant scope, asset/unit, route, and institution-controlled wallet context. HTTP 202 means only durable parent/effect/outbox acceptance. The future on-ramp, wallet-transfer, redemption, and settlement-only commands remain distinct API-design decisions; no Boolean flags or unrestricted user-facing mint are implied.
+It accepts opaque source/destination synthetic bank references, exact amount/currency, an optional allowlisted logical network, and a scoped idempotency key. The server resolves participant scope, asset/unit, route, and institution-controlled wallet context. HTTP 202 means only durable parent/effect/outbox acceptance.
+
+Under the combined `local-demo,local-ethereum` profiles, Phase 6B separately exposes:
+
+- `POST /v1/usdzelle/acquisitions` and participant-scoped `GET /v1/usdzelle/acquisitions/{workflowId}`; and
+- `POST /v1/usdzelle/redemptions` and participant-scoped `GET /v1/usdzelle/redemptions/{workflowId}`.
+
+Each create request contains only exact amount/currency, the configured participant-owned synthetic bank reference, optional `ETHEREUM`, and the idempotency header. Distinct acquire/redeem/read authorities apply. The server resolves every wallet, ADMIN, asset/unit, contract, signer, policy, step, and child identity; no Boolean flags or unrestricted user-facing mint/burn authority is implied. HTTP 202 is durable workflow acceptance, not completion or financial settlement.
 
 Separately, `local-demo` serves a local-only mock-bank OpenAPI and withdrawal, deposit, account-read, and operation-inquiry resources under `/local/v1/mock-banks`. They require distinct local authorities and execute only synthetic account effects. They are not public product commands and do not trigger reserve postings or chain operations.
 
@@ -101,7 +108,7 @@ Redemption/off-ramp
 14. Reserve and token-supply records reconcile
 ```
 
-On-ramp, wallet transfer, and redemption are separate durable parents with their own idempotency, child effects, attempts, evidence, and failure states. Mint and burn remain privileged child operations.
+On-ramp, wallet transfer, and redemption are separate durable operations with their own idempotency, child effects, attempts, evidence, and failure states. Phase 6B implements the on-ramp and redemption parents for the configured user; Phase 5C remains a separate internal optional-transfer primitive. Mint and burn remain privileged child operations.
 
 ### Expected synthetic examples
 
@@ -130,7 +137,7 @@ confirmed_chain_total_supply
   + controlled_inventory
 ```
 
-Controlled inventory defaults to zero and is not a balancing plug. Confirmed withdrawal, mint, redemption custody, payout, and burn evidence may be posted independently through trusted internal commands; payout and burn can be represented in either order after custody. Phase 6B must supply parent/child correlation, workflow policy, reserve authorization/release gates, and the selected ordering.
+Controlled inventory defaults to zero and is not a balancing plug. Confirmed withdrawal, mint, redemption custody, payout, and burn evidence remain independently authoritative posting inputs. Phase 6B supplies stable parent/child correlation and selects payout-before-burn: custody and custody accounting must complete before payout, while the one-time payout and payout accounting must complete before burn acceptance. Burn delay or ambiguity retains the explicit paid ADMIN-custody-pending-burn position and cannot trigger another payout.
 
 Demo B uses segregated local custodial wallet aliases. The explicit `local-demo` profile injects deterministic keys from the ignored mode-`0600` `.env.local-anvil` through process variables, derives addresses, and fails when the required expected addresses disagree. `ADMIN_REDEMPTION` aliases ADMIN without a duplicate key. Keys are never committed, logged, returned by APIs, or persisted in PostgreSQL. Production profiles prohibit raw-key configuration and require future secret-manager/workload-identity plus HSM/MPC/custody implementations of the existing signer port.
 
@@ -138,7 +145,7 @@ Success evidence includes parent/child IDs for bank debit/reserve, mint, optiona
 
 ### Current gaps
 
-No user-held balance product, on-ramp parent, complete redemption workflow, identity-provider profile, reserve attestation/release workflow, or public API for these operations exists. The Phase 5C-5D chain paths and Phase 6A bank/accounting paths are standalone infrastructure and cannot be described as a reserve-backed on-ramp or complete Demo B workflow.
+The local acquisition and redemption workflow core now exists for one configured participant mapping, but there is no production user-held balance product, identity-provider profile, self-custody path, reserve attestation/release workflow, public wallet-transfer API, automatic compensation, or operator-ready demo environment. The synthetic fixture cannot be described as a real reserve-backed product or production Demo B service.
 
 ## Shared saga, evidence output, and finality rules
 
@@ -157,7 +164,7 @@ The eventual local evidence summary conceptually includes parent/child operation
 
 ## Ethereum-first and Solana-second realization
 
-Ethereum completes orchestration phases first. Foundry/Anvil own native EVM execution and Web3j remains inside `adapters/ethereum-web3j/`. Phases 5A-5D supply bounded chain/custody effects and Phase 6A supplies independent synthetic-bank/accounting effects; none composes an end-to-end demonstration.
+Ethereum completes orchestration phases first. Foundry/Anvil own native EVM execution and Web3j remains inside `adapters/ethereum-web3j/`. Phases 5A-6A supply bounded chain/custody/bank/accounting effects, and Phase 6B composes the user-held workflow core. Phase 6C settlement-only orchestration and Phase 6D's reproducible environment remain before both demonstrations are operator-executable.
 
 Solana follows through the same provider-neutral business contracts after the Ethereum demonstrations. Its adapter must preserve native fee payer/authority, accounts, instructions, recent blockhash or durable nonce, signature, slot, commitment, expiry, and SPL Token evidence. ADR 0003 requires a bounded Java-client gate, classic SPL Token first, no Neon baseline, and Rust/Anchor only if existing programs cannot express required behavior.
 

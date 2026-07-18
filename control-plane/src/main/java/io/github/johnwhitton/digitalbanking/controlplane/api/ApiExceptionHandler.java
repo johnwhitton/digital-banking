@@ -11,6 +11,7 @@ import io.github.johnwhitton.digitalbanking.application.TransferNotFoundExceptio
 import io.github.johnwhitton.digitalbanking.application.UnknownAssetUnitException;
 import io.github.johnwhitton.digitalbanking.application.UnsupportedRequestContractException;
 import io.github.johnwhitton.digitalbanking.application.UnsupportedTransferConfigurationException;
+import io.github.johnwhitton.digitalbanking.application.UsdzelleWorkflowNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -101,6 +102,15 @@ public final class ApiExceptionHandler {
                 "transfer-not-found",
                 "Transfer not found",
                 "The transfer was not found.");
+    }
+
+    @ExceptionHandler(UsdzelleWorkflowNotFoundException.class)
+    ResponseEntity<ProblemDetail> workflowNotFound(UsdzelleWorkflowNotFoundException ignored) {
+        return problem(
+                HttpStatus.NOT_FOUND,
+                "usdzelle-workflow-not-found",
+                "USDZELLE workflow not found",
+                "The USDZELLE workflow was not found.");
     }
 
     @ExceptionHandler(MockBankNotFoundException.class)

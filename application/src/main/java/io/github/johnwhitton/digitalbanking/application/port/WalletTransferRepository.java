@@ -15,6 +15,12 @@ public interface WalletTransferRepository {
     Acceptance acceptRedemption(
             WalletTransferOperation proposed, OperationId burnOperationId);
 
+    /** Accepts custody correlated by a parent workflow before a later burn exists. */
+    default Acceptance acceptRedemptionCustody(WalletTransferOperation proposed) {
+        throw new UnsupportedOperationException(
+                "workflow redemption custody is unavailable");
+    }
+
     Optional<WalletTransferOperation> findByIdempotency(
             ParticipantScope participant, String idempotencyKeyDigest);
 
