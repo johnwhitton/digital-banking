@@ -24,7 +24,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 @Configuration(proxyBeanMethods = false)
-@Profile("local-signer")
+@Profile("local-signer & !local-demo")
 @EnableConfigurationProperties(LocalSignerProperties.class)
 public class LocalSignerConfiguration {
 

@@ -4,7 +4,7 @@
 
 This repository is non-production research and reference software. It is not approved for real funds, production settlement, regulated operations, or compliance reliance. It makes no warranty or claim of legal, regulatory, security, custody, or operational certification.
 
-Do not use this repository with mainnet, public testnets, production RPC providers, production custody/HSM/MPC systems, or real-value accounts. Production signing remains absent. The only chain integration is the explicit local-Anvil mint path, and the only cryptographic signer is the local-development adapter described below.
+Do not use this repository with mainnet, public testnets, production RPC providers, production custody/HSM/MPC systems, or real-value accounts. Production signing remains absent. The only chain integration is the explicit local-Anvil mint path, and the only cryptographic signers are the two explicit modes of the isolated local-development adapter described below.
 
 ## Durable API boundary
 
@@ -38,6 +38,16 @@ The default profile creates no local signer and generates no key. A local signer
 Shutdown releases key references and attempts provider-supported destruction, but Java/provider objects do not prove physical memory zeroization. No stronger erasure claim is made. Local keys and signatures are disposable development evidence, not a staging form of production authority.
 
 Production-oriented signing designs must keep raw keys outside application memory and bind authorization evidence to the exact operation, attempt, chain, asset, destination, amount, fee/expiry bounds, policy version, approvals, and canonical transaction bytes or digest.
+
+### Configured local-demo custody
+
+The separate `local-demo` profile is an explicitly local POC exception for deterministic EVM identities on chain `31337`. It requires `CONTRACT_OWNER`/`CONTRACT_DEPLOYER`, `ADMIN`/`ADMIN_REDEMPTION`, four bank-settlement wallets, and four segregated user-custody wallets. The immutable registry exposes only stable aliases, ownership categories, normalized derived addresses, provider-neutral key references, public metadata/key versions, allowed purposes, network, and enabled status. A request must retain the exact authorized alias, purpose, derived source address, local network, and metadata version; another bank/user wallet or a rotated key fails closed. Outstanding work bound to replaced material enters the existing manual-review boundary rather than signing with the replacement.
+
+The committed [`.env.example`](.env.example) contains blank private-key placeholders and only the approved public Anvil address map. The actual `.env.local-anvil` is a user-authorized, ignored, mode-`0600` local file containing publicly known Anvil development fixtures; it must never be staged, committed, logged, copied to reports, funded with real value, or used on a public network. `.env`, `.env.*`, and secret variants remain ignored while `.env.example` is intentionally tracked. Java does not read `.env` automatically: a local shell may use `set -a; source .env.local-anvil; set +a` to supply process variables without echoing them.
+
+Private scalars accept only canonical 32-byte hexadecimal secp256k1 values with an optional lowercase `0x` prefix. Startup derives the address and compares the expected local address; missing, malformed, zero, out-of-range, crossed, or mismatched configuration prevents readiness with a redacted diagnostic. Configuration diagnostics and serialization redact the key value, key property objects are cleared after signer construction where practical, and neither PostgreSQL nor HTTP receives raw keys. Java/provider objects still do not prove physical memory zeroization.
+
+`local-demo` and `local-signer` are mutually exclusive. The default profile instantiates neither signer, and `local-demo` alone enables no chain adapter, RPC, deployment, transfer, burn, or public signing endpoint. Process-environment secrets are acceptable only for this bounded local profile. A production implementation must use workload identity and a secret manager plus HSM, MPC, or qualified custody behind the provider-neutral signer port; raw application configuration is prohibited.
 
 ## Local Ethereum boundary
 

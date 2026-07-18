@@ -47,16 +47,17 @@ Status vocabulary:
 | Phase 3C transfer acceptance            | `verified` | A chain-neutral parent durably owns five ordered effects, server-resolved wallet context, exact amount/currency, scoped replay/conflict, PostgreSQL V3 persistence, transfer APIs, a synthetic mock-bank contract/adapter, and a transactional handler inbox that can prepare only the first withdrawal; its historical closeout gate recorded 364 tests. No bank or blockchain effect executes. |
 | Phase 4 signing boundary               | `verified` | Phase 4A supplies durable authority, replay/conflict, ambiguity/inquiry, and PostgreSQL V4 evidence. Phase 4B adds one explicitly enabled `local-signer` profile with session-only secp256k1 and Ed25519 keys, exact-material signatures, and no public endpoint or chain effect. Production custody remains absent. |
 | Phase 5A local Ethereum mint           | `verified` | One explicit `local-ethereum` + `local-signer` path processes an accepted mint on Anvil through a durable nonce/attempt fence, exact EIP-1559 signing, submit-once ambiguity recovery, and independent receipt/event/canonicality observation. It advances only technical operation state and blockchain finality. |
+| Phase 5B configured local custody      | `verified` | The opt-in `local-demo` profile requires ten deterministic, server-owned EVM identities behind one immutable provider-neutral registry. Keys are supplied only from ignored local process configuration, addresses and stable public versions are derived from those keys, purpose/address/version mismatches fail closed, and no API or chain effect is added. |
 
-The current full offline reactor result is **414 passing Maven tests across seven modules**, plus **five passing Foundry tests**, as recorded by the Phase 5A closeout. The current business API includes `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Durable transfer acceptance and effect planning are not bank movement, minting, token transfer, burning, deposit, settlement, or chain execution.
+The current full offline reactor result is **426 passing Maven tests across seven modules**. The unchanged Foundry contract suite last recorded **five passing tests** in the Phase 5A closeout and was not rerun because Phase 5B changes no Solidity or chain effect. The current business API includes `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Durable transfer acceptance and effect planning are not bank movement, minting, token transfer, burning, deposit, settlement, or chain execution.
 
 ## Designed, Not Executable
 
 - Burn requests are durably accepted but are not executed on Ethereum, and wallet-to-wallet Ethereum transfer is not implemented.
 - The settlement-only bank-to-bank parent flow is not orchestrated end to end. Phase 3C records its existing five-effect aggregate and first-withdrawal preparation; the future six-step Demo A adds a distinct redemption transfer before ADMIN burn, and mock-bank effects are not executed at runtime.
 - Default business endpoints have no runtime identity provider and therefore deny access.
-- The durable provider-neutral signing boundary and isolated local-development signer are verified for their local scope, but no production HSM, MPC, or custody signer exists.
-- No public network, hosted RPC provider, API key, persistent wallet, or production deployment exists. Solana remains planned.
+- The durable provider-neutral signing boundary, session-ephemeral signer, and configured local-custody signer are limited to their explicit local profiles; no production HSM, MPC, secret-manager, or custody signer exists.
+- No public network, hosted RPC provider, API key, dynamic wallet-management service, or production deployment exists. Solana remains planned.
 - The Anvil mint establishes only narrow technical operation state and blockchain finality; it does not establish accounting, legal, or customer-visible finality.
 
 ## Product paths and delivery roadmap
@@ -65,12 +66,12 @@ The reference architecture supports two distinct USDZELLE outcomes without confl
 
 | Path | Customer outcome | On-chain holders/signers | Current state | Target |
 | --- | --- | --- | --- | --- |
-| Settlement-only | User sends and receives fiat; USDZELLE is an institutional settlement asset inside the saga | `ADMIN` plus bank settlement and redemption wallets | Phase 3C parent/effect acceptance and first preparation are verified; local mint is verified; remaining effects and orchestration are planned | Demo A on Ethereum, then Solana |
-| User-held USDZELLE | User can acquire, hold, optionally transfer, and later redeem USDZELLE | `ADMIN` plus segregated custodial user wallets in the local POC | Local mint is verified; wallet registry, configured identities, reserve, transfer, redemption, and burn are planned | Demo B on Ethereum, then Solana |
+| Settlement-only | User sends and receives fiat; USDZELLE is an institutional settlement asset inside the saga | `ADMIN` plus bank settlement and redemption wallets | Phase 3C parent/effect acceptance, local mint, and named local wallet/signing identities are implemented; remaining effects and orchestration are planned | Demo A on Ethereum, then Solana |
+| User-held USDZELLE | User can acquire, hold, optionally transfer, and later redeem USDZELLE | `ADMIN` plus segregated custodial user wallets in the local POC | Local mint and segregated local custody identities are implemented; reserve, transfer, redemption, and burn are planned | Demo B on Ethereum, then Solana |
 
 ```text
-Verified now: domain + durable API/worker + transfer parent + signing + local Ethereum mint
-Next: local multi-wallet custody -> Ethereum transfer -> Ethereum redemption/burn
+Implemented now: domain + durable API/worker + transfer parent + signing + local Ethereum mint + configured local custody
+Next: Ethereum transfer -> Ethereum redemption/burn
 Then: synthetic reserve/mock banks -> both Ethereum demos
 After Ethereum: native Solana parity -> both Solana demos
 Finally: code/security/share-readiness review
@@ -78,7 +79,7 @@ Finally: code/security/share-readiness review
 
 The authoritative [design](docs/DESIGN.md) owns architecture and custody/reserve boundaries; the [implementation roadmap](docs/IMPLEMENTATION.md) owns phase status and completed-plan links; the [demo contract](docs/TRANSFER_DEMO.md) specifies Demo A and Demo B; and the [plan lifecycle](docs/plans/README.md) governs authorization and closeout. No future phase is active until separately authorized.
 
-No persistent configured multi-wallet registry, raw-key local-demo profile, reserve subsystem, executable wallet transfer, Ethereum burn, runtime bank effect, complete parent orchestration, Docker Compose/demo script, or Solana adapter exists. The local Phase 5A mint still uses the session-ephemeral signer and one configured recipient boundary. Production custody, public networks/RPC, real funds or reserve assets, yield, revenue sharing, and accounting/legal/customer-finality claims remain absent.
+The `local-demo` profile now composes an immutable startup registry for `CONTRACT_OWNER`/`CONTRACT_DEPLOYER`, `ADMIN`/`ADMIN_REDEMPTION`, four bank-settlement wallets, and four user wallets. It does not persist keys, dynamically manage wallets, activate the Phase 5A chain path, or execute a transfer. The local Phase 5A mint continues to use the separate session-ephemeral signer. The reserve subsystem, executable wallet transfer, Ethereum burn, runtime bank effect, complete parent orchestration, Docker Compose/demo script, Solana adapter, production custody, public networks/RPC, real funds or reserve assets, yield, revenue sharing, and accounting/legal/customer-finality claims remain absent.
 
 ## On-Chain Development Approach
 
@@ -160,6 +161,23 @@ JAVA_HOME=/opt/homebrew/opt/openjdk /opt/homebrew/opt/openjdk/bin/java \
   -jar control-plane/target/digital-banking-control-plane-0.1.0-SNAPSHOT.jar
 ```
 
+For deterministic local wallet identities, copy the safe variable names and public Anvil address map from [`.env.example`](.env.example) into the ignored `.env.local-anvil`, fill it only with the approved public Anvil development fixtures, and retain mode `0600`. Java does not load `.env` files automatically; export the values through the shell without echoing them:
+
+```bash
+chmod 600 .env.local-anvil
+set -a
+source .env.local-anvil
+set +a
+SPRING_PROFILES_ACTIVE=local-demo \
+SPRING_DATASOURCE_URL="${DB_URL}" \
+SPRING_DATASOURCE_USERNAME="${DB_USERNAME}" \
+SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \
+JAVA_HOME=/opt/homebrew/opt/openjdk /opt/homebrew/opt/openjdk/bin/java \
+  -jar control-plane/target/digital-banking-control-plane-0.1.0-SNAPSHOT.jar
+```
+
+`local-demo` accepts only chain ID `31337`, derives and validates every address, fails when a required identity is incomplete, and is mutually exclusive with `local-signer`. It creates no RPC client, contract action, transaction, business endpoint, or automatic Phase 5A composition. These environment variables are acceptable only for this local reference profile; production custody requires workload identity/secret management plus HSM, MPC, or custody infrastructure behind the same signer port.
+
 The self-contained Phase 5A proof is the Ethereum adapter integration suite. It starts a random-session Anvil node, deploys and configures the local reference token through unlocked development RPC accounts, uses the ephemeral signer for mint authorization, and tears everything down without a committed private key:
 
 ```bash
@@ -226,4 +244,4 @@ Graph queries, reports, plugin advice, and agent suggestions are navigation aids
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5A local mint, and separately authorized future phases with their limits. The next bounded recommendation is Phase 5B local multi-wallet custody and configured signing—not wallet transfer, end-to-end orchestration, or production custody.
+[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5A local mint, Phase 5B configured local custody, and separately authorized future phases with their limits. The next bounded recommendation is Phase 5C Ethereum generic wallet transfer—not end-to-end orchestration, burn, or production custody.

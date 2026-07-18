@@ -1,6 +1,5 @@
 package io.github.johnwhitton.digitalbanking.signer.local;
 
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -33,18 +32,6 @@ import io.github.johnwhitton.digitalbanking.domain.signing.KeyAlias;
 import io.github.johnwhitton.digitalbanking.domain.signing.ProviderRequestId;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningRequest;
 import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
-import org.bouncycastle.asn1.x9.X9ECParameters;
-import org.bouncycastle.crypto.AsymmetricCipherKeyPair;
-import org.bouncycastle.crypto.generators.ECKeyPairGenerator;
-import org.bouncycastle.crypto.params.ECDomainParameters;
-import org.bouncycastle.crypto.params.ECKeyGenerationParameters;
-import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
-import org.bouncycastle.crypto.params.ECPublicKeyParameters;
-import org.bouncycastle.crypto.params.ParametersWithRandom;
-import org.bouncycastle.crypto.signers.ECDSASigner;
-import org.bouncycastle.crypto.ec.CustomNamedCurves;
-import org.bouncycastle.math.ec.ECAlgorithms;
-import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * Explicitly local-development signer. Keys live only in this object and are never
@@ -56,12 +43,6 @@ public final class LocalEphemeralSigner
     public static final String CLASSIFICATION = "LOCAL_EPHEMERAL";
     public static final String EVM_ENCODING = "LOCAL_EVM_SECP256K1_RSV_LOW_S_V1";
     public static final String SOLANA_ENCODING = "LOCAL_SOLANA_ED25519_V1";
-
-    private static final X9ECParameters SECP256K1 =
-            CustomNamedCurves.getByName("secp256k1");
-    private static final ECDomainParameters EVM_DOMAIN = new ECDomainParameters(
-            SECP256K1.getCurve(), SECP256K1.getG(), SECP256K1.getN(),
-            SECP256K1.getH());
 
     private final Configuration configuration;
     private final Clock clock;
@@ -232,21 +213,7 @@ public final class LocalEphemeralSigner
 
     private byte[] signEvm(KeyMaterial key, byte[] digest) {
         EcdsaKey evm = (EcdsaKey) key;
-        ECDSASigner signer = new ECDSASigner();
-        signer.init(true, new ParametersWithRandom(evm.privateKey(), random));
-        BigInteger[] components = signer.generateSignature(digest);
-        BigInteger r = components[0];
-        BigInteger s = components[1];
-        BigInteger halfOrder = SECP256K1.getN().shiftRight(1);
-        if (s.compareTo(halfOrder) > 0) {
-            s = SECP256K1.getN().subtract(s);
-        }
-        int recoveryId = recoveryId(evm.publicPoint(), digest, r, s);
-        byte[] signature = new byte[65];
-        System.arraycopy(fixed32(r), 0, signature, 0, 32);
-        System.arraycopy(fixed32(s), 0, signature, 32, 32);
-        signature[64] = (byte) recoveryId;
-        return signature;
+        return evm.key().sign(digest, random);
     }
 
     private byte[] signSolana(KeyMaterial key, byte[] message) {
@@ -269,14 +236,8 @@ public final class LocalEphemeralSigner
         Instant createdAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
         String session = HexFormat.of().formatHex(randomBytes(16));
 
-        ECKeyPairGenerator evmGenerator = new ECKeyPairGenerator();
-        evmGenerator.init(new ECKeyGenerationParameters(EVM_DOMAIN, random));
-        AsymmetricCipherKeyPair evmPair = evmGenerator.generateKeyPair();
-        ECPrivateKeyParameters evmPrivate =
-                (ECPrivateKeyParameters) evmPair.getPrivate();
-        ECPublicKeyParameters evmPublic =
-                (ECPublicKeyParameters) evmPair.getPublic();
-        byte[] evmPublicBytes = evmPublic.getQ().getEncoded(false);
+        Secp256k1LocalKey evmKey = Secp256k1LocalKey.generate(random);
+        byte[] evmPublicBytes = evmKey.publicKey();
         KeyMetadata evmMetadata = metadata(
                 session, "evm", SigningRequest.Algorithm.SECP256K1,
                 SettlementNetwork.ETHEREUM, configuration.evmRoles(),
@@ -292,8 +253,7 @@ public final class LocalEphemeralSigner
                     SettlementNetwork.SOLANA, configuration.solanaRoles(),
                     solanaPublicBytes, createdAt);
             return new KeySet(
-                    new EcdsaKey(evmMetadata, evmPublicBytes, evmPrivate,
-                            evmPublic.getQ().normalize()),
+                    new EcdsaKey(evmMetadata, evmKey),
                     new Ed25519Key(solanaMetadata, solanaPublicBytes,
                             solanaPair.getPrivate()));
         } catch (Exception failure) {
@@ -391,56 +351,10 @@ public final class LocalEphemeralSigner
                 .getBytes(StandardCharsets.UTF_8));
     }
 
-    private static int recoveryId(
-            ECPoint expected, byte[] digest, BigInteger r, BigInteger s) {
-        for (int candidate = 0; candidate < 4; candidate++) {
-            ECPoint recovered = recover(digest, r, s, candidate);
-            if (recovered != null && recovered.normalize().equals(expected.normalize())) {
-                return candidate;
-            }
-        }
-        throw new IllegalStateException("secp256k1 recovery identity is unavailable");
-    }
-
-    private static ECPoint recover(
-            byte[] digest, BigInteger r, BigInteger s, int recoveryId) {
-        BigInteger n = SECP256K1.getN();
-        BigInteger x = r.add(n.multiply(BigInteger.valueOf(recoveryId / 2L)));
-        if (x.compareTo(SECP256K1.getCurve().getField().getCharacteristic()) >= 0) {
-            return null;
-        }
-        byte[] compressed = new byte[33];
-        compressed[0] = (byte) ((recoveryId & 1) == 0 ? 0x02 : 0x03);
-        System.arraycopy(fixed32(x), 0, compressed, 1, 32);
-        ECPoint point;
-        try {
-            point = SECP256K1.getCurve().decodePoint(compressed);
-        } catch (IllegalArgumentException invalidPoint) {
-            return null;
-        }
-        if (!point.multiply(n).isInfinity()) {
-            return null;
-        }
-        BigInteger inverseR = r.modInverse(n);
-        BigInteger eInverse = new BigInteger(1, digest)
-                .negate().mod(n).multiply(inverseR).mod(n);
-        BigInteger sOverR = s.multiply(inverseR).mod(n);
-        return ECAlgorithms.sumOfTwoMultiplies(
-                SECP256K1.getG(), eInverse, point, sOverR).normalize();
-    }
-
     private byte[] randomBytes(int length) {
         byte[] value = new byte[length];
         random.nextBytes(value);
         return value;
-    }
-
-    private static byte[] fixed32(BigInteger value) {
-        byte[] raw = value.toByteArray();
-        byte[] result = new byte[32];
-        int copy = Math.min(raw.length, result.length);
-        System.arraycopy(raw, raw.length - copy, result, result.length - copy, copy);
-        return result;
     }
 
     private static String sha256(byte[] value) {
@@ -541,17 +455,11 @@ public final class LocalEphemeralSigner
 
     private record EcdsaKey(
             KeyMetadata metadata,
-            byte[] publicKey,
-            ECPrivateKeyParameters privateKey,
-            ECPoint publicPoint) implements KeyMaterial {
-
-        private EcdsaKey {
-            publicKey = publicKey.clone();
-        }
+            Secp256k1LocalKey key) implements KeyMaterial {
 
         @Override
         public byte[] publicKey() {
-            return publicKey.clone();
+            return key.publicKey();
         }
     }
 

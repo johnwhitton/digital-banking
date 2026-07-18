@@ -52,7 +52,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 3. Durable API and persistence         | `verified`    | Phase 3A acceptance/read-back, Phase 3B worker/recovery, and Phase 3C transfer acceptance/first deduplicated internal preparation pass the 364-test offline reactor. External workflow effects remain absent by scope. |
 | 4. Signing boundary                    | `verified`    | Phase 4A provides durable authority/evidence; Phase 4B adds explicit-profile, session-ephemeral secp256k1/Ed25519 signing. Production custody remains absent. |
 | 5A. Local Ethereum mint                | `verified`    | One accepted mint completes on local Anvil with durable signing/submission/observation evidence. |
-| 5B. Local multi-wallet custody         | `planned`     | Versioned named ADMIN, bank, redemption, and user identities plus local-demo-only configured signing. |
+| 5B. Local multi-wallet custody         | `verified`    | Versioned named ADMIN, bank, redemption, and user identities plus local-demo-only configured signing passed the 426-test offline reactor. |
 | 5C. Ethereum wallet transfer           | `planned`     | Generic exact ERC-20 transfer through the existing provider-neutral lifecycle. |
 | 5D. Ethereum redemption and burn       | `planned`     | Confirm redemption receipt, then ADMIN burns only its redeemed balance. |
 | 6A. Synthetic reserves and mock banks  | `planned`     | Durable synthetic balances, reserve liability, inquiry, replay, and reconciliation. |
@@ -65,7 +65,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 7D. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
 | 8. Final reference review              | `planned`     | Architecture, code, security, recovery, API/demo, and share-readiness review. |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated session-ephemeral local provider, and Phase 5A's bounded local-Anvil mint to one configured recipient. The Phase 5A closeout records the current complete gate: 414 passing Maven tests across seven modules and five passing Foundry tests. The default runtime has no identity provider, signer, or chain client. Profiles `local-signer` plus `local-ethereum` compose the mint handler, require explicit loopback/local-chain configuration, and expose no new public endpoint. No persistent multi-wallet registry, configured deterministic signer, reserve subsystem, runtime bank effect, wallet transfer, burn execution, parent orchestration, demo environment, or Solana adapter exists. Both [USDZELLE demonstrations](TRANSFER_DEMO.md) remain future work. Each planned phase below requires its own separately authorized plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated session-ephemeral local provider, Phase 5A's bounded local-Anvil mint to one configured recipient, and Phase 5B's immutable configured local wallet registry and deterministic signer. The Phase 5B closeout records the current complete Maven gate: 426 passing tests across seven modules; the unchanged Foundry contract suite last recorded five passing tests in Phase 5A. The default runtime has no identity provider, signer, or chain client. Profiles `local-signer` plus `local-ethereum` compose the mint handler, require explicit loopback/local-chain configuration, and expose no new public endpoint; the separate `local-demo` profile supplies named POC-only custody identities without enabling chain execution. No dynamic or persistent wallet-management service, reserve subsystem, runtime bank effect, wallet transfer, burn execution, parent orchestration, demo environment, or Solana adapter exists. Both [USDZELLE demonstrations](TRANSFER_DEMO.md) remain future work. Each planned phase below requires its own separately authorized plan.
 
 ## Phase 1: Foundation
 
@@ -181,17 +181,19 @@ Phases 4-8 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 ### Phase 5B: local multi-wallet custody and configured signer
 
-**Status:** `planned`
+**Status:** `verified`.
 
 **Dependency:** verified Phases 4A-4B and 5A.
 
-**Plan:** not created until separately authorized.
+**Plan:** completed at [`docs/plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md`](plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md).
 
 **Deliverables:** a versioned wallet registry for `ADMIN`, `ADMIN_REDEMPTION`, bank-settlement, and user identities; explicit key purpose/authority even if one local ADMIN key serves multiple roles; local-only ignored environment or equivalent secret injection; address derivation and optional expected-address validation; deterministic demo identity across restart; least-authority component composition; and production rejection of raw-key configuration.
 
 **Exit gate:** named local identities resolve and sign only authorized exact payloads without leaking key material. Default and production profiles remain raw-key-free.
 
 **Non-goals:** chain transfer, burn, reserve/bank behavior, public API changes, self-custody implementation, omnibus accounting, or production custody.
+
+**Implemented boundary:** one provider-neutral `WalletIdentityRegistry` exposes immutable non-secret identity metadata; one configured local-EVM signer reuses the Phase 4A `SignerPort`/`SigningKeyRegistry` and the existing Bouncy Castle secp256k1 behavior; stable public versions fence replacement keys; and exact alias/purpose/address/network/version checks prevent cross-wallet signing. `local-demo` requires owner/deployer, ADMIN/redemption, four bank, and four user identities on chain `31337`, while the registry remains collection-based. The committed `.env.example` has blank keys; the actual `.env.local-anvil` remains ignored, mode `0600`, and outside Git. The default and session-ephemeral profiles remain unchanged, simultaneous local signer profiles fail closed, and no API, migration, RPC, chain effect, or dependency was added.
 
 ### Phase 5C: Ethereum generic wallet transfer
 
@@ -371,6 +373,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Completed Phase 4A signing-authority plan: [`docs/plans/completed/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md`](plans/completed/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md).
 - Completed Phase 4B local signer plan: [`docs/plans/completed/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md`](plans/completed/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md).
 - Completed Phase 5A local Ethereum mint plan: [`docs/plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md`](plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
+- Completed Phase 5B configured local custody plan: [`docs/plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md`](plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md).
 - Completed dual-product-path and delivery-roadmap alignment: [`docs/plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md`](plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md).
 - Completed Zelle share-readiness and transfer-roadmap plan: [`docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
@@ -433,6 +436,17 @@ The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A
 
 ## Latest bounded vertical slice
 
+Action Request 15 implements **Phase 5B Local Multi-Wallet Custody and Configured Signing**:
+
+- one immutable provider-neutral wallet registry carrying server-owned reference/aliases, owner category, Ethereum network, normalized derived address, key reference, registry/key version, explicit purpose set, and enabled status;
+- one collection-backed local configured signer for owner/deployer, ADMIN/redemption, four bank-settlement, and four segregated user-custody identities, with no maximum encoded into the registry contract;
+- strict canonical secp256k1 parsing, address derivation and expected-address comparison, stable public versioning, exact purpose/address/network/version enforcement, and stale-key manual review through the existing Phase 4A boundary;
+- one opt-in `local-demo` profile that is mutually exclusive with the unchanged session-ephemeral `local-signer`, creates no chain adapter or endpoint, and leaves the default runtime unchanged;
+- one safe tracked `.env.example` plus an ignored mode-`0600` `.env.local-anvil` local artifact boundary, with redacted property diagnostics and no dotenv dependency; and
+- focused generated-key tests for wallet/purpose isolation, restart stability, rotation fencing, configuration failures, redaction, profile conflict/readiness, default/ephemeral isolation, and absence of chain/public signing reachability.
+
+This slice adds no API/OpenAPI, migration, dependency, contract, RPC, transaction, transfer, redemption, burn, reserve, bank, parent-orchestration, public-network, production-custody, or Solana behavior. Its execution record is the [completed Phase 5B plan](plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md); Phase 5C generic Ethereum wallet transfer is the next bounded recommendation.
+
 Action Request 13 implements **Phase 5A Local Ethereum Mint Vertical Slice**:
 
 - a Foundry project pinned to Solidity 0.8.25 and OpenZeppelin Contracts v5.6.1, with a minimal role-gated, two-decimal, non-upgradeable local reference token;
@@ -442,7 +456,7 @@ Action Request 13 implements **Phase 5A Local Ethereum Mint Vertical Slice**:
 - explicit `local-ethereum` plus `local-signer` composition fenced to uncredentialed loopback HTTP and chain `31337`, with no default contract/recipient address; and
 - Foundry, independent transaction-vector, real PostgreSQL, real Anvil, concurrent nonce, duplicate, response-loss, revert, default-context, and configuration evidence under [ADR 0007](adr/0007-local-ethereum-mint-vertical-slice.md) and the [completed Phase 5A plan](plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
 
-This is one local development mint effect, not either complete demonstration. It neither executes an accepted transfer effect nor implements burn, wallet transfer, replacement/cancellation, production custody, hosted/public RPC, legal/customer/accounting finality, or settlement. The next bounded recommendation is Phase 5B local multi-wallet custody and configured signing, which provides named, least-authority local identities before any generic transfer effect.
+This is one local development mint effect, not either complete demonstration. It neither executes an accepted transfer effect nor implements burn, wallet transfer, replacement/cancellation, production custody, hosted/public RPC, legal/customer/accounting finality, or settlement. Phase 5B now supplies the named least-authority local identities without changing this mint path; Phase 5C remains the next chain effect.
 
 The preceding Action Request 12 implements **Phase 4B Isolated Local-Development Signer**:
 
@@ -515,4 +529,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum mint, remaining bank/provider/chain effects, and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). The next recommended bounded action is Phase 5B local multi-wallet custody and configured signing with its own approved plan; it must add no transfer, burn, reserve, bank, or public-network behavior.
+The implemented transfer/signing boundaries, bounded local-Ethereum mint, configured local-custody foundation, remaining bank/provider/chain effects, and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 5B closeout, the next recommended bounded action is Phase 5C Ethereum generic wallet transfer; it must add no burn, reserve, bank, parent-orchestration, or public-network behavior.
