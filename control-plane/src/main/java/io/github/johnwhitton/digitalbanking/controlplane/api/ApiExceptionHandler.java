@@ -2,8 +2,10 @@ package io.github.johnwhitton.digitalbanking.controlplane.api;
 
 import java.net.URI;
 
+import io.github.johnwhitton.digitalbanking.application.BankPreEffectFailureException;
 import io.github.johnwhitton.digitalbanking.application.IdempotencyConflictException;
 import io.github.johnwhitton.digitalbanking.application.InvalidRequestException;
+import io.github.johnwhitton.digitalbanking.application.MockBankNotFoundException;
 import io.github.johnwhitton.digitalbanking.application.OperationNotFoundException;
 import io.github.johnwhitton.digitalbanking.application.TransferNotFoundException;
 import io.github.johnwhitton.digitalbanking.application.UnknownAssetUnitException;
@@ -101,7 +103,20 @@ public final class ApiExceptionHandler {
                 "The transfer was not found.");
     }
 
-    @ExceptionHandler({DataAccessException.class, TransactionException.class})
+    @ExceptionHandler(MockBankNotFoundException.class)
+    ResponseEntity<ProblemDetail> mockBankNotFound(MockBankNotFoundException ignored) {
+        return problem(
+                HttpStatus.NOT_FOUND,
+                "local-resource-not-found",
+                "Local resource not found",
+                "The synthetic local resource was not found.");
+    }
+
+    @ExceptionHandler({
+            DataAccessException.class,
+            TransactionException.class,
+            BankPreEffectFailureException.class
+    })
     ResponseEntity<ProblemDetail> serviceUnavailable(RuntimeException ignored) {
         return problem(
                 HttpStatus.SERVICE_UNAVAILABLE,

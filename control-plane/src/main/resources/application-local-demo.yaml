@@ -4,6 +4,40 @@ spring:
             on-profile: local-demo
 
 digital-banking:
+    local-finance:
+        enabled: true
+        fixture-version: phase-6a-v1
+        maximum-pre-effect-attempts: 2
+        inquiry-timeout: 5s
+        bank-policy-version: synthetic-bank-v1
+        accounting-policy-version: reserve-accounting-v1
+        mint-evidence-policy-version: local-ethereum-mint-v1
+        custody-evidence-policy-version: local-ethereum-redemption-v1
+        burn-evidence-policy-version: local-ethereum-redemption-v1
+        chain-asset-id: USD_STABLE
+        settlement-network: LOCAL_ANVIL
+        contract-reference: "${LOCAL_ETHEREUM_CONTRACT_ADDRESS:0x0000000000000000000000000000000000000001}"
+        maximum-observation-age: 24h
+        banks:
+            - {bank-id: BANK_1, enabled: true}
+            - {bank-id: BANK_2, enabled: true}
+            - {bank-id: BANK_3, enabled: true}
+            - {bank-id: BANK_4, enabled: true}
+        accounts:
+            - bank-id: BANK_1
+              account-id: USER_1_BANK_ACCOUNT
+              tenant-id: local-demo
+              participant-id: USER_1
+              currency: USD
+              initial-balance: '100'
+              enabled: true
+            - bank-id: BANK_2
+              account-id: USER_2_BANK_ACCOUNT
+              tenant-id: local-demo
+              participant-id: USER_2
+              currency: USD
+              initial-balance: '0'
+              enabled: true
     local-demo:
         chain-id: ${LOCAL_DEMO_CHAIN_ID:31337}
         admin-redemption-key-alias: ${LOCAL_DEMO_ADMIN_REDEMPTION_KEY_ALIAS:ADMIN}

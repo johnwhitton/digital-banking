@@ -1,9 +1,15 @@
 package io.github.johnwhitton.digitalbanking.application.port;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
+import io.github.johnwhitton.digitalbanking.application.command.ParticipantScope;
+import io.github.johnwhitton.digitalbanking.domain.accounting.BankOperation;
+import io.github.johnwhitton.digitalbanking.domain.accounting.SyntheticBankAccount;
+import io.github.johnwhitton.digitalbanking.domain.accounting.UsdCents;
 import io.github.johnwhitton.digitalbanking.domain.asset.TokenQuantity;
 import io.github.johnwhitton.digitalbanking.domain.operation.AttemptId;
 import io.github.johnwhitton.digitalbanking.domain.transfer.BankAccountReference;
@@ -16,6 +22,136 @@ import io.github.johnwhitton.digitalbanking.domain.transfer.TransferParticipant;
 public interface MockBankPort {
 
     Outcome request(Command command);
+
+    /** Executes one durable local synthetic-bank operation. */
+    default BankResponse execute(BankCommand command) {
+        throw new UnsupportedOperationException("executable mock bank is unavailable");
+    }
+
+    /** Inquires durable bank truth by stable identity; never repeats an effect. */
+    default Optional<BankOperation> inquire(
+            BankOperation.Id operationId, ParticipantScope participant) {
+        return Optional.empty();
+    }
+
+    default Optional<SyntheticBankAccount> findAccount(
+            SyntheticBankAccount.BankId bankId,
+            SyntheticBankAccount.AccountId accountId,
+            ParticipantScope participant) {
+        return Optional.empty();
+    }
+
+    /** Idempotently installs server-owned local fixtures without resetting balances. */
+    default void initialize(Fixture fixture) {
+        throw new UnsupportedOperationException("mock-bank fixture initialization unavailable");
+    }
+
+    record BankCommand(
+            BankOperation.Id operationId,
+            BankOperation.EvidenceId evidenceId,
+            SyntheticBankAccount.BankId bankId,
+            SyntheticBankAccount.AccountId accountId,
+            ParticipantScope participant,
+            UsdCents amount,
+            BankOperation.Kind kind,
+            String idempotencyKeyDigest,
+            String commandDigest,
+            BankOperation.CorrelationId correlationId,
+            BankOperation.PolicyVersion policyVersion,
+            Instant requestedAt) {
+
+        private static final Pattern DIGEST = Pattern.compile("[0-9a-f]{64}");
+
+        public BankCommand {
+            Objects.requireNonNull(operationId, "operationId");
+            Objects.requireNonNull(evidenceId, "evidenceId");
+            Objects.requireNonNull(bankId, "bankId");
+            Objects.requireNonNull(accountId, "accountId");
+            Objects.requireNonNull(participant, "participant");
+            Objects.requireNonNull(amount, "amount");
+            Objects.requireNonNull(kind, "kind");
+            Objects.requireNonNull(correlationId, "correlationId");
+            Objects.requireNonNull(policyVersion, "policyVersion");
+            Objects.requireNonNull(requestedAt, "requestedAt");
+            if (amount.value().signum() == 0
+                    || idempotencyKeyDigest == null
+                    || !DIGEST.matcher(idempotencyKeyDigest).matches()
+                    || commandDigest == null
+                    || !DIGEST.matcher(commandDigest).matches()) {
+                throw new IllegalArgumentException("bank command exactness or digest is invalid");
+            }
+        }
+    }
+
+    record BankResponse(
+            BankOperation.Id operationId,
+            ResponseStatus status,
+            BankOperation.EvidenceId evidenceId,
+            UsdCents balanceAfter,
+            boolean replayed,
+            String safeFailureCode) {
+        public BankResponse {
+            Objects.requireNonNull(operationId, "operationId");
+            Objects.requireNonNull(status, "status");
+            if (status == ResponseStatus.SUCCEEDED) {
+                Objects.requireNonNull(evidenceId, "evidenceId");
+                Objects.requireNonNull(balanceAfter, "balanceAfter");
+                if (safeFailureCode != null) {
+                    throw new IllegalArgumentException("successful response has no failure");
+                }
+            } else if (status == ResponseStatus.REJECTED) {
+                Objects.requireNonNull(evidenceId, "evidenceId");
+                if (balanceAfter != null || safeFailureCode == null) {
+                    throw new IllegalArgumentException("rejected response shape is invalid");
+                }
+            } else if (evidenceId != null || balanceAfter != null
+                    || safeFailureCode == null || replayed) {
+                throw new IllegalArgumentException("unknown response shape is invalid");
+            }
+        }
+    }
+
+    record Fixture(
+            SyntheticBankAccount.FixtureVersion version,
+            List<BankFixture> banks,
+            List<AccountFixture> accounts,
+            Instant initializedAt) {
+        public Fixture {
+            Objects.requireNonNull(version, "version");
+            banks = List.copyOf(banks);
+            accounts = List.copyOf(accounts);
+            Objects.requireNonNull(initializedAt, "initializedAt");
+            if (banks.isEmpty()) {
+                throw new IllegalArgumentException("at least one synthetic bank is required");
+            }
+        }
+    }
+
+    record BankFixture(SyntheticBankAccount.BankId bankId, boolean enabled) {
+        public BankFixture {
+            Objects.requireNonNull(bankId, "bankId");
+        }
+    }
+
+    record AccountFixture(
+            SyntheticBankAccount.BankId bankId,
+            SyntheticBankAccount.AccountId accountId,
+            ParticipantScope owner,
+            UsdCents initialBalance,
+            boolean enabled) {
+        public AccountFixture {
+            Objects.requireNonNull(bankId, "bankId");
+            Objects.requireNonNull(accountId, "accountId");
+            Objects.requireNonNull(owner, "owner");
+            Objects.requireNonNull(initialBalance, "initialBalance");
+        }
+    }
+
+    enum ResponseStatus {
+        SUCCEEDED,
+        REJECTED,
+        UNKNOWN
+    }
 
     record Command(
             TransferId transferId,

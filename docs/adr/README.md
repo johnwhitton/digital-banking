@@ -57,3 +57,4 @@ Open questions remain in `docs/DESIGN.md` or `docs/IMPLEMENTATION.md` until evid
 - [ADR 0006: Local-development signing provider](0006-local-development-signing-provider.md) - accepted.
 - [ADR 0007: Local Ethereum mint vertical slice](0007-local-ethereum-mint-vertical-slice.md) - accepted.
 - [ADR 0008: USDZELLE product paths, ownership, custody, and reserve boundaries](0008-usdzelle-product-paths-ownership-custody-reserve-boundaries.md) - accepted.
+- [ADR 0009: Synthetic reserve ledger and reconciliation](0009-synthetic-reserve-ledger-and-reconciliation.md) - accepted.

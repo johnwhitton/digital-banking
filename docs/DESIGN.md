@@ -31,7 +31,7 @@ Zelle is only a public case study in the publications. This repository is organi
 
 ### Current implementation boundary
 
-The current repository contains documentation, a plain-Java domain module with exact operation, transfer, and signing-authority invariants, a framework-free application module with use cases and provider-neutral ports, PostgreSQL, local-signer, and Ethereum-Web3j adapters, a minimal local reference token, and a Spring Boot control plane. Phases 3A-3C provide durable token-operation/transfer acceptance, delivery/recovery, and only the first internal transfer preparation. Phases 4A-4B provide durable signing authority and session-only local signing. Phase 5A adds one explicit `local-ethereum` plus `local-signer` path that processes an already-accepted mint to one configured recipient on Anvil with durable nonce/attempt evidence, submit-once ambiguity recovery, and receipt/event/canonicality observation. Phase 5B adds a separate `local-demo` profile with an immutable configured EVM wallet registry and signer for named owner/admin, bank-settlement, and segregated user-custody identities. Phase 5C composes `local-demo` plus `local-ethereum` for one internal standalone transfer between two server-resolved user-custody wallets. Phase 5D extends that local composition with one server-resolved user-to-`ADMIN_REDEMPTION` custody transfer and one ADMIN own-balance burn, gated by one-time confirmed custody evidence and exact block-bound balance/supply observations. The default configuration still has no identity or signer provider and leaves the worker disabled. There is no dynamic/persistent wallet-management service, reserve subsystem, external bank effect, payout, complete redemption/parent orchestration, public wallet-transfer API, production custody/network, Solana adapter, Compose environment, or complete product demonstration. The [two local demonstrations](TRANSFER_DEMO.md) record this implemented boundary and the remaining contracts.
+The current repository contains documentation, plain-Java exact operation, transfer, signing, synthetic-bank, and accounting invariants, framework-free application use cases/ports, PostgreSQL, local-signer, and Ethereum-Web3j adapters, a minimal local reference token, and a Spring Boot control plane. Phases 3A-3C provide durable token-operation/transfer acceptance, delivery/recovery, and only the first internal transfer preparation. Phases 4A-4B provide durable signing authority and session-only local signing. Phases 5A-5D provide bounded local-Anvil mint, configured custody, user-wallet transfer, redemption custody, and ADMIN burn primitives. Phase 6A adds exact durable synthetic withdrawals/deposits/inquiry plus a closed append-only reserve/liability ledger and supply/custody reconciliation under `local-demo`. These bank, accounting, and chain primitives remain independently invoked; there is no automatic on-ramp, payout/burn ordering, settlement parent, production accounting/reserve, public wallet-transfer API, production custody/network, Solana adapter, Compose environment, or complete product demonstration. The default configuration still has no identity/signer provider, bank/accounting bean, or enabled worker. The [two local demonstrations](TRANSFER_DEMO.md) record this boundary and the remaining workflows.
 
 ## 3. Terminology
 
@@ -39,7 +39,8 @@ The current repository contains documentation, a plain-Java domain module with e
 | --- | --- |
 | Payment intent | A durable business request and obligation context accepted from an authorized participant. A future cross-border product may own this aggregate; the initial token-operation POC does not pretend to implement the entire payment lifecycle. |
 | Transfer | A planned durable parent aggregate for one authorized bank-to-bank request. It coordinates child bank effects and token operations while retaining one stable `TransferId`, request identity, route/configuration versions, status, finalities, and evidence. |
-| Bank effect | A planned idempotent withdrawal/deposit effect behind a source- or destination-bank port. It has its own stable identity and evidence and is not a database transaction shared with a chain. |
+| Bank effect | An idempotent withdrawal/deposit behind a provider-neutral port with stable identity, participant scope, exact USD cents, durable outcome/evidence, and inquiry. Phase 6A implements it only for synthetic local fixtures; it never shares a transaction with a chain or accounting posting. |
+| Accounting posting | One trusted evidence-driven transition in the closed reserve/liability ledger. It consumes authoritative evidence once and may append a balanced journal and/or update explicit custody/supply positions in the same local transaction. |
 | Settlement wallet | A server-configured sender or recipient role used by a local route. Wallet addresses and authorities are resolved from versioned configuration, not caller input. |
 | Process manager | A provider-neutral control-plane boundary that coordinates durable work and timers through domain commands/ports. It does not replace domain state, ledger, policy, signing authority, evidence, or reconciliation. |
 | Token operation | A privileged durable command to mint or burn an exact quantity under a configured asset, route, policy, and approval context. |
@@ -141,7 +142,7 @@ Economic token ownership and control of private-key signing are independent dime
 | --- | --- | --- | --- |
 | `ISSUER` / `ADMIN` | Authorizes supply changes under policy and reserve evidence | ADMIN mint/burn authority through the signer port | Named configured local identity; no new effect |
 | `RESERVE_CUSTODIAN` | Supplies eligible reserve and release evidence; does not gain mint authority automatically | No chain key implied by the role | Synthetic records only |
-| `DISTRIBUTOR_BANK` | Owns synthetic customer debit/credit effects and inquiries | May use a separate bank-settlement wallet authority | Future mock-bank execution only |
+| `DISTRIBUTOR_BANK` | Owns synthetic customer debit/credit effects and inquiries | May use a separate bank-settlement wallet authority | Four local bank identities; only two configured customer-account fixtures; independent bank effects are implemented |
 | `BANK_SETTLEMENT_WALLET` | Holds institutional settlement inventory for one bank/participant | Bank/custody-controlled signer | Four named configured local identities; bank-wallet transfer remains unimplemented |
 | `USER` / `USER_WALLET` | User owns the token claim or beneficial balance | Self-custody, segregated custody, or omnibus custody are distinct choices | Four segregated configured local identities; one internal `USER_WALLET_1` to `USER_WALLET_2` transfer primitive is verified |
 | `ADMIN_REDEMPTION` | Receives tokens surrendered for redemption before burn | Separate redemption-purpose authority even when the local POC aliases it to ADMIN | One bounded local custody-and-burn proof; no payout or parent workflow |
@@ -157,26 +158,29 @@ The collection-backed registry has no bank/user maximum but this profile require
 
 Raw-key configuration is local-demo-only. The default and `local-signer` profiles do not read it, and the two local signer profiles fail when combined. Production profiles continue through the existing provider-neutral signer port with future secret-manager/workload-identity plus HSM, MPC, or custody-provider implementations. The chain adapter receives signed material and non-secret authority context; it remains indifferent to local, self-custodied, bank-custodied, or production-provider key custody. Phases 5C-5D consume this boundary only when `local-demo` and `local-ethereum` are both explicit: accepted wallet snapshots are immutable, source and ADMIN metadata are server-resolved and revalidated before signing, only the source key can authorize exact custody transfer, and only ADMIN with burn authority can authorize exact own-balance burn. No endpoint, caller-selected wallet, arbitrary-holder burn, or arbitrary-call surface is added.
 
-### Synthetic reserve and supply boundary
+### Synthetic reserve, ledger, and supply boundary
 
-The future user-held path requires a synthetic reserve subsystem with:
+[ADR 0009](adr/0009-synthetic-reserve-ledger-and-reconciliation.md) fixes the Phase 6A POC chart at `RESERVE_CASH_ASSET`, `FIAT_RECEIVED_PENDING_MINT_LIABILITY`, `USDZELLE_CIRCULATING_LIABILITY`, and `REDEMPTION_PAYABLE_LIABILITY`. Every dollar journal has exactly one positive debit and credit and is built by a closed posting engine. Confirmed withdrawal debits reserve cash and credits pending mint; confirmed mint moves pending mint to circulating; confirmed redemption custody moves circulating to redemption payable; confirmed bank payout debits redemption payable and credits reserve cash. Confirmed burn reduces only the operational `ADMIN_REDEMPTION_CUSTODY_PENDING_BURN` and confirmed-supply positions, avoiding a second dollar entry.
 
-- confirmed reserve-deposit evidence;
-- eligible, available, and encumbered reserve amounts;
-- outstanding redeemable USDZELLE liability;
-- mint authorization tied to reserve evidence;
-- redemption liability and payout evidence;
-- policy-gated reserve release after redemption;
-- on-chain total-supply reconciliation; and
-- bank, custodian, reserve, and token-supply reconciliation.
-
-Its conceptual invariant is:
+The zero-equity local fixture reconciles:
 
 ```text
-confirmed eligible reserves >= outstanding redeemable USDZELLE supply
+reserve_cash_asset
+  = pending_mint_liability
+  + circulating_usdzelle_liability
+  + redemption_payable_liability
+
+confirmed_chain_total_supply
+  = circulating_usdzelle_liability
+  + admin_redemption_custody_pending_burn
+  + controlled_inventory
 ```
 
-POC bank balances and reserves are synthetic records only. No real deposit, reserve account, investment, Treasury instrument, yield, revenue share, or financial product is implemented or certified.
+Controlled inventory starts at zero and is never an unexplained balancing plug. Payout and burn may occur in either order after confirmed custody, retaining explicit pending states; Phase 6B decides workflow ordering. Missing, stale, non-final, removed, non-canonical, mismatched, or already-consumed evidence cannot post. Reconciliation records `RECONCILED`, reserve-ledger mismatch, chain-supply mismatch, incomplete evidence, or unsupported/stale observation and never mutates balances to force agreement.
+
+Chain posting evidence is a narrow supply-observation pointer, not a second chain-truth table. The accounting adapter joins that pointer to the authoritative Phase 5 operation, attempt, latest observation, event, and blockchain-finality records and derives amount, participant, asset, network, contract, policy, canonicality, finality, and observation time there. A later observation invalidates the older pointer. Reconciliation derives its evidence set and complete/fresh assessment from all durably consumed sources; no caller supplies either assessment. Corrections append one digest-bound reversal journal linked to its immutable original and cannot rewrite either entry.
+
+POC bank balances, ledger accounts, and chain observations remain separate synthetic records. No real deposit, reserve account, investment, Treasury instrument, yield, revenue share, audited statement, reserve attestation, or financial product is implemented or certified.
 
 ### Explicit operations and saga semantics
 
@@ -438,7 +442,7 @@ HTTP 202 and `Location` mean the parent, five planned effects, histories, idempo
 
 ## 16. Persistence, transactions, outbox/inbox, and concurrency
 
-The repository uses PostgreSQL, explicit Spring JDBC `JdbcClient`, HikariCP, and seven forward-only Flyway migrations; see [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md), [ADR 0005](adr/0005-postgresql-operation-delivery-worker.md), and [ADR 0007](adr/0007-local-ethereum-mint-vertical-slice.md). Normalized tables store token operations, transfers and five effects, delivery state, signing requests/evidence, local Ethereum nonce cursors, immutable mint/transfer/burn attempts, submissions, observations, redemption correlation, and block-bound balance/supply evidence. Exact quantities are constrained integer atomic units rather than floating-point or opaque aggregate JSON.
+The repository uses PostgreSQL, explicit Spring JDBC `JdbcClient`, HikariCP, and eight forward-only Flyway migrations; see [ADR 0004](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md), [ADR 0005](adr/0005-postgresql-operation-delivery-worker.md), [ADR 0007](adr/0007-local-ethereum-mint-vertical-slice.md), and [ADR 0009](adr/0009-synthetic-reserve-ledger-and-reconciliation.md). Normalized tables store token operations, transfers/effects, delivery, signing, local Ethereum attempts/evidence, synthetic bank fixtures/accounts/operations/balance entries, ledger journals/lines, one-time evidence consumption, operational custody/supply positions, and reconciliation results. Exact quantities are bounded integers rather than floating-point or unbounded aggregate JSON.
 
 One explicit `READ_COMMITTED` local transaction accepts the hashed idempotency binding, operation aggregate, initial transition/audit evidence, four initial `NOT_ASSESSED` finalities, and one versioned pending outbox message. PostgreSQL uniqueness plus `INSERT ... ON CONFLICT DO NOTHING` resolves concurrent scoped-key races without a process lock or a rollback-only loser path. Same canonical identity replays the committed operation; a different command digest conflicts without partial records. Acceptance timestamps are canonicalized to PostgreSQL microsecond precision before aggregate creation, keeping original and replay responses byte-stable. Optimistic aggregate version updates protect later append-only events.
 
@@ -451,6 +455,8 @@ Phase 4A signing acceptance and every lifecycle update use separate short `READ_
 Phase 5A reserves a nonce under a database lock keyed by local chain and signer, then persists immutable transaction and finality-policy context before signing. Signature attachment, the precomputed transaction hash, submission-start fencing, submission classification, and each observation are separate durable transitions; signer and RPC calls occur outside database transactions. Observation sequence allocation locks the attempt row. Each observation retains its source, policy/confirmation context, transaction intent, receipt digest/status, and exact matched mint-log evidence. Response loss after the node accepts bytes is `AMBIGUOUS`; redelivery inquires the same hash and cannot submit again, and later configuration changes cannot relabel the accepted attempt.
 
 Corrections append transitions, reversals, or adjustment records. They do not destructively edit accepted business history.
+
+Phase 6A initializes configured synthetic fixtures without resetting durable balances. Each withdrawal/deposit locks its account row and atomically claims the hashed idempotency identity, mutates the exact cents balance, and appends immutable operation/balance evidence; explicit pre-effect failures may retry the same command, while an unknown post-effect response is inquired by its stable operation identity. Accounting separately claims one evidence identity, verifies the retained authoritative bank or chain facts, locks the closed chart/positions, and commits the balanced journal, position changes, and consumption together. Database constraints and append-only triggers fence duplicate consumption, unbalanced journals, destructive history edits, overdraft, overflow, and lost updates.
 
 Phase 3C implements normalized transfer, effect, transition/evidence, finality, and inbox records and generalizes the existing outbox aggregate identity without creating a second worker. Parent acceptance is one local transaction; inbox deduplication and first-step preparation are another. Later child command acceptance, bank result, chain attempt, observation, and compensation each require their own narrow transaction; no database transaction remains open across a bank, signer, workflow platform, or chain call.
 
@@ -467,7 +473,7 @@ Reconciliation joins:
 - submit-provider record;
 - independent chain observation;
 - token supply/authority or account-balance effect where applicable;
-- internal ledger/inventory postings when implemented; and
+- internal ledger/inventory postings and custody/supply positions; and
 - issuer/custody statements when available.
 
 Differences create durable breaks with owner, severity, age, evidence, disposition, and repair authorization. Repair never fabricates missing evidence or rewrites the original attempt.
@@ -479,7 +485,7 @@ Differences create durable breaks with owner, severity, age, evidence, dispositi
 | Blockchain finality | Route-specific chain-risk policy applied to independent native evidence and canonicality/commitment thresholds. | Implemented first in each chain slice; no legal meaning implied. |
 | Legal settlement finality | Counsel/product policy applied to parties, instrument, corridor, agreements, law, and remedies. | Represented as distinct `not_assessed`/external evidence state; not decided by the POC. |
 | Customer-visible completion | Product/participant authority applied to required debit/reservation, recipient credit or approved remedy, and disclosure state. | Kept distinct and normally `not_assessed` until a future product flow exists. |
-| Accounting finality | Controller/accounting authority applied to balanced journals, valuation, reconciliation, break disposition, and period close. | Kept distinct and `not_assessed`; the POC does not claim a complete ledger/close. |
+| Accounting finality | Controller/accounting authority applied to balanced journals, valuation, reconciliation, break disposition, and period close. | Phase 6A records bounded POC journals/reconciliation but does not assess the operation finality slot or claim a complete ledger/close. |
 
 The POC therefore models the four slots and their evidence provenance but initially derives only blockchain finality. Operation `COMPLETED` in a narrow technical slice means its explicitly configured acceptance gate passed; it never silently claims legal, customer, or accounting finality.
 
@@ -512,7 +518,7 @@ Retries repeat an idempotent technical read or the exact same safe request ident
 - Synthetic signing remains test-only. The real local-development signer exists only under explicit profile `local-signer`; the default runtime has no signer. It is session-ephemeral, logical-family allowlisted, visibly classified `LOCAL_EPHEMERAL`, and never a production fallback.
 - The planned transfer accepts only logical allowlisted local network choices; RPC URLs, addresses, signer references, keys, and finality thresholds remain server-owned configuration.
 - The configured-key signer exists only under the explicit `local-demo` profile with ignored secret injection, derived-address validation, least-authority key distribution, and an immutable startup registry. Production/default profiles reject or ignore raw-key configuration and continue through provider references; this local signer adds no production custody path or chain effect.
-- No default or production profile activates local bank mocks, signing, or Ethereum execution. Phase 5A requires explicit `local-signer` plus `local-ethereum`; Phases 5C-5D require explicit `local-demo` plus `local-ethereum`. Both accept only uncredentialed loopback HTTP on chain `31337` and have no default contract address; the mint path also has no default recipient. Opaque bank references and wallet roles never become on-chain personal data.
+- No default or production profile activates local bank mocks, accounting, signing, or Ethereum execution. Phase 6A's synthetic-bank endpoints and accounting services require `local-demo`, use distinct least-authority permissions, and contain no real customer or account data. Phase 5A requires explicit `local-signer` plus `local-ethereum`; Phases 5C-5D require explicit `local-demo` plus `local-ethereum`. Chain profiles accept only uncredentialed loopback HTTP on chain `31337` and have no default contract address; the mint path also has no default recipient. Opaque bank references and wallet roles never become on-chain personal data.
 - Audit evidence binds actor/workload, intent, canonical payload hash, policy/config versions, approvals, exact digest, signer decision, native identity, observations, transitions, and reconciliation.
 - Kill switches prevent new work while leaving evidence inquiry and reconciliation available.
 - Dependencies, contracts, programs, generated bindings, and provider SDKs receive security review before promotion.
@@ -528,11 +534,11 @@ Business audit is durable, complete, append-only evidence for authorization and 
 
 ## 22. Local development and test topology
 
-The default runtime topology remains one Spring Boot process plus a private/local PostgreSQL 17 database. Integration tests start the pinned `postgres:17.10-alpine3.23` image through Testcontainers, run all seven Flyway migrations from an empty schema when the Ethereum adapter is present, and verify the earlier operation/transfer/delivery/signing boundaries plus the Phase 5A mint, Phase 5C wallet transfer, and Phase 5D redemption-custody/burn paths. The polling lifecycle and local signer are disabled by default. Profiles `local-signer` plus `local-ethereum` compose the mint handler and require a loopback Anvil endpoint plus explicit contract/recipient addresses. Profiles `local-demo` plus `local-ethereum` instead compose the configured-custody transfer/redemption/burn handler; `local-demo` and `local-signer` remain mutually exclusive. The integration harness starts a random-session Anvil process, deploys/configures the token with unlocked disposable development accounts, uses runtime-generated transfer keys, and discards process output; no private key or mnemonic is embedded or persisted. No Compose service, public chain, hosted RPC, runtime mock-bank fallback, or production signer fallback is configured.
+The default runtime topology remains one Spring Boot process plus a private/local PostgreSQL 17 database. Integration tests start the pinned `postgres:17.10-alpine3.23` image through Testcontainers, run all eight Flyway migrations from an empty schema when the Ethereum adapter is present, and verify the earlier operation/transfer/delivery/signing/chain boundaries plus Phase 6A bank and accounting behavior. The polling lifecycle, local signer, synthetic banks, and accounting services are disabled by default. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the local mock-bank contract; combined with `local-ethereum` it also composes the configured-custody transfer/redemption/burn handler. `local-signer` plus `local-ethereum` composes the separate mint handler, and `local-demo`/`local-signer` remain mutually exclusive. The Anvil harness remains disposable and unchanged. No Compose service, public chain, hosted RPC, real bank/reserve fallback, or production signer fallback is configured.
 
 Later phases add components only as needed:
 
-1. synthetic reserve and executable mock-bank records plus the two Ethereum sagas;
+1. user-held and settlement-only Ethereum sagas that compose the existing primitives;
 2. a reproducible local environment and evidence summaries after individual slices are deterministic;
 3. native Solana tooling, mint, transfer, burn, and both demonstrations after Ethereum; and
 4. final architecture, security, recovery, API, and share-readiness review.
@@ -552,6 +558,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - Ethereum is the first chain slice; Foundry owns EVM contract development and Web3j stays in its Java adapter; see ADR 0002.
 - The first executable Ethereum effect is a local-Anvil mint with pinned toolchains/dependencies, server-owned configuration, durable nonce/submission evidence, and observation-gated blockchain finality; see ADR 0007.
 - Settlement-only and user-held USDZELLE are distinct product paths; economic ownership and signing custody are independent; the local user-held proof uses segregated custodial identities; and Ethereum precedes native Solana parity; see ADR 0008.
+- The Phase 6A synthetic financial boundary uses a closed four-account double-entry chart, trusted evidence-driven postings, separate custody/supply positions, one-time evidence consumption, and explicit reserve/supply reconciliation; see ADR 0009.
 - Solana uses native SVM semantics and classic SPL Token first; Sava must pass a bounded evaluation before selection; see ADR 0003.
 - Rust/Anchor is conditional on business logic that existing programs cannot safely supply; Neon is outside the baseline.
 - Direct authority mint/burn and CCTP are separate workflows.

@@ -1,7 +1,10 @@
 package io.github.johnwhitton.digitalbanking;
 
 import io.github.johnwhitton.digitalbanking.application.SigningAuthorityService;
+import io.github.johnwhitton.digitalbanking.application.AccountingApplicationService;
+import io.github.johnwhitton.digitalbanking.application.MockBankApplicationService;
 import io.github.johnwhitton.digitalbanking.application.port.SignerPort;
+import io.github.johnwhitton.digitalbanking.controlplane.api.LocalMockBankController;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -31,5 +34,12 @@ class DigitalBankingApplicationTests extends PostgresApiIntegrationSupport {
     void signingAuthorityHasNoRuntimeProviderOrPublicUseCaseBean() {
         assertTrue(context.getBeansOfType(SignerPort.class).isEmpty());
         assertTrue(context.getBeansOfType(SigningAuthorityService.class).isEmpty());
+    }
+
+    @Test
+    void localFinancialCapabilityIsAbsentWithoutTheExplicitProfile() {
+        assertTrue(context.getBeansOfType(LocalMockBankController.class).isEmpty());
+        assertTrue(context.getBeansOfType(MockBankApplicationService.class).isEmpty());
+        assertTrue(context.getBeansOfType(AccountingApplicationService.class).isEmpty());
     }
 }

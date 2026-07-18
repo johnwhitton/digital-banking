@@ -98,7 +98,7 @@ class PostgresWalletTransferRepositoryTest {
         var accepted = repository.accept(proposed);
 
         assertFalse(accepted.replayed());
-        assertEquals(7, jdbc.sql(
+        assertEquals(8, jdbc.sql(
                 "SELECT count(*) FROM flyway_schema_history WHERE success")
                 .query(Integer.class).single());
         assertEquals(1L, count("wallet_transfer_operation"));

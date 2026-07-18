@@ -51,6 +51,17 @@ public class SecurityConfiguration {
                         .hasAuthority("transfer:create")
                         .requestMatchers(HttpMethod.GET, "/v1/transfers/*")
                         .hasAuthority("transfer:read")
+                        .requestMatchers(HttpMethod.POST,
+                                "/local/v1/mock-banks/*/accounts/*/withdrawals")
+                        .hasAuthority("local-bank:debit")
+                        .requestMatchers(HttpMethod.POST,
+                                "/local/v1/mock-banks/*/accounts/*/deposits")
+                        .hasAuthority("local-bank:credit")
+                        .requestMatchers(HttpMethod.GET,
+                                "/local/v1/mock-banks/*/accounts/*",
+                                "/local/v1/mock-banks/operations/*",
+                                "/local/v1/mock-banks/openapi.yaml")
+                        .hasAuthority("local-bank:read")
                         .anyRequest().denyAll())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, failure) ->

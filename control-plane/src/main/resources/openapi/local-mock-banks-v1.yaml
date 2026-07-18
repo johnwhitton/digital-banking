@@ -1,0 +1,187 @@
+openapi: 3.1.0
+info:
+  title: Local Synthetic Mock Bank API
+  version: 1.0.0
+  summary: Local-demo-only synthetic USD bank effects
+  description: >-
+    Authoritative contract for synthetic local fixtures only. No real bank, account,
+    customer, funds, rail, reserve asset, or production capability is represented.
+servers:
+  - url: http://127.0.0.1
+    description: Explicit local-demo profile only
+tags:
+  - name: Local mock banks
+paths:
+  /local/v1/mock-banks/{bankId}/accounts/{accountId}/withdrawals:
+    post:
+      tags: [Local mock banks]
+      summary: Debit a synthetic USD account
+      operationId: withdrawSyntheticUsd
+      x-required-authority: local-bank:debit
+      security: [{participantAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/BankId'}
+        - {$ref: '#/components/parameters/AccountId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {$ref: '#/components/requestBodies/MoneyRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Operation'}
+        '202': {$ref: '#/components/responses/Operation'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /local/v1/mock-banks/{bankId}/accounts/{accountId}/deposits:
+    post:
+      tags: [Local mock banks]
+      summary: Credit a synthetic USD account
+      operationId: depositSyntheticUsd
+      x-required-authority: local-bank:credit
+      security: [{participantAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/BankId'}
+        - {$ref: '#/components/parameters/AccountId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {$ref: '#/components/requestBodies/MoneyRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Operation'}
+        '202': {$ref: '#/components/responses/Operation'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /local/v1/mock-banks/{bankId}/accounts/{accountId}:
+    get:
+      tags: [Local mock banks]
+      summary: Read a participant-scoped synthetic account
+      operationId: readSyntheticAccount
+      x-required-authority: local-bank:read
+      security: [{participantAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/BankId'}
+        - {$ref: '#/components/parameters/AccountId'}
+      responses:
+        '200':
+          description: Minimized synthetic account representation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Account'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /local/v1/mock-banks/operations/{operationId}:
+    get:
+      tags: [Local mock banks]
+      summary: Inquire durable synthetic bank truth without repeating an effect
+      operationId: readSyntheticBankOperation
+      x-required-authority: local-bank:read
+      security: [{participantAuth: []}]
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200': {$ref: '#/components/responses/Operation'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+  /local/v1/mock-banks/openapi.yaml:
+    get:
+      tags: [Local mock banks]
+      summary: Read this local-only authoritative contract
+      operationId: readLocalMockBankContract
+      x-required-authority: local-bank:read
+      security: [{participantAuth: []}]
+      responses:
+        '200':
+          description: OpenAPI 3.1 YAML document
+          content:
+            application/yaml:
+              schema: {type: string}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+components:
+  securitySchemes:
+    participantAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: external-participant-identity
+  parameters:
+    BankId:
+      name: bankId
+      in: path
+      required: true
+      schema: {type: string, pattern: '^[A-Z0-9][A-Z0-9_]{0,63}$'}
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema: {type: string, pattern: '^[A-Z0-9][A-Z0-9_]{0,63}$'}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128, pattern: '^[\x21-\x7E]+$'}
+  requestBodies:
+    MoneyRequest:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/MoneyRequest'}
+          example: {amount: '100', currency: USD}
+  responses:
+    Operation:
+      description: Durable operation or exact replay; UNKNOWN is returned as HTTP 202
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Operation'}
+    Problem:
+      description: Stable redacted problem response
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+  schemas:
+    MoneyRequest:
+      type: object
+      additionalProperties: false
+      required: [amount, currency]
+      properties:
+        amount: {type: string, maxLength: 19, pattern: '^(?:[1-9][0-9]{0,15}|(?:0|[1-9][0-9]{0,15})\.(?:[1-9]|[0-9][1-9]))$'}
+        currency: {type: string, const: USD}
+    Account:
+      type: object
+      additionalProperties: false
+      required: [bankId, accountId, currency, balance, enabled, version]
+      properties:
+        bankId: {type: string}
+        accountId: {type: string}
+        currency: {type: string, const: USD}
+        balance: {type: string}
+        enabled: {type: boolean}
+        version: {type: integer, format: int64, minimum: 0}
+    Operation:
+      type: object
+      additionalProperties: false
+      required: [operationId, status, replayed]
+      properties:
+        operationId: {type: string, format: uuid}
+        status: {type: string, enum: [SUCCEEDED, REJECTED, UNKNOWN]}
+        evidenceId: {type: [string, 'null'], format: uuid}
+        balanceAfter: {type: [string, 'null']}
+        replayed: {type: boolean}
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status, detail, instance]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        instance: {type: string, format: uri}
