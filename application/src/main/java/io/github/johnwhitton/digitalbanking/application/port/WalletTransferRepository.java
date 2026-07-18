@@ -12,10 +12,15 @@ public interface WalletTransferRepository {
 
     Acceptance accept(WalletTransferOperation proposed);
 
+    Acceptance acceptRedemption(
+            WalletTransferOperation proposed, OperationId burnOperationId);
+
     Optional<WalletTransferOperation> findByIdempotency(
             ParticipantScope participant, String idempotencyKeyDigest);
 
     Optional<WalletTransferOperation> findById(OperationId operationId);
+
+    Optional<WalletTransferOperation> findRedemptionByBurn(OperationId burnOperationId);
 
     StartResult startDelivery(UUID deliveryId, OperationId operationId, Instant startedAt);
 

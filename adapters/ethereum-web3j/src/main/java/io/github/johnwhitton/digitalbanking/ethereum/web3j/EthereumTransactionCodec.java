@@ -44,6 +44,12 @@ public final class EthereumTransactionCodec {
         return FunctionEncoder.encode(transfer);
     }
 
+    public String burnCalldata(BigInteger atomicAmount) {
+        requirePositive(atomicAmount, "atomicAmount");
+        return FunctionEncoder.encode(new Function(
+                "burn", List.of(new Uint256(atomicAmount)), List.of()));
+    }
+
     public String addressFromPublicKey(byte[] uncompressedPublicKey) {
         byte[] publicKey = Objects.requireNonNull(
                 uncompressedPublicKey, "uncompressedPublicKey").clone();

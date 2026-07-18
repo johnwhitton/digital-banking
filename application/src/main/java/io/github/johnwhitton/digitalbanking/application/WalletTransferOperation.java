@@ -31,6 +31,7 @@ public record WalletTransferOperation(
         int commandVersion,
         String commandDigest,
         TokenQuantity quantity,
+        Purpose purpose,
         WalletSnapshot source,
         WalletSnapshot destination,
         SettlementNetwork network,
@@ -56,6 +57,7 @@ public record WalletTransferOperation(
         }
         commandDigest = requireDigest(commandDigest, "commandDigest");
         Objects.requireNonNull(quantity, "quantity");
+        Objects.requireNonNull(purpose, "purpose");
         source = Objects.requireNonNull(source, "source");
         destination = Objects.requireNonNull(destination, "destination");
         Objects.requireNonNull(network, "network");
@@ -83,7 +85,11 @@ public record WalletTransferOperation(
             throw new IllegalArgumentException("wallet transfer identities must differ");
         }
         requireUserWallet(source, true);
-        requireUserWallet(destination, false);
+        if (purpose == Purpose.USER_TRANSFER) {
+            requireUserWallet(destination, false);
+        } else {
+            requireRedemptionWallet(destination);
+        }
         if (source.network() != network || destination.network() != network) {
             throw new IllegalArgumentException("wallet network does not match transfer network");
         }
@@ -100,7 +106,7 @@ public record WalletTransferOperation(
         }
         return new WalletTransferOperation(
                 operationId, transferId, effectId, participant, idempotencyKeyDigest,
-                commandVersion, commandDigest, quantity, source, destination, network,
+                commandVersion, commandDigest, quantity, purpose, source, destination, network,
                 contractAddress, contractVersion, finalityPolicyVersion, attemptId,
                 next, version + 1, createdAt, occurredAt,
                 append(evidence, transitionEvidence),
@@ -122,7 +128,7 @@ public record WalletTransferOperation(
         changed.put(FinalityType.BLOCKCHAIN, append(blockchain, next));
         return new WalletTransferOperation(
                 operationId, transferId, effectId, participant, idempotencyKeyDigest,
-                commandVersion, commandDigest, quantity, source, destination, network,
+                commandVersion, commandDigest, quantity, purpose, source, destination, network,
                 contractAddress, contractVersion, finalityPolicyVersion, attemptId,
                 Status.CHAIN_FINALITY_REACHED, version + 1, createdAt, occurredAt,
                 append(evidence, finalityEvidence), changed);
@@ -143,6 +149,16 @@ public record WalletTransferOperation(
                         WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER)) {
             throw new IllegalArgumentException(
                     (source ? "source" : "destination") + " must be an enabled user wallet");
+        }
+    }
+
+    private static void requireRedemptionWallet(WalletSnapshot wallet) {
+        if (wallet.ownerCategory() != WalletIdentityRegistry.OwnerCategory.ADMIN
+                || wallet.status() != WalletIdentityRegistry.Status.ENABLED
+                || !wallet.allowedPurposes().contains(
+                        WalletIdentityRegistry.Purpose.REDEMPTION_CUSTODY)) {
+            throw new IllegalArgumentException(
+                    "destination must be the enabled ADMIN redemption wallet");
         }
     }
 
@@ -205,12 +221,28 @@ public record WalletTransferOperation(
         }
 
         public static WalletSnapshot from(WalletIdentityRegistry.WalletIdentity identity) {
+            return from(identity, identity.reference());
+        }
+
+        public static WalletSnapshot from(
+                WalletIdentityRegistry.WalletIdentity identity,
+                WalletReference resolvedReference) {
+            if (!identity.reference().equals(resolvedReference)
+                    && !identity.aliases().contains(resolvedReference)) {
+                throw new IllegalArgumentException(
+                        "resolved wallet reference is not a configured identity or alias");
+            }
             return new WalletSnapshot(
-                    identity.reference(), identity.ownerCategory(), identity.network(),
+                    resolvedReference, identity.ownerCategory(), identity.network(),
                     identity.normalizedAddress(), identity.keyReference(),
                     identity.registryVersion(), identity.keyVersion(),
                     identity.allowedPurposes(), identity.status());
         }
+    }
+
+    public enum Purpose {
+        USER_TRANSFER,
+        REDEMPTION_CUSTODY
     }
 
     public enum Status {

@@ -7,6 +7,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 /// @notice Local-only non-upgradeable reference token for the Phase 5A mint slice.
 contract LocalReferenceToken is ERC20, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
+    bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
 
     error InvalidAdmin();
 
@@ -23,5 +24,9 @@ contract LocalReferenceToken is ERC20, AccessControl {
 
     function mint(address recipient, uint256 amount) external onlyRole(MINTER_ROLE) {
         _mint(recipient, amount);
+    }
+
+    function burn(uint256 amount) external onlyRole(BURNER_ROLE) {
+        _burn(msg.sender, amount);
     }
 }

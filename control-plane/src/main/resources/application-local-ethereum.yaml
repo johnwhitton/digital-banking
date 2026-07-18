@@ -22,3 +22,4 @@ digital-banking:
         decimals: 2
         max-atomic-units: 1000000000000
         policy-version: local-ethereum-mint-v1
+        redemption-source-wallet: ${LOCAL_ETHEREUM_REDEMPTION_SOURCE_WALLET:USER_WALLET_2}

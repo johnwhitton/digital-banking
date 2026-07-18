@@ -21,7 +21,11 @@ import io.github.johnwhitton.digitalbanking.application.port.WalletIdentityRegis
 import io.github.johnwhitton.digitalbanking.application.port.WalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
 import io.github.johnwhitton.digitalbanking.domain.operation.AttemptId;
+import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationAcceptanceContext;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationId;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationKind;
+import io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation;
 import io.github.johnwhitton.digitalbanking.domain.signing.KeyAlias;
 import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferEffect;
@@ -37,6 +41,7 @@ class WalletTransferAcceptanceServiceTest {
     private static final ParticipantScope PARTICIPANT = new ParticipantScope("tenant-a", "party-a");
     private static final WalletReference SOURCE = wallet("USER_WALLET_1");
     private static final WalletReference DESTINATION = wallet("USER_WALLET_2");
+    private static final WalletReference ADMIN_REDEMPTION = wallet("ADMIN_REDEMPTION");
 
     @Test
     void resolvesAndRetainsExactServerOwnedUserWalletContext() {
@@ -151,6 +156,31 @@ class WalletTransferAcceptanceServiceTest {
         }
     }
 
+    @Test
+    void acceptsServerResolvedRedemptionCustodyForTheExactBurnOnce() {
+        InMemoryRepository repository = new InMemoryRepository();
+        Map<WalletReference, WalletIdentityRegistry.WalletIdentity> identities = Map.of(
+                SOURCE, identity(SOURCE, "0x1111111111111111111111111111111111111111"),
+                ADMIN_REDEMPTION, adminIdentity());
+        WalletTransferAcceptanceService service = service(repository, identities);
+        TokenOperation burn = burnOperation("100");
+
+        var accepted = service.acceptRedemption(burn, SOURCE, ADMIN_REDEMPTION);
+        var replay = service.acceptRedemption(burn, SOURCE, ADMIN_REDEMPTION);
+
+        assertEquals(WalletTransferOperation.Purpose.REDEMPTION_CUSTODY,
+                accepted.operation().purpose());
+        assertEquals(new BigInteger("10000"),
+                accepted.operation().quantity().atomicUnits());
+        assertEquals(SOURCE, accepted.operation().source().reference());
+        assertEquals(ADMIN_REDEMPTION,
+                accepted.operation().destination().reference());
+        assertEquals(WalletIdentityRegistry.OwnerCategory.ADMIN,
+                accepted.operation().destination().ownerCategory());
+        assertTrue(replay.replayed());
+        assertEquals(accepted.operation(), replay.operation());
+    }
+
     private static void assertInvalid(
             WalletIdentityRegistry.WalletIdentity source,
             WalletIdentityRegistry.WalletIdentity destination) {
@@ -224,6 +254,33 @@ class WalletTransferAcceptanceServiceTest {
                 WalletIdentityRegistry.Status.ENABLED);
     }
 
+    private static WalletIdentityRegistry.WalletIdentity adminIdentity() {
+        return new WalletIdentityRegistry.WalletIdentity(
+                wallet("ADMIN"), Set.of(ADMIN_REDEMPTION),
+                WalletIdentityRegistry.OwnerCategory.ADMIN,
+                SettlementNetwork.ETHEREUM,
+                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                new KeyAlias("local-demo:ADMIN"), "registry-v1", "admin-key-v1",
+                Set.of(WalletIdentityRegistry.Purpose.MINT_AUTHORITY,
+                        WalletIdentityRegistry.Purpose.BURN_AUTHORITY,
+                        WalletIdentityRegistry.Purpose.REDEMPTION_CUSTODY),
+                WalletIdentityRegistry.Status.ENABLED);
+    }
+
+    private static TokenOperation burnOperation(String quantity) {
+        return TokenOperation.requested(
+                new OperationId(UUID.randomUUID()),
+                new OperationAcceptanceContext(
+                        PARTICIPANT.tenantId(), PARTICIPANT.participantId(),
+                        "TOKEN_BURN", "1".repeat(64), 1, 1,
+                        "2".repeat(64), "redemption-correlation"),
+                OperationKind.BURN,
+                io.github.johnwhitton.digitalbanking.domain.asset.TokenQuantity.parse(
+                        quantity, USD),
+                Instant.parse("2026-07-17T12:00:00Z"),
+                new EvidenceRef("internal:test:burn-accepted"));
+    }
+
     private static WalletReference wallet(String name) {
         return new WalletReference("synthetic-wallet:" + name);
     }
@@ -246,9 +303,19 @@ class WalletTransferAcceptanceServiceTest {
             return new Acceptance(existing, true);
         }
 
+        @Override public Acceptance acceptRedemption(
+                WalletTransferOperation proposed, OperationId burnOperationId) {
+            return accept(proposed);
+        }
+
         @Override public Optional<WalletTransferOperation> findById(OperationId operationId) {
             return byKey.values().stream()
                     .filter(value -> value.operationId().equals(operationId)).findFirst();
+        }
+
+        @Override public Optional<WalletTransferOperation> findRedemptionByBurn(
+                OperationId burnOperationId) {
+            return Optional.empty();
         }
 
         @Override public Optional<WalletTransferOperation> findByIdempotency(

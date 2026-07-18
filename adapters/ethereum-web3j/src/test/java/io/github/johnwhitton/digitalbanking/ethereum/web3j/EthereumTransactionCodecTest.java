@@ -50,6 +50,16 @@ class EthereumTransactionCodecTest {
     }
 
     @Test
+    void encodesExactOwnBalanceBurnWithoutAnArbitraryHolder() {
+        String calldata = codec.burnCalldata(BigInteger.valueOf(10_000));
+
+        assertEquals("42966c68", calldata.substring(2, 10));
+        assertEquals("0".repeat(60) + "2710", calldata.substring(10));
+        assertThrows(IllegalArgumentException.class,
+                () -> codec.burnCalldata(BigInteger.ZERO));
+    }
+
+    @Test
     void encodesOnlyLowSCompactSignatureFromExpectedSigner() throws Exception {
         ECKeyPair key = Keys.createEcKeyPair();
         EthereumTransactionCodec.Transaction transaction = transaction();

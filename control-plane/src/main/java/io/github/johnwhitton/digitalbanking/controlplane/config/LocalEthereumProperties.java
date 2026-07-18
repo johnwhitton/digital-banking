@@ -21,7 +21,8 @@ public record LocalEthereumProperties(
         int unitVersion,
         int decimals,
         BigInteger maxAtomicUnits,
-        String policyVersion) {
+        String policyVersion,
+        String redemptionSourceWallet) {
 
     public LocalEthereumProperties {
         URI endpoint;
@@ -63,6 +64,11 @@ public record LocalEthereumProperties(
             throw new IllegalArgumentException("local Ethereum asset/unit policy is invalid");
         }
         requireText(policyVersion, "policyVersion");
+        if (redemptionSourceWallet == null
+                || !redemptionSourceWallet.matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,109}")) {
+            throw new IllegalArgumentException(
+                    "redemptionSourceWallet must be a bounded synthetic-wallet name");
+        }
     }
 
     String requiredMintRecipientAddress() {

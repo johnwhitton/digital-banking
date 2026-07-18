@@ -26,7 +26,8 @@ class LocalEthereumPropertiesTest {
                 "0x1111111111111111111111111111111111111111", "",
                 BigInteger.ONE, BigInteger.TWO, BigInteger.valueOf(180_000),
                 1, "USD_STABLE", "USD", 1, 2,
-                BigInteger.valueOf(1_000_000_000_000L), "local-policy-v1");
+                BigInteger.valueOf(1_000_000_000_000L), "local-policy-v1",
+                "USER_WALLET_2");
         assertThrows(IllegalArgumentException.class,
                 transferOnly::requiredMintRecipientAddress);
     }
@@ -39,6 +40,7 @@ class LocalEthereumPropertiesTest {
                 BigInteger.valueOf(1_000_000_000L),
                 BigInteger.valueOf(2_000_000_000L), BigInteger.valueOf(180_000),
                 1, "USD_STABLE", "USD", 1, 2,
-                BigInteger.valueOf(1_000_000_000_000L), "local-ethereum-mint-v1");
+                BigInteger.valueOf(1_000_000_000_000L), "local-ethereum-mint-v1",
+                "USER_WALLET_2");
     }
 }

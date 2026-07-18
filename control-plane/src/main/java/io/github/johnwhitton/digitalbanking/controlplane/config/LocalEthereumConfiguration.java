@@ -6,7 +6,7 @@ import java.time.Duration;
 import javax.sql.DataSource;
 
 import io.github.johnwhitton.digitalbanking.application.SigningAuthorityService;
-import io.github.johnwhitton.digitalbanking.application.delivery.MintAcceptedDeliveryHandler;
+import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.application.port.AssetUnitCatalog;
@@ -73,9 +73,9 @@ public class LocalEthereumConfiguration {
                 .findFirst().orElseThrow();
         String signingAddress = new EthereumTransactionCodec()
                 .addressFromPublicKey(signer.publicKey(evmKey.alias()));
-        return new MintAcceptedDeliveryHandler(
+        return new TokenOperationAcceptedDeliveryHandler(
                 operations, chain, signing, clock, ids,
-                new MintAcceptedDeliveryHandler.Policy(
+                new TokenOperationAcceptedDeliveryHandler.Policy(
                         evmKey.alias(), signingAddress, Duration.ofMinutes(5),
                         properties.policyVersion()));
     }

@@ -57,6 +57,25 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
     @Override
     public Acceptance accept(WalletTransferOperation proposed) {
         Objects.requireNonNull(proposed, "proposed");
+        if (proposed.purpose() != WalletTransferOperation.Purpose.USER_TRANSFER) {
+            throw new IllegalArgumentException("redemption custody requires its burn correlation");
+        }
+        return accept(proposed, null);
+    }
+
+    @Override
+    public Acceptance acceptRedemption(
+            WalletTransferOperation proposed, OperationId burnOperationId) {
+        Objects.requireNonNull(proposed, "proposed");
+        Objects.requireNonNull(burnOperationId, "burnOperationId");
+        if (proposed.purpose() != WalletTransferOperation.Purpose.REDEMPTION_CUSTODY) {
+            throw new IllegalArgumentException("redemption custody purpose is required");
+        }
+        return accept(proposed, burnOperationId);
+    }
+
+    private Acceptance accept(
+            WalletTransferOperation proposed, OperationId burnOperationId) {
         return Objects.requireNonNull(transaction.execute(status -> {
             int inserted = insertOperation(proposed);
             if (inserted == 0) {
@@ -65,7 +84,15 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
                         || !retained.commandDigest().equals(proposed.commandDigest())) {
                     throw new IdempotencyConflictException();
                 }
+                if (burnOperationId != null && !findRedemptionByBurn(burnOperationId)
+                        .map(WalletTransferOperation::operationId)
+                        .filter(retained.operationId()::equals).isPresent()) {
+                    throw new IdempotencyConflictException();
+                }
                 return new Acceptance(retained, true);
+            }
+            if (burnOperationId != null) {
+                insertRedemptionCorrelation(proposed, burnOperationId);
             }
             insertTransition(proposed, null);
             for (FinalityType type : FinalityType.values()) {
@@ -79,15 +106,31 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
                         status, created_at, available_at, delivery_attempt_count, updated_at)
                     VALUES (
                         :eventId, NULL, NULL, :operationId,
-                        'WalletTransferAccepted', 1, 1, '{}'::jsonb,
+                        'WalletTransferAccepted', 1, 1,
+                        jsonb_build_object('transferPurpose', :transferPurpose),
                         'PENDING', :createdAt, :createdAt, 0, :createdAt)
                     """)
                     .param("eventId", UUID.randomUUID())
                     .param("operationId", proposed.operationId().value())
+                    .param("transferPurpose", proposed.purpose().name())
                     .param("createdAt", utc(proposed.createdAt()))
                     .update();
             return new Acceptance(proposed, false);
         }));
+    }
+
+    @Override
+    public Optional<WalletTransferOperation> findRedemptionByBurn(
+            OperationId burnOperationId) {
+        Objects.requireNonNull(burnOperationId, "burnOperationId");
+        return jdbc.sql(selectOperation() + """
+                WHERE operation_id = (
+                    SELECT custody_operation_id
+                    FROM ethereum_redemption_correlation
+                    WHERE burn_operation_id = :burnOperationId)
+                """)
+                .param("burnOperationId", burnOperationId.value())
+                .query(this::map).optional().map(this::hydrate);
     }
 
     @Override
@@ -198,7 +241,7 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
                     quantity_atomic, source_wallet_ref, source_address,
                     source_key_alias, source_registry_version, source_key_version,
                     destination_wallet_ref, destination_address, destination_key_alias,
-                    destination_registry_version, destination_key_version, network,
+                    destination_registry_version, destination_key_version, transfer_purpose, network,
                     contract_address, contract_version, finality_policy_version,
                     attempt_id, operation_status, aggregate_version, created_at, updated_at)
                 VALUES (
@@ -208,7 +251,7 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
                     :quantity, :sourceRef, :sourceAddress, :sourceKeyAlias,
                     :sourceRegistryVersion, :sourceKeyVersion, :destinationRef,
                     :destinationAddress, :destinationKeyAlias,
-                    :destinationRegistryVersion, :destinationKeyVersion, :network,
+                    :destinationRegistryVersion, :destinationKeyVersion, :purpose, :network,
                     :contractAddress, :contractVersion, :policyVersion,
                     :attemptId, :operationStatus, :aggregateVersion, :createdAt, :updatedAt)
                 ON CONFLICT (tenant_id, participant_id, idempotency_key_digest) DO NOTHING
@@ -235,6 +278,7 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
                 .param("destinationKeyAlias", destination.keyReference().value())
                 .param("destinationRegistryVersion", destination.registryVersion())
                 .param("destinationKeyVersion", destination.keyVersion())
+                .param("purpose", value.purpose().name())
                 .param("network", value.network().name())
                 .param("contractAddress", value.contractAddress())
                 .param("contractVersion", value.contractVersion())
@@ -245,6 +289,41 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
                 .param("createdAt", utc(value.createdAt()))
                 .param("updatedAt", utc(value.updatedAt()))
                 .update();
+    }
+
+    private void insertRedemptionCorrelation(
+            WalletTransferOperation custody, OperationId burnOperationId) {
+        int inserted = jdbc.sql("""
+                INSERT INTO ethereum_redemption_correlation (
+                    correlation_id, burn_operation_id, custody_operation_id,
+                    custody_effect_id, custody_attempt_id, correlation_status,
+                    created_at, updated_at)
+                SELECT :correlationId, burn.operation_id, custody.operation_id,
+                       custody.effect_id, custody.attempt_id, 'AWAITING_CUSTODY',
+                       :createdAt, :createdAt
+                FROM token_operation burn
+                JOIN wallet_transfer_operation custody
+                  ON custody.operation_id = :custodyOperationId
+                WHERE burn.operation_id = :burnOperationId
+                  AND burn.operation_kind = 'BURN'
+                  AND custody.transfer_purpose = 'REDEMPTION_CUSTODY'
+                  AND burn.tenant_id = custody.tenant_id
+                  AND burn.participant_id = custody.participant_id
+                  AND burn.asset_id = custody.asset_id
+                  AND burn.unit_id = custody.unit_id
+                  AND burn.unit_version = custody.unit_version
+                  AND burn.unit_scale = custody.unit_scale
+                  AND burn.quantity_atomic = custody.quantity_atomic
+                """)
+                .param("correlationId", custody.transferId().value())
+                .param("burnOperationId", burnOperationId.value())
+                .param("custodyOperationId", custody.operationId().value())
+                .param("createdAt", utc(custody.createdAt()))
+                .update();
+        if (inserted != 1) {
+            throw new IllegalArgumentException(
+                    "burn operation does not match redemption custody context");
+        }
     }
 
     private Optional<WalletTransferOperation> findByScope(WalletTransferOperation proposed) {
@@ -351,7 +430,10 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
                 result.getString("idempotency_key_digest"),
                 result.getInt("command_version"), result.getString("command_digest"),
                 TokenQuantity.ofAtomic(decimal(result, "quantity_atomic"), unit),
-                snapshot(result, "source"), snapshot(result, "destination"),
+                WalletTransferOperation.Purpose.valueOf(
+                        result.getString("transfer_purpose")),
+                snapshot(result, "source", false), snapshot(result, "destination",
+                        "REDEMPTION_CUSTODY".equals(result.getString("transfer_purpose"))),
                 SettlementNetwork.valueOf(result.getString("network")),
                 result.getString("contract_address"), result.getString("contract_version"),
                 result.getString("finality_policy_version"),
@@ -363,15 +445,20 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
     }
 
     private static WalletTransferOperation.WalletSnapshot snapshot(
-            ResultSet result, String prefix) throws SQLException {
+            ResultSet result, String prefix, boolean redemptionAdmin) throws SQLException {
         return new WalletTransferOperation.WalletSnapshot(
                 new WalletReference(result.getString(prefix + "_wallet_ref")),
-                WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
+                redemptionAdmin ? WalletIdentityRegistry.OwnerCategory.ADMIN
+                        : WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
                 SettlementNetwork.ETHEREUM, result.getString(prefix + "_address"),
                 new KeyAlias(result.getString(prefix + "_key_alias")),
                 result.getString(prefix + "_registry_version"),
                 result.getString(prefix + "_key_version"),
-                Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
+                redemptionAdmin
+                        ? Set.of(WalletIdentityRegistry.Purpose.REDEMPTION_CUSTODY,
+                                WalletIdentityRegistry.Purpose.MINT_AUTHORITY,
+                                WalletIdentityRegistry.Purpose.BURN_AUTHORITY)
+                        : Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
                 WalletIdentityRegistry.Status.ENABLED);
     }
 
@@ -383,7 +470,7 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
                        quantity_atomic, source_wallet_ref, source_address,
                        source_key_alias, source_registry_version, source_key_version,
                        destination_wallet_ref, destination_address, destination_key_alias,
-                       destination_registry_version, destination_key_version, network,
+                       destination_registry_version, destination_key_version, transfer_purpose, network,
                        contract_address, contract_version, finality_policy_version,
                        attempt_id, operation_status, aggregate_version, created_at, updated_at
                 FROM wallet_transfer_operation
@@ -406,6 +493,7 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
             OperationId operationId, TransferId transferId, TransferEffect.Id effectId,
             ParticipantScope participant, String idempotencyKeyDigest, int commandVersion,
             String commandDigest, TokenQuantity quantity,
+            WalletTransferOperation.Purpose purpose,
             WalletTransferOperation.WalletSnapshot source,
             WalletTransferOperation.WalletSnapshot destination,
             SettlementNetwork network, String contractAddress, String contractVersion,
@@ -418,7 +506,7 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
                 Map<FinalityType, List<FinalityRecord>> finalities) {
             return new WalletTransferOperation(
                     operationId, transferId, effectId, participant, idempotencyKeyDigest,
-                    commandVersion, commandDigest, quantity, source, destination, network,
+                    commandVersion, commandDigest, quantity, purpose, source, destination, network,
                     contractAddress, contractVersion, finalityPolicyVersion, attemptId,
                     status, version, createdAt, updatedAt, evidence, finalities);
         }

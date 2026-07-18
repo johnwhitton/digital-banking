@@ -53,6 +53,11 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
         return new PostgresOperationDeliveryQueue(dataSource, Filter.WALLET_TRANSFER);
     }
 
+    /** Local-demo view preserving user transfers while adding burn/redemption work. */
+    public static PostgresOperationDeliveryQueue localEthereumDemo(DataSource dataSource) {
+        return new PostgresOperationDeliveryQueue(dataSource, Filter.LOCAL_ETHEREUM_DEMO);
+    }
+
     @Override
     public ClaimBatch claim(
             String workerId, Instant now, Duration leaseDuration, int limit) {
@@ -96,7 +101,14 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                               WHERE supported_operation.operation_id = candidate.operation_id
                                 AND supported_operation.operation_kind = 'MINT'))
                       OR (:filter = 'WALLET_TRANSFER'
-                          AND candidate.event_type = 'WalletTransferAccepted'))
+                          AND candidate.event_type = 'WalletTransferAccepted')
+                      OR (:filter = 'LOCAL_ETHEREUM_DEMO'
+                          AND (candidate.event_type = 'WalletTransferAccepted'
+                            OR (candidate.event_type = 'TokenOperationAccepted'
+                                AND EXISTS (
+                                    SELECT 1 FROM token_operation supported_operation
+                                    WHERE supported_operation.operation_id = candidate.operation_id
+                                      AND supported_operation.operation_kind = 'BURN')))))
                   AND NOT EXISTS (
                       SELECT 1
                       FROM operation_outbox prior
@@ -366,7 +378,14 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                       WHERE supported_operation.operation_id = candidate.operation_id
                                         AND supported_operation.operation_kind = 'MINT'))
                               OR (:filter = 'WALLET_TRANSFER'
-                                  AND candidate.event_type = 'WalletTransferAccepted'))
+                                  AND candidate.event_type = 'WalletTransferAccepted')
+                              OR (:filter = 'LOCAL_ETHEREUM_DEMO'
+                                  AND (candidate.event_type = 'WalletTransferAccepted'
+                                    OR (candidate.event_type = 'TokenOperationAccepted'
+                                        AND EXISTS (
+                                            SELECT 1 FROM token_operation supported_operation
+                                            WHERE supported_operation.operation_id = candidate.operation_id
+                                              AND supported_operation.operation_kind = 'BURN')))))
                           AND NOT EXISTS (
                               SELECT 1 FROM operation_outbox prior
                               WHERE ((prior.operation_id = candidate.operation_id
@@ -401,7 +420,14 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                   WHERE supported_operation.operation_id = candidate.operation_id
                                     AND supported_operation.operation_kind = 'MINT'))
                           OR (:filter = 'WALLET_TRANSFER'
-                              AND candidate.event_type = 'WalletTransferAccepted'))
+                              AND candidate.event_type = 'WalletTransferAccepted')
+                          OR (:filter = 'LOCAL_ETHEREUM_DEMO'
+                              AND (candidate.event_type = 'WalletTransferAccepted'
+                                OR (candidate.event_type = 'TokenOperationAccepted'
+                                    AND EXISTS (
+                                        SELECT 1 FROM token_operation supported_operation
+                                        WHERE supported_operation.operation_id = candidate.operation_id
+                                          AND supported_operation.operation_kind = 'BURN')))))
                     """)
                     .param("now", utc(measuredAt))
                     .param("filter", filter.name())
@@ -460,6 +486,7 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
     private enum Filter {
         ALL,
         MINT,
-        WALLET_TRANSFER
+        WALLET_TRANSFER,
+        LOCAL_ETHEREUM_DEMO
     }
 }

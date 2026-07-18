@@ -54,7 +54,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 5A. Local Ethereum mint                | `verified`    | One accepted mint completes on local Anvil with durable signing/submission/observation evidence. |
 | 5B. Local multi-wallet custody         | `verified`    | Versioned named ADMIN, bank, redemption, and user identities plus local-demo-only configured signing passed the 426-test offline reactor. |
 | 5C. Ethereum wallet transfer           | `verified`    | One internal exact user-custody ERC-20 transfer reuses the durable signing, submission, ambiguity, and observation lifecycle on Anvil. |
-| 5D. Ethereum redemption and burn       | `planned`     | Confirm redemption receipt, then ADMIN burns only its redeemed balance. |
+| 5D. Ethereum redemption and burn       | `verified`    | One local user-to-ADMIN custody transfer gates one exact ADMIN own-balance burn with durable one-time evidence and supply reconciliation. |
 | 6A. Synthetic reserves and mock banks  | `planned`     | Durable synthetic balances, reserve liability, inquiry, replay, and reconciliation. |
 | 6B. User-held workflows                | `planned`     | On-ramp and redemption parents complete Demo B locally. |
 | 6C. Settlement-only orchestration      | `planned`     | Six-effect fiat-to-fiat parent completes Demo A locally. |
@@ -65,7 +65,7 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 7D. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
 | 8. Final reference review              | `planned`     | Architecture, code, security, recovery, API/demo, and share-readiness review. |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated session-ephemeral local provider, Phase 5A's bounded local-Anvil mint to one configured recipient, Phase 5B's immutable configured local wallet registry and deterministic signer, and Phase 5C's internal standalone transfer between two server-resolved user-custody wallets. The Phase 5C closeout records 436 passing tests across the seven-module offline reactor; the unchanged Foundry suite last recorded five passing tests in Phase 5A. Profiles `local-signer` plus `local-ethereum` compose the mint handler; profiles `local-demo` plus `local-ethereum` compose the wallet-transfer handler. Both require explicit loopback/local-chain configuration and expose no new public endpoint. The default runtime has no identity provider, signer, or chain client. No dynamic or persistent wallet-management service, reserve subsystem, runtime bank effect, Ethereum burn, parent orchestration, demo environment, or Solana adapter exists. Both [USDZELLE demonstrations](TRANSFER_DEMO.md) remain future work. Each planned phase below requires its own separately authorized plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated session-ephemeral local provider, Phase 5A's bounded local-Anvil mint to one configured recipient, Phase 5B's immutable configured local wallet registry and deterministic signer, Phase 5C's internal standalone transfer between two server-resolved user-custody wallets, and Phase 5D's bounded user-to-ADMIN redemption custody followed by exact ADMIN own-balance burn. Profiles `local-signer` plus `local-ethereum` compose the mint handler; profiles `local-demo` plus `local-ethereum` compose the transfer/redemption/burn handler. Both require explicit loopback/local-chain configuration and expose no new public endpoint. The default runtime has no identity provider, signer, or chain client. No dynamic or persistent wallet-management service, reserve subsystem, runtime bank payout, complete redemption/parent orchestration, demo environment, or Solana adapter exists. Both [USDZELLE demonstrations](TRANSFER_DEMO.md) remain future work. Each planned phase below requires its own separately authorized plan.
 
 ## Phase 1: Foundation
 
@@ -177,7 +177,7 @@ Phases 4-8 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 **Risks:** unsafe admin/upgrade authority, fake finality, submit/observe provider coupling, fixture keys presented as production patterns.
 
-**Deferred:** Ethereum wallet transfer, burn, replacement/cancellation, longer-lived reorg monitoring, parent-transfer integration, public networks, production contracts/deployment/admin, and provider/custody selection. Phase 5C later implements a separate user-custody transfer path without changing this Phase 5A boundary.
+**Deferred from Phase 5A:** Ethereum wallet transfer, burn, replacement/cancellation, longer-lived reorg monitoring, parent-transfer integration, public networks, production contracts/deployment/admin, and provider/custody selection. Phases 5C-5D subsequently add separate bounded transfer and burn paths without changing the Phase 5A mint boundary.
 
 ### Phase 5B: local multi-wallet custody and configured signer
 
@@ -211,15 +211,15 @@ Phases 4-8 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 ### Phase 5D: Ethereum redemption and ADMIN burn
 
-**Status:** `planned`
+**Status:** `verified`
 
 **Dependency:** Phase 5C.
 
-**Plan:** not created until separately authorized.
+**Plan:** completed at [`docs/plans/completed/PHASE_5D_ETHEREUM_REDEMPTION_AND_BURN.md`](plans/completed/PHASE_5D_ETHEREUM_REDEMPTION_AND_BURN.md).
 
-**Deliverables:** transfer from a redeeming wallet to `ADMIN_REDEMPTION`; independent confirmation of exact ADMIN receipt; role-controlled ADMIN burn only for tokens held by ADMIN; durable burn and supply evidence; ambiguity inquiry; restart recovery; and supply reconciliation.
+**Delivered boundary:** an accepted exact BURN causes the local worker to create or resume one server-resolved transfer from the configured user source to `ADMIN_REDEMPTION`. PostgreSQL V7 durably correlates the operations, records immutable wallet/quantity/policy context and block-bound balances/supply, and consumes exact confirmed custody evidence once before preparing a burn. The token exposes a distinct `BURNER_ROLE` whose `burn(uint256)` destroys only the caller's own balance. ADMIN alone signs exact EIP-1559 burn calldata; submission is fenced once, response loss is inquired by the retained hash, and independent transaction/receipt/single-event/canonical-block evidence plus exact ADMIN/supply deltas advances only technical completion and blockchain finality.
 
-**Exit gate:** one confirmed redemption transfer followed by ADMIN burn reduces the ADMIN balance and total supply by the exact amount once.
+**Exit gate:** one confirmed redemption transfer followed by ADMIN burn reduces the ADMIN balance and total supply by the exact amount once. The final offline reactor passed 442 tests with zero failures, errors, or skips, and the Foundry suite passed 9/9.
 
 **Non-goals:** arbitrary burn from another wallet, bank payout, reserve release, complete redemption parent, or production token administration.
 
@@ -437,6 +437,16 @@ The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A
 
 ## Latest bounded vertical slice
 
+Action Request 17 implements **Phase 5D Local Ethereum Redemption Custody and Burn**:
+
+- one server-resolved exact redemption-custody transfer from a configured user wallet to `ADMIN_REDEMPTION`, durably correlated to an accepted BURN without adding request wallet fields or changing OpenAPI;
+- one forward-only V7 migration for transfer purpose, one-time custody consumption, ADMIN burn attempts/observations, and block-bound balance/supply evidence while V1-V6 remain unchanged;
+- one `BURNER_ROLE` own-balance contract method and deterministic `burn(uint256)` EIP-1559 path using ADMIN authority, the shared nonce cursor, durable submit-once fencing, and inquiry after response loss;
+- independent confirmation of the exact custody and ADMIN-to-zero burn events, canonical blocks, unchanged custody supply, and exact ADMIN/supply decrease; and
+- consolidated real-PostgreSQL and real-Anvil proof for `10,000` atomic units moving user to ADMIN to zero, with supply ending at zero and no burn resubmission after ambiguity.
+
+This slice adds no public API/OpenAPI, dependency, bank payout, reserve release, complete redemption parent, Phase 3C parent execution, Compose, public network, production custody, or Solana behavior. Its execution record is the Phase 5D plan above; Phase 6A synthetic reserves and executable mock banks is the next bounded recommendation.
+
 Action Request 16 implements **Phase 5C Local Ethereum Wallet Transfer**:
 
 - one internal standalone acceptance service with exact quantities, scoped replay/conflict, immutable server-resolved source/destination custody context, four finalities, and no endpoint or OpenAPI change;
@@ -541,4 +551,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum mint, configured local-custody foundation, internal local-Ethereum user-wallet transfer, remaining bank/provider/chain effects, and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 5C closeout, the next recommended bounded action is Phase 5D Ethereum redemption receipt and ADMIN burn; it must add no bank payout, reserve release, parent orchestration, or public-network behavior.
+The implemented transfer/signing boundaries, bounded local-Ethereum mint, configured local custody, internal user-wallet transfer, and bounded local redemption-custody/burn path—plus the remaining bank/reserve/workflow effects and two end-to-end demonstrations—are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 5D closeout, the next recommended bounded action is Phase 6A synthetic reserves and executable mock banks; it must add no end-to-end saga, public-network behavior, or production custody.

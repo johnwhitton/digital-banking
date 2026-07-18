@@ -43,6 +43,8 @@ public final class Web3jEthereumWalletTransferChainAdapter
             "Transfer(address,address,uint256)").toLowerCase(Locale.ROOT);
 
     private final EthereumWalletTransferAttemptStore attempts;
+    private final EthereumRedemptionBalanceStore balances;
+    private final EthereumTokenStateReader tokenState;
     private final Web3j submissionClient;
     private final Web3j observationClient;
     private final SubmissionTransport submissionTransport;
@@ -82,10 +84,12 @@ public final class Web3jEthereumWalletTransferChainAdapter
             SubmissionReadiness submissionReadiness,
             Configuration configuration, Clock clock) {
         attempts = new EthereumWalletTransferAttemptStore(dataSource);
+        balances = new EthereumRedemptionBalanceStore(dataSource);
         this.submissionClient = Objects.requireNonNull(
                 submissionClient, "submissionClient");
         this.observationClient = Objects.requireNonNull(
                 observationClient, "observationClient");
+        tokenState = new EthereumTokenStateReader(this.observationClient);
         this.submissionTransport = Objects.requireNonNull(
                 submissionTransport, "submissionTransport");
         this.submissionReadiness = Objects.requireNonNull(
@@ -113,6 +117,13 @@ public final class Web3jEthereumWalletTransferChainAdapter
             return prepared(retained);
         }
         try {
+            Optional<EthereumRedemptionBalanceStore.Context> redemption =
+                    balances.findByCustody(operation.operationId());
+            if (redemption.isPresent()) {
+                balances.record(EthereumRedemptionBalanceStore.Stage.BEFORE_CUSTODY,
+                        redemption.orElseThrow(),
+                        tokenState.latest(redemption.orElseThrow(), now()));
+            }
             BigInteger networkNonce = submissionClient.ethGetTransactionCount(
                             operation.source().normalizedAddress(),
                             DefaultBlockParameterName.PENDING)
@@ -246,6 +257,23 @@ public final class Web3jEthereumWalletTransferChainAdapter
         ObservationEvidence observed;
         try {
             observed = observe(attempt);
+            if (observed.classification()
+                    == ChainPort.ObservationClassification.CONFIRMED) {
+                Optional<EthereumRedemptionBalanceStore.Context> redemption =
+                        balances.findByCustody(attempt.operationId());
+                if (redemption.isPresent()) {
+                    EthereumRedemptionBalanceStore.Context context =
+                            redemption.orElseThrow();
+                    balances.record(EthereumRedemptionBalanceStore.Stage.AFTER_CUSTODY,
+                            context, tokenState.at(context,
+                                    observed.blockNumber().orElseThrow(), now()));
+                    if (!balances.custodyDeltaMatches(context.correlationId())) {
+                        observed = observed.reclassified(
+                                ChainPort.ObservationClassification.MISMATCHED,
+                                "redemption-custody-balance-mismatch");
+                    }
+                }
+            }
         } catch (IOException failure) {
             observed = pending("observer-unavailable", Optional.empty());
         }
@@ -745,6 +773,15 @@ public final class Web3jEthereumWalletTransferChainAdapter
             Optional<TransactionEvidence> transaction,
             Optional<MatchedTransferLog> transferLog,
             String evidenceKind) {
+
+        ObservationEvidence reclassified(
+                ChainPort.ObservationClassification changed,
+                String changedEvidenceKind) {
+            return new ObservationEvidence(
+                    changed, blockNumber, blockHash, confirmations,
+                    receiptSuccess, receiptDigest, transaction,
+                    transferLog, changedEvidenceKind);
+        }
 
         EthereumWalletTransferAttemptStore.ObservationDraft toDraft() {
             return new EthereumWalletTransferAttemptStore.ObservationDraft(

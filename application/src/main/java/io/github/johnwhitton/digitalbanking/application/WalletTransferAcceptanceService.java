@@ -21,6 +21,8 @@ import io.github.johnwhitton.digitalbanking.application.port.WalletIdentityRegis
 import io.github.johnwhitton.digitalbanking.application.port.WalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.domain.asset.TokenQuantity;
 import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationKind;
+import io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation;
 import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
 
@@ -88,8 +90,10 @@ public final class WalletTransferAcceptanceService {
             WalletTransferOperation proposed = new WalletTransferOperation(
                     operationId, transferIds.nextTransferId(), transferIds.nextEffectId(),
                     participant, key.sha256(), COMMAND_VERSION, digest, quantity,
-                    WalletTransferOperation.WalletSnapshot.from(source),
-                    WalletTransferOperation.WalletSnapshot.from(destination),
+                    WalletTransferOperation.Purpose.USER_TRANSFER,
+                    WalletTransferOperation.WalletSnapshot.from(source, request.source()),
+                    WalletTransferOperation.WalletSnapshot.from(
+                            destination, request.destination()),
                     SettlementNetwork.ETHEREUM, policy.contractAddress(),
                     policy.contractVersion(), policy.finalityPolicyVersion(),
                     operationIds.nextAttemptId(), WalletTransferOperation.Status.ACCEPTED,
@@ -99,6 +103,71 @@ public final class WalletTransferAcceptanceService {
                     WalletTransferOperation.initialFinalities());
             return transfers.accept(proposed);
         } catch (UnknownAssetUnitException failure) {
+            throw failure;
+        } catch (IllegalArgumentException failure) {
+            throw new InvalidRequestException(failure);
+        }
+    }
+
+    public WalletTransferRepository.Acceptance acceptRedemption(
+            TokenOperation burn,
+            WalletReference sourceReference,
+            WalletReference adminRedemptionReference) {
+        Objects.requireNonNull(burn, "burn");
+        Objects.requireNonNull(sourceReference, "sourceReference");
+        Objects.requireNonNull(adminRedemptionReference, "adminRedemptionReference");
+        if (burn.kind() != OperationKind.BURN) {
+            throw new InvalidRequestException(
+                    new IllegalArgumentException("redemption requires an accepted burn"));
+        }
+        try {
+            ParticipantScope participant = new ParticipantScope(
+                    burn.acceptanceContext().tenantId(),
+                    burn.acceptanceContext().participantId());
+            IdempotencyKey key = new IdempotencyKey(
+                    "redemption:" + burn.operationId().value());
+            String digest = redemptionDigest(
+                    burn, sourceReference, adminRedemptionReference);
+            var retained = transfers.findByIdempotency(participant, key.sha256());
+            if (retained.isPresent()) {
+                WalletTransferOperation existing = retained.orElseThrow();
+                if (existing.purpose()
+                                != WalletTransferOperation.Purpose.REDEMPTION_CUSTODY
+                        || existing.commandVersion() != COMMAND_VERSION
+                        || !existing.commandDigest().equals(digest)) {
+                    throw new IdempotencyConflictException();
+                }
+                return new WalletTransferRepository.Acceptance(existing, true);
+            }
+            WalletIdentityRegistry.WalletIdentity source =
+                    wallets.resolve(sourceReference);
+            WalletIdentityRegistry.WalletIdentity destination =
+                    wallets.resolve(adminRedemptionReference);
+            validateResolution(sourceReference, source);
+            validateRedemptionDestination(
+                    adminRedemptionReference, destination);
+            if (source.normalizedAddress().equals(destination.normalizedAddress())) {
+                throw new IllegalArgumentException(
+                        "redemption source and ADMIN destination must differ");
+            }
+            var operationId = operationIds.nextOperationId();
+            var acceptedAt = clock.now().truncatedTo(ChronoUnit.MICROS);
+            WalletTransferOperation proposed = new WalletTransferOperation(
+                    operationId, transferIds.nextTransferId(), transferIds.nextEffectId(),
+                    participant, key.sha256(), COMMAND_VERSION, digest, burn.quantity(),
+                    WalletTransferOperation.Purpose.REDEMPTION_CUSTODY,
+                    WalletTransferOperation.WalletSnapshot.from(source, sourceReference),
+                    WalletTransferOperation.WalletSnapshot.from(
+                            destination, adminRedemptionReference),
+                    SettlementNetwork.ETHEREUM, policy.contractAddress(),
+                    policy.contractVersion(), policy.finalityPolicyVersion(),
+                    operationIds.nextAttemptId(), WalletTransferOperation.Status.ACCEPTED,
+                    0, acceptedAt, acceptedAt,
+                    java.util.List.of(new EvidenceRef(
+                            "internal:redemption-custody:accepted:" + operationId)),
+                    WalletTransferOperation.initialFinalities());
+            return transfers.acceptRedemption(proposed, burn.operationId());
+        } catch (IdempotencyConflictException failure) {
             throw failure;
         } catch (IllegalArgumentException failure) {
             throw new InvalidRequestException(failure);
@@ -117,6 +186,22 @@ public final class WalletTransferAcceptanceService {
                 || !EVM_ADDRESS.matcher(resolved.normalizedAddress()).matches()) {
             throw new IllegalArgumentException(
                     "wallet registry returned an unauthorized transfer identity");
+        }
+    }
+
+    private static void validateRedemptionDestination(
+            WalletReference requested,
+            WalletIdentityRegistry.WalletIdentity resolved) {
+        if ((!resolved.reference().equals(requested)
+                        && !resolved.aliases().contains(requested))
+                || resolved.ownerCategory() != WalletIdentityRegistry.OwnerCategory.ADMIN
+                || resolved.network() != SettlementNetwork.ETHEREUM
+                || resolved.status() != WalletIdentityRegistry.Status.ENABLED
+                || !resolved.allowedPurposes().contains(
+                        WalletIdentityRegistry.Purpose.REDEMPTION_CUSTODY)
+                || !EVM_ADDRESS.matcher(resolved.normalizedAddress()).matches()) {
+            throw new IllegalArgumentException(
+                    "wallet registry returned an unauthorized redemption identity");
         }
     }
 
@@ -141,6 +226,34 @@ public final class WalletTransferAcceptanceService {
                     MessageDigest.getInstance("SHA-256").digest(buffer.toByteArray()));
         } catch (IOException failure) {
             throw new IllegalStateException("wallet transfer canonicalization failed", failure);
+        } catch (NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("SHA-256 is unavailable", failure);
+        }
+    }
+
+    private static String redemptionDigest(
+            TokenOperation burn,
+            WalletReference source,
+            WalletReference destination) {
+        try {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            try (DataOutputStream output = new DataOutputStream(buffer)) {
+                output.writeInt(COMMAND_VERSION);
+                write(output, "REDEMPTION_CUSTODY");
+                write(output, burn.operationId().toString());
+                write(output, burn.acceptanceContext().commandDigest());
+                write(output, burn.quantity().unit().assetId());
+                write(output, burn.quantity().unit().unitId());
+                write(output, Integer.toString(burn.quantity().unit().version()));
+                write(output, burn.quantity().atomicUnits().toString());
+                write(output, source.value());
+                write(output, destination.value());
+            }
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(buffer.toByteArray()));
+        } catch (IOException failure) {
+            throw new IllegalStateException(
+                    "redemption custody canonicalization failed", failure);
         } catch (NoSuchAlgorithmException failure) {
             throw new IllegalStateException("SHA-256 is unavailable", failure);
         }

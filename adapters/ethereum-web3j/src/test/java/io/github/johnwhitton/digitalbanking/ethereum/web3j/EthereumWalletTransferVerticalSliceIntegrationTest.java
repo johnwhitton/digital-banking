@@ -19,14 +19,19 @@ import java.util.UUID;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.github.johnwhitton.digitalbanking.application.SigningAuthorityService;
+import io.github.johnwhitton.digitalbanking.application.TokenOperationService;
 import io.github.johnwhitton.digitalbanking.application.WalletTransferAcceptanceService;
 import io.github.johnwhitton.digitalbanking.application.WalletTransferOperation;
+import io.github.johnwhitton.digitalbanking.application.command.BurnCommand;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyKey;
 import io.github.johnwhitton.digitalbanking.application.command.ParticipantScope;
 import io.github.johnwhitton.digitalbanking.application.delivery.DeliveryOutcome;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDelivery;
+import io.github.johnwhitton.digitalbanking.application.delivery.RedemptionAcceptedDeliveryHandler;
+import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.WalletTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.port.IdGenerator;
+import io.github.johnwhitton.digitalbanking.application.port.OperationRepository;
 import io.github.johnwhitton.digitalbanking.application.port.SigningAuthorizationPort;
 import io.github.johnwhitton.digitalbanking.application.port.SigningIdentityGenerator;
 import io.github.johnwhitton.digitalbanking.application.port.TransferIdentityGenerator;
@@ -38,6 +43,8 @@ import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
 import io.github.johnwhitton.digitalbanking.domain.operation.FinalityStatus;
 import io.github.johnwhitton.digitalbanking.domain.operation.FinalityType;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationId;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationKind;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationState;
 import io.github.johnwhitton.digitalbanking.domain.signing.KeyAlias;
 import io.github.johnwhitton.digitalbanking.domain.signing.ProviderRequestId;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningAttemptId;
@@ -48,6 +55,7 @@ import io.github.johnwhitton.digitalbanking.domain.transfer.TransferId;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferTransition;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationDeliveryQueue;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationRepository;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresSigningRequestRepository;
 import io.github.johnwhitton.digitalbanking.signer.local.LocalConfiguredSigner;
 import org.flywaydb.core.Flyway;
@@ -60,9 +68,11 @@ import org.web3j.abi.FunctionEncoder;
 import org.web3j.abi.FunctionReturnDecoder;
 import org.web3j.abi.TypeReference;
 import org.web3j.abi.datatypes.Address;
+import org.web3j.abi.datatypes.generated.Bytes32;
 import org.web3j.abi.datatypes.Function;
 import org.web3j.abi.datatypes.generated.Uint256;
 import org.web3j.crypto.ECKeyPair;
+import org.web3j.crypto.Hash;
 import org.web3j.crypto.Keys;
 import org.web3j.protocol.Web3j;
 import org.web3j.protocol.core.DefaultBlockParameterName;
@@ -81,6 +91,10 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
             new WalletReference("synthetic-wallet:USER_WALLET_1");
     private static final WalletReference DESTINATION =
             new WalletReference("synthetic-wallet:USER_WALLET_2");
+    private static final WalletReference ADMIN_REDEMPTION =
+            new WalletReference("synthetic-wallet:ADMIN_REDEMPTION");
+    private static final WalletReference ADMIN =
+            new WalletReference("synthetic-wallet:ADMIN");
     private static PostgreSQLContainer postgres;
     private static HikariDataSource dataSource;
     private static JdbcClient jdbc;
@@ -115,6 +129,10 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
     @BeforeEach
     void clearData() {
         jdbc.sql("DELETE FROM operation_delivery_attempt").update();
+        jdbc.sql("DELETE FROM ethereum_redemption_balance_observation").update();
+        jdbc.sql("DELETE FROM ethereum_burn_observation").update();
+        jdbc.sql("DELETE FROM ethereum_burn_attempt").update();
+        jdbc.sql("DELETE FROM ethereum_redemption_correlation").update();
         jdbc.sql("DELETE FROM ethereum_wallet_transfer_observation").update();
         jdbc.sql("DELETE FROM ethereum_wallet_transfer_attempt").update();
         jdbc.sql("DELETE FROM wallet_transfer_handler_inbox").update();
@@ -128,6 +146,13 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
         jdbc.sql("DELETE FROM signing_transition").update();
         jdbc.sql("DELETE FROM signing_request").update();
         jdbc.sql("DELETE FROM ethereum_nonce_cursor").update();
+        jdbc.sql("DELETE FROM operation_finality_evidence").update();
+        jdbc.sql("DELETE FROM operation_finality").update();
+        jdbc.sql("DELETE FROM operation_attempt").update();
+        jdbc.sql("DELETE FROM operation_transition_evidence").update();
+        jdbc.sql("DELETE FROM operation_transition").update();
+        jdbc.sql("DELETE FROM operation_idempotency").update();
+        jdbc.sql("DELETE FROM token_operation").update();
     }
 
     @Test
@@ -139,6 +164,10 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
                 @Override public Acceptance accept(WalletTransferOperation operation) {
                     return scenario.repository.accept(operation);
                 }
+                @Override public Acceptance acceptRedemption(
+                        WalletTransferOperation operation, OperationId burnOperationId) {
+                    return scenario.repository.acceptRedemption(operation, burnOperationId);
+                }
                 @Override public Optional<WalletTransferOperation> findByIdempotency(
                         ParticipantScope participant, String keyDigest) {
                     return scenario.repository.findByIdempotency(participant, keyDigest);
@@ -146,6 +175,10 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
                 @Override public Optional<WalletTransferOperation> findById(
                         OperationId operationId) {
                     return scenario.repository.findById(operationId);
+                }
+                @Override public Optional<WalletTransferOperation> findRedemptionByBurn(
+                        OperationId burnOperationId) {
+                    return scenario.repository.findRedemptionByBurn(burnOperationId);
                 }
                 @Override public StartResult startDelivery(
                         UUID deliveryId, OperationId operationId, Instant startedAt) {
@@ -230,6 +263,118 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
     }
 
     @Test
+    void transfersToRedemptionCustodyThenBurnsExactAdminBalanceAndSupply()
+            throws Exception {
+        try (Scenario scenario = Scenario.create(false)) {
+            assertEquals(DeliveryOutcome.Classification.DELIVERED,
+                    scenario.handler.handle(scenario.delivery).classification());
+            var admin = scenario.signer.resolve(ADMIN_REDEMPTION);
+            anvil.setBalance(admin.normalizedAddress(),
+                    new BigInteger("100000000000000000000"));
+            grantBurner(scenario.submission, scenario.caller,
+                    scenario.contract, admin.normalizedAddress());
+
+            OperationRepository operations = new PostgresOperationRepository(dataSource);
+            TokenOperationService tokens = new TokenOperationService(
+                    operations, CLOCK::instant, ids(),
+                    (command, participant) -> new EvidenceRef(
+                            "internal:test:redemption-burn:" + command.sha256()));
+            var burn = tokens.accept(
+                    new BurnCommand(1,
+                            new ParticipantScope("tenant-a", "participant-a"),
+                            io.github.johnwhitton.digitalbanking.domain.asset.TokenQuantity
+                                    .ofAtomic(BigInteger.valueOf(10_000), UNIT),
+                            "local-redemption-integration"),
+                    new IdempotencyKey("redemption-burn-" + UUID.randomUUID()))
+                    .operation();
+            OperationDelivery burnDelivery = PostgresOperationDeliveryQueue
+                    .localEthereumDemo(dataSource)
+                    .claim("redemption-burn-test", NOW, Duration.ofSeconds(30), 1)
+                    .deliveries().getFirst();
+            Web3j burnSubmission = anvil.newClient();
+            Web3j burnObservation = anvil.newClient();
+            int[] burnSubmissionCalls = {0};
+            try (Web3jEthereumBurnChainAdapter burnChain =
+                    new Web3jEthereumBurnChainAdapter(
+                            dataSource, burnSubmission, burnObservation,
+                            raw -> {
+                                burnSubmissionCalls[0]++;
+                                EthSendTransaction response = burnSubmission
+                                        .ethSendRawTransaction(raw).send();
+                                if (burnSubmissionCalls[0] == 1 && !response.hasError()) {
+                                    throw new IOException(
+                                            "synthetic burn response loss after acceptance");
+                                }
+                                return response;
+                            },
+                            () -> {
+                                if (!burnSubmission.ethChainId().send().getChainId()
+                                        .equals(BigInteger.valueOf(31_337))) {
+                                    throw new IllegalStateException("unexpected burn chain");
+                                }
+                            },
+                            new Web3jEthereumBurnChainAdapter.Configuration(
+                                    31_337L, scenario.contract, admin.normalizedAddress(),
+                                    admin.keyReference().value(),
+                                    admin.registryVersion(), admin.keyVersion(),
+                                    BigInteger.valueOf(1_000_000_000L),
+                                    BigInteger.valueOf(2_000_000_000L),
+                                    BigInteger.valueOf(180_000), 1,
+                                    UNIT.assetId(), UNIT.unitId(), UNIT.version(),
+                                    UNIT.scale(), "local-ethereum-redemption-v1"), CLOCK)) {
+                var burnHandler = new TokenOperationAcceptedDeliveryHandler(
+                        operations, burnChain, scenario.signing, CLOCK::instant, ids(),
+                        new TokenOperationAcceptedDeliveryHandler.Policy(
+                                admin.keyReference(), admin.normalizedAddress(),
+                                Duration.ofMinutes(5),
+                                "local-ethereum-redemption-v1", OperationKind.BURN,
+                                SigningRequest.Action.BURN,
+                                SigningRequest.KeyRole.BURN_AUTHORITY));
+                var redemption = new RedemptionAcceptedDeliveryHandler(
+                        operations, scenario.repository, scenario.acceptance,
+                        burnHandler, scenario.handler, DESTINATION, ADMIN_REDEMPTION);
+
+                assertEquals(DeliveryOutcome.Classification.RETRYABLE_NO_EFFECT,
+                        redemption.handle(burnDelivery).classification());
+                OperationDelivery custodyDelivery = PostgresOperationDeliveryQueue
+                        .walletTransfersOnly(dataSource)
+                        .claim("redemption-custody-test", NOW,
+                                Duration.ofSeconds(30), 1)
+                        .deliveries().getFirst();
+                assertEquals(DeliveryOutcome.Classification.DELIVERED,
+                        redemption.handle(custodyDelivery).classification());
+                assertEquals(DeliveryOutcome.Classification.AMBIGUOUS_ACKNOWLEDGEMENT,
+                        redemption.handle(burnDelivery).classification());
+                DeliveryOutcome burnOutcome = redemption.handle(burnDelivery);
+                assertEquals(DeliveryOutcome.Classification.DELIVERED,
+                        burnOutcome.classification(), burnOutcome.toString());
+                assertEquals(1, burnSubmissionCalls[0]);
+            }
+
+            assertEquals(BigInteger.ZERO,
+                    scenario.balanceOf(scenario.destinationAddress));
+            assertEquals(BigInteger.ZERO,
+                    scenario.balanceOf(admin.normalizedAddress()));
+            assertEquals(BigInteger.ZERO, scenario.totalSupply());
+            assertEquals(OperationState.COMPLETED,
+                    operations.findById(burn.operationId()).orElseThrow().state());
+            assertEquals(3L, jdbc.sql("""
+                    SELECT count(*) FROM ethereum_redemption_balance_observation
+                    """).query(Long.class).single());
+            assertEquals(1L, jdbc.sql("""
+                    SELECT count(*) FROM ethereum_burn_observation
+                    WHERE observation_status = 'CONFIRMED'
+                      AND event_source_address = :admin
+                      AND event_destination_address =
+                          '0x0000000000000000000000000000000000000000'
+                      AND event_atomic_amount = 10000
+                      AND event_count = 1
+                    """).param("admin", admin.normalizedAddress())
+                    .query(Long.class).single());
+        }
+    }
+
+    @Test
     void changedSourceRegistryMetadataFencesSigningBeforeNativePreparation()
             throws Exception {
         try (Scenario scenario = Scenario.create(false)) {
@@ -267,6 +412,7 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
         private final LocalConfiguredSigner signer;
         private final Web3jEthereumWalletTransferChainAdapter chain;
         private final PostgresWalletTransferRepository repository;
+        private final WalletTransferAcceptanceService acceptance;
         private final SigningAuthorityService signing;
         private final WalletTransferAcceptedDeliveryHandler handler;
         private final OperationDelivery delivery;
@@ -280,6 +426,7 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
                 Web3j submission, Web3j observation, LocalConfiguredSigner signer,
                 Web3jEthereumWalletTransferChainAdapter chain,
                 PostgresWalletTransferRepository repository,
+                WalletTransferAcceptanceService acceptance,
                 SigningAuthorityService signing,
                 WalletTransferAcceptedDeliveryHandler handler,
                 OperationDelivery delivery, String contract, String caller,
@@ -289,6 +436,7 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
             this.signer = signer;
             this.chain = chain;
             this.repository = repository;
+            this.acceptance = acceptance;
             this.signing = signing;
             this.handler = handler;
             this.delivery = delivery;
@@ -308,6 +456,8 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
             var source = signer.resolve(SOURCE);
             var destination = signer.resolve(DESTINATION);
             anvil.setBalance(source.normalizedAddress(),
+                    new BigInteger("100000000000000000000"));
+            anvil.setBalance(destination.normalizedAddress(),
                     new BigInteger("100000000000000000000"));
             String contract = EthereumMintVerticalSliceIntegrationTest
                     .deployReferenceToken(submission, caller);
@@ -366,7 +516,8 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
                             CLOCK::instant, Duration.ofMinutes(5));
             assertEquals(accepted.operation().operationId().value(), delivery.aggregateId());
             return new Scenario(
-                    submission, observation, signer, chain, repository, signing, handler,
+                    submission, observation, signer, chain, repository, acceptance,
+                    signing, handler,
                     delivery, contract, caller, source.normalizedAddress(),
                     destination.normalizedAddress(), calls);
         }
@@ -405,10 +556,26 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
     private static LocalConfiguredSigner configuredSigner() throws Exception {
         ECKeyPair source = Keys.createEcKeyPair();
         ECKeyPair destination = Keys.createEcKeyPair();
+        ECKeyPair admin = Keys.createEcKeyPair();
         return new LocalConfiguredSigner(
                 new LocalConfiguredSigner.Configuration(31_337L, List.of(
-                        wallet(SOURCE, source), wallet(DESTINATION, destination))),
+                        wallet(SOURCE, source), wallet(DESTINATION, destination),
+                        adminWallet(admin))),
                 new SecureRandom());
+    }
+
+    private static LocalConfiguredSigner.ConfiguredWallet adminWallet(ECKeyPair key) {
+        String privateKey = Numeric.toHexStringNoPrefixZeroPadded(
+                key.getPrivateKey(), 64);
+        String address = "0x" + Keys.getAddress(key.getPublicKey());
+        return new LocalConfiguredSigner.ConfiguredWallet(
+                ADMIN, Set.of(ADMIN_REDEMPTION),
+                WalletIdentityRegistry.OwnerCategory.ADMIN,
+                SettlementNetwork.ETHEREUM, new KeyAlias("local-demo:ADMIN"),
+                privateKey.toCharArray(), address,
+                Set.of(WalletIdentityRegistry.Purpose.MINT_AUTHORITY,
+                        WalletIdentityRegistry.Purpose.BURN_AUTHORITY,
+                        WalletIdentityRegistry.Purpose.REDEMPTION_CUSTODY), true);
     }
 
     private static LocalConfiguredSigner.ConfiguredWallet wallet(
@@ -442,6 +609,24 @@ class EthereumWalletTransferVerticalSliceIntegrationTest {
         TransactionReceipt receipt = EthereumMintVerticalSliceIntegrationTest
                 .waitForReceipt(client, sent.getTransactionHash());
         assertTrue(receipt.isStatusOK());
+    }
+
+    private static void grantBurner(
+            Web3j client, String caller, String contract, String burner) throws Exception {
+        byte[] role = Numeric.hexStringToByteArray(Hash.sha3String("BURNER_ROLE"));
+        Function function = new Function(
+                "grantRole", List.of(new Bytes32(role), new Address(burner)), List.of());
+        EthSendTransaction sent = client.ethSendTransaction(
+                org.web3j.protocol.core.methods.request.Transaction
+                        .createFunctionCallTransaction(
+                                caller, null, BigInteger.valueOf(2_000_000_000L),
+                                BigInteger.valueOf(200_000), contract, BigInteger.ZERO,
+                                FunctionEncoder.encode(function))).send();
+        if (sent.hasError()) {
+            throw new IllegalStateException("local burner role grant was rejected");
+        }
+        assertTrue(EthereumMintVerticalSliceIntegrationTest
+                .waitForReceipt(client, sent.getTransactionHash()).isStatusOK());
     }
 
     private static SigningAuthorityService signingService(LocalConfiguredSigner signer) {

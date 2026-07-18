@@ -32,7 +32,7 @@ import io.github.johnwhitton.digitalbanking.application.command.IdempotencyKey;
 import io.github.johnwhitton.digitalbanking.application.command.MintCommand;
 import io.github.johnwhitton.digitalbanking.application.command.ParticipantScope;
 import io.github.johnwhitton.digitalbanking.application.delivery.DeliveryOutcome;
-import io.github.johnwhitton.digitalbanking.application.delivery.MintAcceptedDeliveryHandler;
+import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDelivery;
 import io.github.johnwhitton.digitalbanking.application.port.IdGenerator;
 import io.github.johnwhitton.digitalbanking.application.port.SigningAuthorizationPort;
@@ -288,8 +288,8 @@ class EthereumMintVerticalSliceIntegrationTest {
     }
 
     @Test
-    void migrationCreatesV5NonceAttemptAndObservationTables() {
-        assertEquals(6, jdbc.sql("""
+    void migrationsCreateNonceAttemptAndObservationTables() {
+        assertEquals(7, jdbc.sql("""
                 SELECT count(*) FROM flyway_schema_history WHERE success
                 """).query(Integer.class).single());
         assertEquals(3, jdbc.sql("""
@@ -309,7 +309,7 @@ class EthereumMintVerticalSliceIntegrationTest {
         private final String contract;
         private final LocalEphemeralSigner signer;
         private final PostgresOperationRepository operations;
-        private final MintAcceptedDeliveryHandler handler;
+        private final TokenOperationAcceptedDeliveryHandler handler;
         private final List<AutoCloseable> restartResources = new ArrayList<>();
         private int[] submissionCounter;
         private int[] restartedSubmissionCounter = {0};
@@ -322,7 +322,7 @@ class EthereumMintVerticalSliceIntegrationTest {
                 String contract,
                 LocalEphemeralSigner signer,
                 PostgresOperationRepository operations,
-                MintAcceptedDeliveryHandler handler) {
+                TokenOperationAcceptedDeliveryHandler handler) {
             this.submission = submission;
             this.observation = observation;
             this.admin = admin;
@@ -384,9 +384,9 @@ class EthereumMintVerticalSliceIntegrationTest {
                         }
                     },
                     configuration, CLOCK);
-            MintAcceptedDeliveryHandler handler = new MintAcceptedDeliveryHandler(
+            TokenOperationAcceptedDeliveryHandler handler = new TokenOperationAcceptedDeliveryHandler(
                     operations, chain, signing, CLOCK::instant, ids(),
-                    new MintAcceptedDeliveryHandler.Policy(
+                    new TokenOperationAcceptedDeliveryHandler.Policy(
                             evmKey.alias(), signingAddress, Duration.ofMinutes(5),
                             "anvil-one-confirmation-v1"));
             Scenario scenario = new Scenario(
@@ -427,7 +427,7 @@ class EthereumMintVerticalSliceIntegrationTest {
             return restartedSubmissionCounter[0];
         }
 
-        MintAcceptedDeliveryHandler restartedHandler() throws IOException {
+        TokenOperationAcceptedDeliveryHandler restartedHandler() throws IOException {
             LocalEphemeralSigner replacementSigner = newSigner();
             LocalEphemeralSigner.KeyMetadata replacementKey = evmKey(replacementSigner);
             EthereumTransactionCodec codec = new EthereumTransactionCodec();
@@ -449,10 +449,10 @@ class EthereumMintVerticalSliceIntegrationTest {
                             CLOCK);
             restartResources.add(restartedChain);
             restartResources.add(replacementSigner);
-            return new MintAcceptedDeliveryHandler(
+            return new TokenOperationAcceptedDeliveryHandler(
                     new PostgresOperationRepository(dataSource), restartedChain,
                     signingService(replacementSigner), CLOCK::instant, ids(),
-                    new MintAcceptedDeliveryHandler.Policy(
+                    new TokenOperationAcceptedDeliveryHandler.Policy(
                             replacementKey.alias(), replacementAddress,
                             Duration.ofMinutes(5), "anvil-one-confirmation-v1"));
         }

@@ -28,8 +28,9 @@ import io.github.johnwhitton.digitalbanking.domain.signing.SigningRequest;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningRequestId;
 import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
 
-/** Coordinates one accepted mint through the generic chain and Phase 4 signing ports. */
-public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandler {
+/** Coordinates one accepted mint or burn through the generic chain and signing ports. */
+public final class TokenOperationAcceptedDeliveryHandler
+        implements OperationDeliveryHandler {
 
     public static final String EVENT_TYPE = "TokenOperationAccepted";
 
@@ -40,7 +41,7 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
     private final IdGenerator ids;
     private final Policy policy;
 
-    public MintAcceptedDeliveryHandler(
+    public TokenOperationAcceptedDeliveryHandler(
             OperationRepository operations,
             ChainPort chain,
             SigningAuthorityService signing,
@@ -60,18 +61,18 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
         Objects.requireNonNull(delivery, "delivery");
         if (!EVENT_TYPE.equals(delivery.eventType()) || delivery.eventVersion() != 1
                 || delivery.payloadSchemaVersion() != 1) {
-            return DeliveryOutcome.terminalFailure("unsupported-mint-delivery");
+            return DeliveryOutcome.terminalFailure("unsupported-" + action() + "-delivery");
         }
         TokenOperation operation = operations.findById(delivery.operationId())
                 .orElseThrow(() -> new IllegalArgumentException("operation was not found"));
-        if (operation.kind() != OperationKind.MINT) {
+        if (operation.kind() != policy.operationKind()) {
             return DeliveryOutcome.terminalFailure("unsupported-token-operation-kind");
         }
         if (operation.state() == OperationState.COMPLETED) {
             return DeliveryOutcome.duplicate();
         }
         if (operation.state().isTerminal() || operation.state() == OperationState.MANUAL_REVIEW) {
-            return DeliveryOutcome.terminalFailure("mint-operation-not-executable");
+            return DeliveryOutcome.terminalFailure(action() + "-operation-not-executable");
         }
 
         operation = advanceAcceptance(operation);
@@ -129,16 +130,16 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
                 case DEFINITIVELY_REJECTED -> {
                     transition(operation, OperationState.FAILED_NO_EFFECT,
                             "submission-rejected", submission.evidenceReference());
-                    return DeliveryOutcome.terminalFailure("mint-submission-rejected");
+                    return DeliveryOutcome.terminalFailure(action() + "-submission-rejected");
                 }
                 case RETRYABLE_NO_EFFECT -> {
-                    return DeliveryOutcome.retryableFailure("mint-submission-unavailable");
+                    return DeliveryOutcome.retryableFailure(action() + "-submission-unavailable");
                 }
                 case AMBIGUOUS -> {
                     transition(operation, OperationState.SUBMISSION_AMBIGUOUS,
                             "submission-ambiguous", submission.evidenceReference());
                     return DeliveryOutcome.ambiguousAcknowledgement(
-                            "mint-submission-ambiguous");
+                            action() + "-submission-ambiguous");
                 }
             }
         }
@@ -156,11 +157,11 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
             } else if (inquiry.retrySafety() == ChainPort.RetrySafety.NO_EFFECT_PROVEN) {
                 transition(operation, OperationState.FAILED_NO_EFFECT,
                         "submission-no-effect-proven", inquiry.evidenceReference());
-                return DeliveryOutcome.terminalFailure("mint-no-effect-proven");
+                return DeliveryOutcome.terminalFailure(action() + "-no-effect-proven");
             } else {
                 transition(operation, OperationState.MANUAL_REVIEW,
                         "ambiguous-submission-unresolved", inquiry.evidenceReference());
-                return DeliveryOutcome.terminalFailure("mint-ambiguity-unresolved");
+                return DeliveryOutcome.terminalFailure(action() + "-ambiguity-unresolved");
             }
         }
 
@@ -170,15 +171,16 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
                     policy.finalityPolicyVersion()));
             switch (observation.classification()) {
                 case ABSENT_OR_PENDING -> {
-                    return DeliveryOutcome.ambiguousAcknowledgement("mint-observation-pending");
+                    return DeliveryOutcome.ambiguousAcknowledgement(
+                            action() + "-observation-pending");
                 }
                 case CONFIRMED -> operation = complete(operation, observation);
                 case REVERTED, MISMATCHED, ORPHANED -> {
                     transition(operation, OperationState.MANUAL_REVIEW,
-                            "mint-observation-" + observation.classification().name()
+                            action() + "-observation-" + observation.classification().name()
                                     .toLowerCase(java.util.Locale.ROOT).replace('_', '-'),
                             observation.evidenceReferences().getLast());
-                    return DeliveryOutcome.terminalFailure("mint-observation-unsafe");
+                    return DeliveryOutcome.terminalFailure(action() + "-observation-unsafe");
                 }
             }
         }
@@ -189,24 +191,27 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
         }
         if (operation.state() == OperationState.RECONCILING) {
             operation = transition(operation, OperationState.COMPLETED,
-                    "mint-chain-slice-complete", evidence(operation, "completed"));
+                    action() + "-chain-slice-complete", evidence(operation, "completed"));
         }
         return operation.state() == OperationState.COMPLETED
                 ? DeliveryOutcome.delivered()
-                : DeliveryOutcome.ambiguousAcknowledgement("mint-workflow-incomplete");
+                : DeliveryOutcome.ambiguousAcknowledgement(
+                        action() + "-workflow-incomplete");
     }
 
     private TokenOperation advanceAcceptance(TokenOperation operation) {
         while (true) {
             operation = switch (operation.state()) {
                 case REQUESTED -> transition(operation, OperationState.VALIDATED,
-                        "accepted-mint-validated", evidence(operation, "validated"));
+                        "accepted-" + action() + "-validated",
+                        evidence(operation, "validated"));
                 case VALIDATED -> transition(operation, OperationState.POLICY_PENDING,
                         "local-policy-selected", evidence(operation, "policy"));
                 case POLICY_PENDING -> transition(operation, OperationState.APPROVAL_PENDING,
                         "approval-evidence-bound", evidence(operation, "approval-pending"));
                 case APPROVAL_PENDING -> transition(operation, OperationState.AUTHORIZED,
-                        "local-mint-authorized", evidence(operation, "authorized"));
+                        "local-" + action() + "-authorized",
+                        evidence(operation, "authorized"));
                 case AUTHORIZED -> startAttempt(operation);
                 default -> operation;
             };
@@ -229,7 +234,7 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
             operation = withAttempt;
         }
         return transition(operation, OperationState.SIGNING,
-                "mint-attempt-signing", evidence(operation, "signing"));
+                action() + "-attempt-signing", evidence(operation, "signing"));
     }
 
     private SigningAuthorityService.Request signingRequest(
@@ -241,17 +246,17 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
         }
         Instant issuedAt = now();
         UUID requestId = UUID.nameUUIDFromBytes(
-                ("mint-signing-v1:" + operation.operationId() + ":" + attemptId)
+                ((action() + "-signing-v1:") + operation.operationId() + ":" + attemptId)
                         .getBytes(StandardCharsets.UTF_8));
         return new SigningAuthorityService.Request(
                 new SigningRequestId(requestId),
                 new SigningRequest.Correlation(
                         operation.operationId(), attemptId, Optional.empty(), Optional.empty()),
-                Optional.empty(), SigningRequest.Action.MINT, SettlementNetwork.ETHEREUM,
+                Optional.empty(), policy.signingAction(), SettlementNetwork.ETHEREUM,
                 operation.quantity(), prepared.sourceReference(), prepared.destinationReference(),
                 prepared.nativeActionIdentity(), prepared.lifetimeContextDigest(),
                 prepared.feeLimit(), prepared.nativeConstraintDigest(), policy.keyAlias(),
-                SigningRequest.KeyRole.MINT_AUTHORITY, SigningRequest.Mode.EVM_DIGEST,
+                policy.keyRole(), SigningRequest.Mode.EVM_DIGEST,
                 SigningRequest.Algorithm.SECP256K1, prepared.signableMaterial(),
                 prepared.policyVersion(), List.of(prepared.evidenceReference()), issuedAt,
                 issuedAt.plus(policy.signingLifetime()));
@@ -262,11 +267,12 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
         if (result instanceof SigningAuthorityService.Ambiguous
                 || result instanceof SigningAuthorityService.ApprovalRequired
                 || result instanceof SigningAuthorityService.RetryableNoSignature) {
-            return DeliveryOutcome.ambiguousAcknowledgement("mint-signing-incomplete");
+            return DeliveryOutcome.ambiguousAcknowledgement(
+                    action() + "-signing-incomplete");
         }
         transition(operation, OperationState.MANUAL_REVIEW,
-                "mint-signing-rejected", evidence(operation, "signing-rejected"));
-        return DeliveryOutcome.terminalFailure("mint-signing-rejected");
+                action() + "-signing-rejected", evidence(operation, "signing-rejected"));
+        return DeliveryOutcome.terminalFailure(action() + "-signing-rejected");
     }
 
     private TokenOperation complete(
@@ -278,7 +284,8 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
                         now(), observation.evidenceReferences()));
         operations.save(withFinality, operation.version());
         return transition(withFinality, OperationState.CHAIN_FINALITY_REACHED,
-                "confirmed-mint-observed", observation.evidenceReferences().getLast());
+                "confirmed-" + action() + "-observed",
+                observation.evidenceReferences().getLast());
     }
 
     private TokenOperation transition(
@@ -298,6 +305,10 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
                 .truncatedTo(ChronoUnit.MICROS);
     }
 
+    private String action() {
+        return policy.operationKind().name().toLowerCase(java.util.Locale.ROOT);
+    }
+
     private static EvidenceRef evidence(TokenOperation operation, String kind) {
         return new EvidenceRef(
                 "internal:local-ethereum:" + kind + ":" + operation.operationId());
@@ -307,7 +318,20 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
             KeyAlias keyAlias,
             String expectedSignerReference,
             Duration signingLifetime,
-            String finalityPolicyVersion) {
+            String finalityPolicyVersion,
+            OperationKind operationKind,
+            SigningRequest.Action signingAction,
+            SigningRequest.KeyRole keyRole) {
+
+        public Policy(
+                KeyAlias keyAlias,
+                String expectedSignerReference,
+                Duration signingLifetime,
+                String finalityPolicyVersion) {
+            this(keyAlias, expectedSignerReference, signingLifetime,
+                    finalityPolicyVersion, OperationKind.MINT,
+                    SigningRequest.Action.MINT, SigningRequest.KeyRole.MINT_AUTHORITY);
+        }
 
         public Policy {
             Objects.requireNonNull(keyAlias, "keyAlias");
@@ -319,6 +343,18 @@ public final class MintAcceptedDeliveryHandler implements OperationDeliveryHandl
                         "signingLifetime must be positive and at most one hour");
             }
             requireText(finalityPolicyVersion, "finalityPolicyVersion");
+            Objects.requireNonNull(operationKind, "operationKind");
+            Objects.requireNonNull(signingAction, "signingAction");
+            Objects.requireNonNull(keyRole, "keyRole");
+            if ((operationKind == OperationKind.MINT
+                        && (signingAction != SigningRequest.Action.MINT
+                            || keyRole != SigningRequest.KeyRole.MINT_AUTHORITY))
+                    || (operationKind == OperationKind.BURN
+                        && (signingAction != SigningRequest.Action.BURN
+                            || keyRole != SigningRequest.KeyRole.BURN_AUTHORITY))) {
+                throw new IllegalArgumentException(
+                        "token operation policy action and key role do not match");
+            }
         }
 
         private static void requireText(String value, String field) {
