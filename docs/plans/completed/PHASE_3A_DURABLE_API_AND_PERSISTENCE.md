@@ -1,6 +1,6 @@
 # Phase 3A Durable API and Persistence Plan
 
-**Status:** `verified`
+**Status:** `completed`
 
 **Goal:** Add the smallest durable acceptance and read-back slice for authenticated mint and burn requests: a secured versioned HTTP contract, one PostgreSQL adapter, one atomic idempotency/operation/audit/outbox transaction, and real PostgreSQL verification. This phase records requests; it does not process, sign, submit, publish, mint, burn, reconcile, or settle them.
 

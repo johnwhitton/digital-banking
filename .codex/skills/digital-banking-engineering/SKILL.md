@@ -25,8 +25,9 @@ Coordinate repository work from durable instructions through evidence-backed han
 | Architecture, workflow, layout, capability, or status | `digital-banking-doc-sync` |
 
 5. Work test-first in a domain-independent slice. Keep controllers and adapters thin; do not add unused SDKs or speculative modules.
-6. Update living docs and the active plan with decisions, commands, results, deferrals, and status.
+6. Update living docs and the owning active plan with decisions, commands, results, deferrals, and status.
 7. Run focused checks, the applicable full gate, stale-reference/secret checks, and Git diff/status checks before any completion claim.
+8. On successful closeout, record the plan's final status and move it from `docs/plans/active/` to `docs/plans/completed/` before committing.
 
 ## Non-negotiable result shape
 

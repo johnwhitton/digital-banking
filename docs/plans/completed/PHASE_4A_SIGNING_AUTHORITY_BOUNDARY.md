@@ -1,6 +1,6 @@
 # Phase 4A Durable Signing-Authority Boundary Execution Plan
 
-**Status:** `ready_to_commit`
+**Status:** `completed`
 
 **Goal:** Implement a provider-neutral, durable signing-authority boundary that binds exact EVM digests or Solana message bytes to immutable operation, authority, key, policy, and approval context without handling production private keys or performing a chain effect.
 

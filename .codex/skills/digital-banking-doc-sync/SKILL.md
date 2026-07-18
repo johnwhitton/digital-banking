@@ -16,7 +16,7 @@ Keep accepted implementation, architecture, status, and evidence consistent. Tre
 | Purpose, capability status, repository map, quick start, AI workflow | `README.md` |
 | Boundaries, terminology, lifecycle, contracts, finality, security, topology | `docs/DESIGN.md` |
 | Layout, versions, commands, phase status, sequencing, risks, next slice | `docs/IMPLEMENTATION.md` |
-| Task progress, decisions, exact evidence, deferrals, closeout | Owning file under `docs/plans/active/` |
+| Task progress, decisions, exact evidence, deferrals, closeout | Owning plan under `docs/plans/active/` during execution; move to `docs/plans/completed/` at successful closeout |
 | Material accepted decision | New numbered ADR plus living-doc updates |
 | Reference publication provenance | `docs/reference/README.md`; never modify the PDFs |
 | Contributor process or local skills/hooks/prompts | `AGENTS.md`, README workflow section, and active plan |

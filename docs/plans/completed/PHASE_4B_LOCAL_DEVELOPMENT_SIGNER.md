@@ -1,6 +1,6 @@
 # Phase 4B Isolated Local-Development Signer Execution Plan
 
-**Status:** `ready_for_git_closeout`
+**Status:** `completed`
 
 **Goal:** Add one explicitly enabled, in-memory local-development signer that implements the Phase 4A provider and key-registry ports for exact EVM `secp256k1` digests and exact Solana `Ed25519` messages without creating a public signing API, chain effect, persistent key, or production fallback.
 

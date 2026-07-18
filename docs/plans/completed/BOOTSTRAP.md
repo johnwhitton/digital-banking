@@ -1,5 +1,7 @@
 # Digital Banking Reference Implementation Bootstrap Plan
 
+**Status:** `completed`
+
 > **Historical execution rule:** This foundation was delivered in commit `2c73658`. Action Request 02 later supplied and verified the publications, closing the only remaining gate.
 
 **Goal:** Establish the repository policy, architecture, AI-assisted engineering workflow, publication-input provenance, and smallest verified Java/Spring application foundation for later durable mint/burn vertical slices.

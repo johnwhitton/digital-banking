@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use the repository `plan-execution` workflow task-by-task. Use `digital-banking-doc-sync` for every living-document change and `verification-before-completion` before commit or completion claims.
 
-**Status:** `in_progress`
+**Status:** `completed`
 
 **Goal:** Make the repository reviewer-first for Zelle/Early Warning Services readers and specify a planned local bank-to-bank stablecoin transfer demonstration without adding executable capability.
 
@@ -54,7 +54,7 @@
 | `docs/TRANSFER_DEMO.md` | Create | Planned transfer API, aggregate/workflow, five-step evidence and retry contract, BPM boundary, chain realization, key/configuration safety, and completion criteria. |
 | `docs/DESIGN.md` | Modify | Planned transfer terminology, ownership, topology, API/configuration, workflow authority, compensation, security, unknowns, and deferrals. |
 | `docs/IMPLEMENTATION.md` | Modify | Current Phase 3 status, Phase 3B evaluation boundary, Phase 3C transfer slice, expanded signer/chain/integration phases, and planned Volume II/III publications. |
-| `docs/plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md` | Create/update | Restartable scope, decisions, progress, exact commands, results, reviews, deferrals, and Git closeout. |
+| `docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md` | Create/update | Restartable scope, decisions, progress, exact commands, results, reviews, deferrals, and Git closeout. |
 | `graphify-out/GRAPH_REPORT.md`, `graphify-out/graph.json`, `graphify-out/manifest.json` | Update only if the approved local Graphify workflow requires it | Keep tracked navigation artifacts synchronized with the final documentation corpus; exclude PDFs, query memory, caches, costs, reflections, HTML, secrets, and machine state. |
 
 `docs/reference/README.md`, the two PDFs, accepted ADRs, product source, POMs, OpenAPI, configuration, and existing historical plans do not need content changes unless verification exposes a factual inconsistency that this action owns. The immutable reference index already records correct provenance and checksums.

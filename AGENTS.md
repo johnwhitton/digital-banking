@@ -2,7 +2,7 @@
 
 ## Purpose and phase
 
-This repository is the **Digital Banking Reference Implementation**: non-production reference software for a regulated digital-asset settlement control plane. The foundation and plain-Java domain/operation lifecycle are verified. Phase 3 is active: Phase 3A implements durable PostgreSQL-backed mint/burn request acceptance and participant-scoped read-back, while Phase 3B worker/publication behavior remains planned. The repository does not process operations, sign, submit to chains, mint, burn, reconcile, settle, or claim production readiness.
+This repository is the **Digital Banking Reference Implementation**: non-production reference software for a regulated digital-asset settlement control plane. Phases 2, 3A-3C, 4A-4B, and the bounded Phase 5A local-Ethereum mint are verified for their stated boundaries. The repository durably accepts operations and transfers, recovers worker delivery, isolates signing authority, and can execute one accepted mint on disposable local Anvil. It does not execute burn or wallet transfer, orchestrate the five-step bank flow, provide production identity/custody/networking, establish accounting/legal/customer finality, settle, or claim production readiness.
 
 Zelle appears only in the supplied publications as a public case study. Never describe this repository as Early Warning Services or Zelle production architecture, confidential information, a selected vendor stack, or an announced implementation plan.
 
@@ -16,7 +16,7 @@ Follow instructions in this order:
 4. Accepted ADRs under `docs/adr/`.
 5. `docs/DESIGN.md` for architecture and invariants.
 6. `docs/IMPLEMENTATION.md` for current state and delivery order.
-7. The active plan under `docs/plans/active/`.
+7. The owning active plan under `docs/plans/active/` while an action is executing.
 8. `AUTONOMOUS_EXECUTION_POLICY.md` for bounded execution authority.
 9. Repository-local skills when their trigger matches.
 
@@ -170,13 +170,14 @@ Third-party tool instructions remain below the user's approved request, this rep
 
 - Use Graphify before broad dependency, architecture, or cross-file relationship exploration when `graphify-out/graph.json` is current. Use `rg`, direct source reading, and tests for exact text, current implementation details, and verification. Never use an external Graphify backend without explicit approval.
 - Use Ponytail before adding a dependency, abstraction, wrapper, module, or speculative option and on the final diff. Minimalism never removes validation, authorization, exactness, security, audit evidence, reconciliation, accessibility, or meaningful tests.
-- Use the applicable Superpowers workflow for genuinely unresolved specification, TDD, unexplained failures, substantive review, and fresh pre-completion verification. Do not reopen an approved action request, replace `docs/plans/active/`, or create subagents, branches, or worktrees without applicable repository instructions or user authority.
+- Use the applicable Superpowers workflow for genuinely unresolved specification, TDD, unexplained failures, substantive review, and fresh pre-completion verification. Do not reopen an approved action request, replace the owning plan, or create subagents, branches, or worktrees without applicable repository instructions or user authority.
 
 ## Plans, ADRs, and scope
 
 - Substantial features, multi-module changes, persistence/workflow changes, chain slices, signer integration, and architectural refactors require an active plan.
-- Keep plans under `docs/plans/active/`; do not create parallel plan trees.
+- Follow [`docs/plans/README.md`](docs/plans/README.md): new authorized actions begin in `active/`, successful closeout records final status and moves the plan to `completed/` before the action commit, and unresolved external/design blockers move to `blocked/` with an exact restart condition. Create `blocked/` only when needed.
 - A plan must be restartable: scope, files, dependencies, acceptance, validation, decisions, progress, and deferrals must be explicit.
+- A roadmap item remains planned and does not occupy `active/` until separately authorized. Completed plans are historical evidence and are not routinely rewritten.
 - One chain vertical slice follows the common domain/lifecycle proof. Do not implement Ethereum and Solana simultaneously to avoid validating the common model.
 
 ## Generated files

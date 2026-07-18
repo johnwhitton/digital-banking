@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use the repository `plan-execution` workflow task-by-task. Use `digital-banking-engineering`, `java-spring-control-plane-change`, `financial-state-invariants`, `digital-banking-doc-sync`, Graphify, Ponytail, and `verification-before-completion` at their documented checkpoints.
 
-**Status:** `in_progress`
+**Status:** `completed`
 
 **Goal:** Codify repository-specific Java/Spring implementation standards and independently audit the completed Phase 3A baseline against them without changing executable behavior.
 
@@ -50,7 +50,7 @@ Audit inventory: 53 production Java files / 3,345 physical lines and 15 test Jav
 | `docs/IMPLEMENTATION.md` | Modify | Concise standards link, phase-level application, and current audit reference without duplicating the detailed checklist. |
 | `AGENTS.md` | Modify | Mandatory high-signal subset and explicit instruction to consult the standards for Java, Spring, persistence, API, workflow, signer, or chain changes. |
 | `docs/reviews/PHASE_3A_IMPLEMENTATION_STANDARDS_REVIEW.md` | Create | Evidence-backed Phase 3A implementation audit, severity-calibrated findings, limitations, and ordered follow-up backlog. |
-| `docs/plans/active/JAVA_SPRING_IMPLEMENTATION_STANDARDS_AUDIT.md` | Create/update | Restartable scope, inventory, methods, commands, findings, dispositions, validation evidence, review results, and final Git state. |
+| `docs/plans/completed/JAVA_SPRING_IMPLEMENTATION_STANDARDS_AUDIT.md` | Create/update | Restartable scope, inventory, methods, commands, findings, dispositions, validation evidence, review results, and final Git state. |
 | `graphify-out/GRAPH_REPORT.md` | Refresh once | Reviewed portable navigation summary after final documentation changes. |
 | `graphify-out/graph.json` | Refresh once | Reviewed portable graph after final documentation changes. |
 | `graphify-out/manifest.json` | Refresh once | Relative, current corpus manifest after final documentation changes. |

@@ -1,6 +1,6 @@
 # Engineering Companion Publication Plan
 
-**Status:** `ready_for_commit`
+**Status:** `completed`
 
 **Goal:** Publish the committed *Digital Banking Engineering Companion* through the repository's navigation and publication-status documentation without changing the PDF or executable repository state.
 

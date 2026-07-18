@@ -146,7 +146,7 @@ Status vocabulary: `pass` means the bounded baseline supplies direct supporting 
 
 ### Advisory A-03: two completed action-plan closeout rows are stale
 
-**Evidence.** At the audited baseline, [`AI_ASSISTED_ENGINEERING_TOOLCHAIN.md`](../plans/active/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md) still reports `ready_for_commit`, and [`ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](../plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md) still reports `in_progress` with commit/push/remote verification remaining, although the baseline history and later action start conditions show both actions were committed and pushed.
+**Evidence.** At the audited baseline, [`AI_ASSISTED_ENGINEERING_TOOLCHAIN.md`](../plans/completed/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md) still reported `ready_for_commit`, and [`ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](../plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md) still reported `in_progress` with commit/push/remote verification remaining, although the baseline history and later action start conditions showed both actions were committed and pushed. Their closeout statuses and paths were reconciled later without changing this audit's historical finding.
 
 **Impact.** Current README/design/implementation capability claims remain accurate. The stale closeout metadata can nevertheless mislead a restart or audit about whether Git closeout evidence remains outstanding.
 
@@ -212,7 +212,7 @@ The bounded audit found **0 Critical, 2 Important, and 3 Advisory** findings. Ar
 1. **Participant-safe status projection and conformance (I-01) - resolved by Action Request 07.** The participant representation omits internal actor/reason/authority/policy values; the accepted example and recursive nested OpenAPI shape are executable tests.
 2. **Internal-versus-client failure classification (I-02) - resolved by Action Request 07.** Caller validation is explicit, persistence/application invariant failure remains unexpected, and the stable redacted internal-error contract is tested.
 
-The audit itself made no executable change; the separately approved [`PHASE_3A_API_BOUNDARY_CORRECTIONS.md`](../plans/active/PHASE_3A_API_BOUNDARY_CORRECTIONS.md) action owns their RED-GREEN implementation and verification evidence.
+The audit itself made no executable change; the separately approved [`PHASE_3A_API_BOUNDARY_CORRECTIONS.md`](../plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md) action owns their RED-GREEN implementation and verification evidence.
 
 ### Improvements that may accompany Phase 3B
 

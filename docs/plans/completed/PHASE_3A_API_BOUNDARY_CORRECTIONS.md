@@ -1,6 +1,6 @@
 # Phase 3A API Boundary Corrections Plan
 
-**Status:** `ready_for_commit`
+**Status:** `completed`
 
 **Goal:** Resolve implementation-standards audit findings I-01 and I-02 before Phase 3B by minimizing the participant response surface, making the OpenAPI contract executable and recursively checked, and distinguishing caller-owned validation failures from unexpected internal invariant failures.
 

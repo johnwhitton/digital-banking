@@ -1,6 +1,6 @@
 # Phase 3C Transfer Aggregate and Mock-Bank Plan
 
-**Status:** `ready_for_git_closeout`
+**Status:** `completed`
 
 **Goal:** Durably accept a participant-scoped, chain-neutral transfer with five ordered effects, persist its immutable server-resolved custody context, expose safe POST/GET APIs, and transactionally prepare only the first withdrawal through the existing Phase 3B delivery path. No bank or blockchain effect is executed.
 

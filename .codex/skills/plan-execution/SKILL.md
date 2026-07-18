@@ -1,6 +1,6 @@
 ---
 name: plan-execution
-description: Use when implementing or continuing work owned by an active plan under docs/plans/active in this repository.
+description: Use when implementing, continuing, or closing work owned by an active plan under docs/plans/active in this repository.
 ---
 
 # Plan Execution
@@ -19,7 +19,8 @@ Execute an approved active plan in dependency-ready, reviewable slices. Keep the
 6. Run the slice's focused acceptance command. Record exact command, observed result, decisions, and any limitation in the plan immediately.
 7. Synchronize affected `README.md`, `docs/DESIGN.md`, `docs/IMPLEMENTATION.md`, and ADRs using `digital-banking-doc-sync`.
 8. Re-read the plan, select the next dependency-ready slice, and repeat.
-9. Before closeout, run the full acceptance gate, review the complete diff, resolve every required checkbox, and record final Git/remote evidence.
+9. Before closeout, run the full acceptance gate, review the complete diff, resolve every required checkbox, and record the final status and available Git/remote evidence.
+10. On successful closeout, move the plan to `docs/plans/completed/` before the action's commit. If an unresolved external or design blocker stops the action, record the exact blocker and restart condition and move it to `docs/plans/blocked/`, creating that directory only when needed.
 
 ## Evidence states
 
@@ -34,7 +35,7 @@ Execute an approved active plan in dependency-ready, reviewable slices. Keep the
 
 ## Completion contract
 
-Do not mark the plan complete because implementation exists or time is short. Completion requires every required deliverable, fresh validation, consistent living docs, reviewed diff, and explicit closeout state. A failed or blocked item remains visible.
+Do not mark the plan complete because implementation exists or time is short. Completion requires every required deliverable, fresh validation, consistent living docs, reviewed diff, and explicit closeout state. A failed or blocked item remains visible. Roadmap work remains planned until separately authorized; it does not occupy `active/`.
 
 Handoff includes the completed slice, remaining slices, decisions, exact validation, blockers/deferrals, and current branch/status.
 

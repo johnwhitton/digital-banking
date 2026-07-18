@@ -1,6 +1,6 @@
 # Phase 3B Durable Worker and Delivery Recovery Plan
 
-**Status:** `ready_for_graphify_and_git_closeout`
+**Status:** `completed`
 
 **Goal:** Add the smallest PostgreSQL-backed, crash-recoverable delivery worker that durably claims accepted token-operation outbox work, invokes an application-owned handler at least once, records safe outcomes, retries bounded transient or ambiguous acknowledgement failures, and reclaims expired leases without performing a financial or chain effect.
 

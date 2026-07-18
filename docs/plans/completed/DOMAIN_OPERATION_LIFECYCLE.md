@@ -1,6 +1,6 @@
 # Domain and Operation Lifecycle Plan
 
-**Status:** `verified`
+**Status:** `completed`
 
 **Goal:** Implement the smallest plain-Java domain and application slice that accepts exact mint/burn commands idempotently, owns stable operation/attempt identities, guards the durable lifecycle, preserves four independent finalities, and exposes signer/chain capabilities through provider-neutral ports.
 

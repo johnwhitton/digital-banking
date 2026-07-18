@@ -1,6 +1,6 @@
 # AI-Assisted Engineering Toolchain Plan
 
-**Status:** `ready_for_commit`
+**Status:** `completed`
 
 **Goal:** Integrate Graphify as a portable, repository-scoped Codex capability and verify the official Ponytail and Superpowers Codex plugins without weakening repository policy, financial invariants, security boundaries, or evidence gates.
 
@@ -53,7 +53,7 @@
 
 | Path | Responsibility |
 | --- | --- |
-| `docs/plans/active/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md` | Restartable execution decisions, evidence, review, and closeout. |
+| `docs/plans/completed/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md` | Restartable execution decisions, evidence, review, and closeout. |
 | `.codex/skills/graphify/` | Official Graphify 0.8.47 skill and required references, plus a narrow documented Digital Banking guardrail preface. |
 | `.codex/hooks.json` | Structurally merged, trusted-project Codex hook using reviewed fail-open executable resolution. |
 | `.graphifyignore` | Exclude VCS/build/cache/secret/environment/PDF material while retaining Java, Maven, Markdown, ADRs, plans, and AI workflow files. |

@@ -49,14 +49,14 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 1. Foundation                          | `verified`    | Source publications and the full foundation gate are verified; see the closed bootstrap plan. |
 | 2. Domain and operation lifecycle      | `verified`    | Exact quantities, guarded lifecycle/finality histories, canonical commands, idempotent acceptance contracts, and bound ports passed 264 pure tests and the 266-test reactor. |
 | 3. Durable API and persistence         | `verified`    | Phase 3A acceptance/read-back, Phase 3B worker/recovery, and Phase 3C transfer acceptance/first deduplicated internal preparation pass the 364-test offline reactor. External workflow effects remain absent by scope. |
-| 4. Signing boundary                    | `implemented` | Phase 4A provides durable authority/evidence; Phase 4B adds explicit-profile, session-ephemeral secp256k1/Ed25519 signing. Production custody remains absent. |
-| 5. Ethereum vertical slice             | `implemented` | Phase 5A proves one accepted mint on local Anvil through durable nonce/attempt, signing, submit-once ambiguity recovery, and independent receipt/event/canonicality observation. Transfer, burn, replacement, and production integration remain absent. |
+| 4. Signing boundary                    | `verified`    | Phase 4A provides durable authority/evidence; Phase 4B adds explicit-profile, session-ephemeral secp256k1/Ed25519 signing. Production custody remains absent. |
+| 5. Ethereum vertical slice             | `verified`    | Phase 5A proves one accepted mint on local Anvil through durable nonce/attempt, signing, submit-once ambiguity recovery, and independent receipt/event/canonicality observation. Transfer, burn, replacement, and production integration remain absent. |
 | 6. Solana vertical slice               | `not_started` | No Java SDK/Rust/local-validator code.                                                         |
 | 7. Observation and reconciliation      | `not_started` | Design only.                                                                                   |
 | 8. Integrated local environment        | `not_started` | No Compose file.                                                                               |
 | 9. Hardening and publication readiness | `not_started` | No production-readiness claim.                                                                 |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated local-development provider, and Phase 5A's bounded local-Anvil mint. The default runtime has no signer and no chain client. Profiles `local-signer` plus `local-ethereum` compose the mint handler, require explicit loopback/local-chain configuration, and expose no new public endpoint. The complete [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) remains future work; Phase 5A is not wired to its five effects. Every later effect/provider/chain slice requires its own focused active plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated local-development provider, and Phase 5A's bounded local-Anvil mint. The Phase 5A closeout records the current complete gate: 414 passing Maven tests across seven modules and five passing Foundry tests. The default runtime has no identity provider, signer, or chain client. Profiles `local-signer` plus `local-ethereum` compose the mint handler, require explicit loopback/local-chain configuration, and expose no new public endpoint. The complete [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) remains future work; Phase 5A is not wired to its five effects. Every later effect/provider/chain slice requires its own newly authorized plan.
 
 ## Phase 1: Foundation
 
@@ -225,21 +225,22 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 ## Publications
 
 - **Volume II - [Digital Banking Engineering Companion](reference/digital-banking-engineering-companion.pdf)** (`published`): vendor-neutral implementation and operations guidance covering durable workflow, Java/Spring, wallets and signing, EVM, Solana, submission and observation, infrastructure, testing, performance, and delivery. It is not production certification or a runnable implementation. Its code-status discussion is pinned to `e921fcb1877b46a6881437f46b1a6ebfa115ae58`; use this current plan, the README, accepted ADRs, source, and tests for live repository status.
-- **Volume III - [Digital Banking Reference Implementation](reference/digital-banking-reference-implementation.pdf)** (`published`): repository companion supplied as immutable contextual reference material. Current design, ADRs, contracts, source, tests, and this living plan remain authoritative for implementation status.
+- **Volume III - [Digital Banking Reference Implementation](reference/digital-banking-reference-implementation.pdf)** (`published`): code companion mapping architecture to repository modules, APIs, database schema and migrations, implementation excerpts, local build/run/test flows, and the boundary between local demonstrations and production integrations. Current design, ADRs, contracts, source, tests, and this living plan remain authoritative for implementation status.
 
 Publishing Volumes II and III does not change executable phase status, replace a focused implementation plan or acceptance test, complete Phase 9, or imply production readiness.
 
 ## Plans and ADRs
 
-- Closed foundation plan: [`docs/plans/active/BOOTSTRAP.md`](plans/active/BOOTSTRAP.md).
-- Completed Phase 2 plan: [`docs/plans/active/DOMAIN_OPERATION_LIFECYCLE.md`](plans/active/DOMAIN_OPERATION_LIFECYCLE.md).
-- Verified Phase 3A plan: [`docs/plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md`](plans/active/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md).
-- Active Phase 3B worker/recovery plan: [`docs/plans/active/PHASE_3B_DURABLE_WORKER_AND_RECOVERY.md`](plans/active/PHASE_3B_DURABLE_WORKER_AND_RECOVERY.md).
-- Active Phase 3C transfer plan: [`docs/plans/active/PHASE_3C_TRANSFER_AGGREGATE_AND_MOCK_BANK.md`](plans/active/PHASE_3C_TRANSFER_AGGREGATE_AND_MOCK_BANK.md).
-- Active Phase 4A signing-authority plan: [`docs/plans/active/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md`](plans/active/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md).
-- Active Phase 4B local signer plan: [`docs/plans/active/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md`](plans/active/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md).
-- Active Phase 5A local Ethereum mint plan: [`docs/plans/active/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md`](plans/active/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
-- Active Zelle share-readiness and transfer-roadmap plan: [`docs/plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
+- Plan lifecycle and index: [`docs/plans/README.md`](plans/README.md).
+- Completed foundation plan: [`docs/plans/completed/BOOTSTRAP.md`](plans/completed/BOOTSTRAP.md).
+- Completed Phase 2 plan: [`docs/plans/completed/DOMAIN_OPERATION_LIFECYCLE.md`](plans/completed/DOMAIN_OPERATION_LIFECYCLE.md).
+- Completed Phase 3A plan: [`docs/plans/completed/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md`](plans/completed/PHASE_3A_DURABLE_API_AND_PERSISTENCE.md).
+- Completed Phase 3B worker/recovery plan: [`docs/plans/completed/PHASE_3B_DURABLE_WORKER_AND_RECOVERY.md`](plans/completed/PHASE_3B_DURABLE_WORKER_AND_RECOVERY.md).
+- Completed Phase 3C transfer plan: [`docs/plans/completed/PHASE_3C_TRANSFER_AGGREGATE_AND_MOCK_BANK.md`](plans/completed/PHASE_3C_TRANSFER_AGGREGATE_AND_MOCK_BANK.md).
+- Completed Phase 4A signing-authority plan: [`docs/plans/completed/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md`](plans/completed/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md).
+- Completed Phase 4B local signer plan: [`docs/plans/completed/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md`](plans/completed/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md).
+- Completed Phase 5A local Ethereum mint plan: [`docs/plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md`](plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
+- Completed Zelle share-readiness and transfer-roadmap plan: [`docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
 - Accepted build/module choice: [`ADR 0001`](adr/0001-maven-reactor-and-module-boundaries.md).
 - Accepted EVM approach: [`ADR 0002`](adr/0002-evm-foundry-and-web3j.md).
@@ -249,7 +250,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Accepted local-development signing provider: [`ADR 0006`](adr/0006-local-development-signing-provider.md).
 - Accepted local Ethereum mint realization: [`ADR 0007`](adr/0007-local-ethereum-mint-vertical-slice.md).
 
-Create or update an active plan before implementation. Create an ADR only when evidence requires an accepted material decision.
+Create a restartable active plan for each newly authorized implementation action and follow the lifecycle above. Create an ADR only when evidence requires an accepted material decision.
 
 ## AI-assisted engineering workflow
 
@@ -257,7 +258,7 @@ The repository tracks Graphify's project-scoped skill, portable fail-open hook, 
 
 Ponytail and Superpowers are user-installed plugins, not repository dependencies or vendored content. Ponytail supplies explicit simplicity/YAGNI modes and the final over-engineering review. Superpowers supplies matching planning, TDD, debugging, review, and verification workflows. The user's approved request, repository policy/security/design, active plan, ADRs, focused repository skills, source, and tests take precedence over all three tools.
 
-Contributor setup, reviewed update commands, exact hook-trust behavior, and evidence limitations are maintained in the README. The restartable implementation and review record for this integration is [`docs/plans/active/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md`](plans/active/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md). This workflow changes no product capability, phase status, module dependency, financial invariant, or next-slice recommendation.
+Contributor setup, reviewed update commands, exact hook-trust behavior, and evidence limitations are maintained in the README. The completed implementation and review record for this integration is [`docs/plans/completed/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md`](plans/completed/AI_ASSISTED_ENGINEERING_TOOLCHAIN.md). This workflow changes no product capability, phase status, module dependency, financial invariant, or next-slice recommendation.
 
 ## Implementation Standards
 
@@ -284,7 +285,7 @@ test -f .agents/skills/graphify/SKILL.md
 jq -e '.hooks.PreToolUse[] | select(.matcher == "^Bash$")' .codex/hooks.json
 ```
 
-Reference, documentation, skill/hook, stale-reference, diff, and Git commands are recorded with results in the active bootstrap plan. Add commands here only after they are stable contributor entry points.
+Reference, documentation, skill/hook, stale-reference, diff, and Git commands are recorded with results in the completed bootstrap plan. Add commands here only after they are stable contributor entry points.
 
 ## Latest bounded corrective slice
 
@@ -295,7 +296,7 @@ Action Request 07 corrects the Phase 3A API boundary without adding capability:
 - caller-owned operation-ID, idempotency-key, quantity, and command validation uses an explicit application failure, while internal invariant failures are not reclassified as HTTP 400; and
 - focused tests preserve acceptance, replay, conflict, distinct authorities, principal-derived scope, safe 404 equivalence, redaction, and durable read-back.
 
-The restartable RED-GREEN and validation record is [`docs/plans/active/PHASE_3A_API_BOUNDARY_CORRECTIONS.md`](plans/active/PHASE_3A_API_BOUNDARY_CORRECTIONS.md). This correction adds no endpoint, dependency, migration, runtime configuration, worker, external effect, signer, chain adapter, or production-readiness claim.
+The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md`](plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md). This correction adds no endpoint, dependency, migration, runtime configuration, worker, external effect, signer, chain adapter, or production-readiness claim.
 
 ## Latest bounded vertical slice
 
@@ -306,7 +307,7 @@ Action Request 13 implements **Phase 5A Local Ethereum Mint Vertical Slice**:
 - PostgreSQL V5 nonce, immutable attempt, signature/submission, observation, and reconciliation records with short transaction scopes and attempt-before-effect fencing;
 - a mint-only application handler that reuses accepted operation, delivery, signing-authority, and finality models without adding an endpoint or transfer path;
 - explicit `local-ethereum` plus `local-signer` composition fenced to uncredentialed loopback HTTP and chain `31337`, with no default contract/recipient address; and
-- Foundry, independent transaction-vector, real PostgreSQL, real Anvil, concurrent nonce, duplicate, response-loss, revert, default-context, and configuration evidence under [ADR 0007](adr/0007-local-ethereum-mint-vertical-slice.md) and the [Phase 5A plan](plans/active/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
+- Foundry, independent transaction-vector, real PostgreSQL, real Anvil, concurrent nonce, duplicate, response-loss, revert, default-context, and configuration evidence under [ADR 0007](adr/0007-local-ethereum-mint-vertical-slice.md) and the [completed Phase 5A plan](plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
 
 This is one local development mint effect, not the five-step transfer demonstration. It neither executes an accepted transfer effect nor implements burn, wallet transfer, replacement/cancellation, production custody, hosted/public RPC, legal/customer/accounting finality, or settlement. The next bounded recommendation is an Ethereum wallet-transfer slice that reuses the same durable attempt and observation seams without broadening public or production authority.
 
@@ -317,7 +318,7 @@ The preceding Action Request 12 implements **Phase 4B Isolated Local-Development
 - one in-memory EVM key and one in-memory Solana key generated only under explicit profile `local-signer`, with opaque session aliases/versions, public fingerprints, typed role/network allowlists, and no persisted/private input;
 - exact replay through the durable Phase 4A result without re-signing, stable provider-identity conflict, inquiry after ambiguity, bounded no-signature retry, and stale-session manual review;
 - explicit Spring composition, safe startup warning, invalid-configuration failure, and unchanged default context/readiness/OpenAPI/public resources; and
-- accepted [ADR 0006](adr/0006-local-development-signing-provider.md) plus the restartable [Phase 4B plan](plans/active/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md).
+- accepted [ADR 0006](adr/0006-local-development-signing-provider.md) plus the [completed Phase 4B plan](plans/completed/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md).
 
 This capability is local-development infrastructure, not production custody. It reads or persists no private key, seed, mnemonic, keystore, credential, or wallet address. Phase 5A now consumes its transient EVM signature only under the separate local-Ethereum profile; the signer itself still constructs/submits no transaction and grants no finality.
 

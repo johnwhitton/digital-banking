@@ -1,6 +1,6 @@
 # Phase 5A Local Ethereum Mint Vertical Slice Execution Plan
 
-**Status:** `ready_for_commit`
+**Status:** `completed`
 
 **Goal:** Process one already-accepted mint through the existing durable delivery and signing boundaries, submit one EIP-1559 transaction to local Anvil, independently reconcile the receipt and mint event, and advance only blockchain/technical operation state justified by durable evidence.
 
