@@ -1,179 +1,152 @@
-# Bank-to-Bank Stablecoin Transfer Demonstration Contract
+# USDZELLE Local Demonstration Contract
 
-## Purpose, audience, and status
+## Purpose, authority, and current status
 
-This document specifies a local-only, non-production proof of concept for bank-to-bank value movement using a stablecoin settlement rail. It is a capability contract subordinate to accepted [ADRs](adr/README.md), the canonical [design](DESIGN.md), and executable tests.
+This document is the authoritative detailed specification for two local-only, non-production USDZELLE demonstrations. It is subordinate to accepted [ADRs](adr/README.md), the canonical [design](DESIGN.md), and executable tests; [the implementation roadmap](IMPLEMENTATION.md) owns phase status and dependencies.
 
-**Status:** `partially implemented`. Phase 3C implements the transfer resource, durable five-effect plan, server-resolved synthetic custody context, PostgreSQL acceptance/outbox/inbox state, mock-bank contract/test adapter, and first-withdrawal preparation. Phases 4A-4B implement durable signing authority plus an explicit local signer. Phase 5A implements a separately accepted local-Anvil mint with durable submission/observation evidence, but it is not wired to this parent or any of its five effects. The repository does not execute the end-to-end flow, bank effects, transfer/burn effects, reconciliation, compensation, or settlement.
+**Status:** `partially implemented`. Phase 3C verifies durable acceptance of one five-effect transfer parent and first-withdrawal preparation. Phases 4A-4B verify durable signing authority plus a session-ephemeral local signer. Phase 5A verifies one separately accepted local-Anvil mint to one configured recipient with durable submission and observation evidence. No bank effect, wallet transfer, redemption, burn execution, reserve record, complete parent saga, configured multi-wallet registry, Solana adapter, or demonstration below is executable end to end.
 
-Intended reviewers are application engineers, architects, smart-contract and program engineers, security and operations teams, and interview reviewers. This demonstration never implies production, legal, accounting, compliance, or operational readiness.
+Zelle is a public case study only. `USDZELLE` is a reference asset name and does not assert that Early Warning Services issues a stablecoin, accepts deposits, owns reserves, operates wallets, shares reserve income, or selected this architecture.
 
-## Business scenario and public API
+## Common product, API, and authority boundary
 
-One caller-owned asynchronous transfer resource coordinates five internal effects:
+[ADR 0008](adr/0008-usdzelle-product-paths-ownership-custody-reserve-boundaries.md) supports two product paths:
 
-1. mock withdrawal from the sender's bank account;
-2. mint the stablecoin to the sender's settlement wallet;
-3. transfer the stablecoin to the recipient's settlement wallet;
-4. burn the stablecoin from the recipient's settlement wallet; and
-5. mock deposit to the recipient's bank account.
+- **Demo A — settlement-only fiat transfer:** customers hold fiat before and after payment; institutional wallets use USDZELLE only inside the settlement saga.
+- **Demo B — user-held USDZELLE lifecycle:** a user can on-ramp, retain tokens, optionally transfer them, and redeem later. Receipt does not force redemption.
 
-The implemented acceptance/status API is:
+Economic ownership and private-key custody are independent. Compatible models are self-custody, segregated custodial wallets, and omnibus custody with an internal beneficial-balance ledger. Demo B selects segregated local custodial identities: the future local configured signer signs for named user-wallet identities. This is not self-custody and not production custody.
+
+The currently implemented business API remains:
 
 ```text
 POST /v1/transfers
 GET  /v1/transfers/{transferId}
 ```
 
-`POST /v1/transfers` requires a 1-128 character visible-US-ASCII `Idempotency-Key` and accepts:
+It accepts opaque source/destination synthetic bank references, exact amount/currency, an optional allowlisted logical network, and a scoped idempotency key. The server resolves participant scope, asset/unit, route, and institution-controlled wallet context. HTTP 202 means only durable parent/effect/outbox acceptance. The future on-ramp, wallet-transfer, redemption, and settlement-only commands remain distinct API-design decisions; no Boolean flags or unrestricted user-facing mint are implied.
 
-- opaque sender and recipient mock-bank account references;
-- exact `amount` as a canonical decimal string and a configured `currency` identifier; and
-- an optional logical `settlementNetwork`, initially `ETHEREUM` or `SOLANA`.
+## Demo A — settlement-only fiat transfer
 
-Participant/tenant scope comes only from the authenticated principal, never request JSON or an ad hoc tenant header. Creation requires `transfer:create`; read-back requires `transfer:read`. `GET` is participant-scoped, so an unknown transfer ID and another participant's transfer ID produce the same safe 404 response.
+### Customer outcome and exact target flow
 
-The server resolves currency scale, stablecoin asset/unit, sender and recipient wallet roles, and route configuration. Phase 4A defines how an internal use case resolves non-secret signer key metadata; later composition still must connect transfer effects to that boundary and resolve chain endpoint, contract/program identity, and finality thresholds. The network choice is not arbitrary infrastructure input: it is validated against an allowlisted, versioned local route configuration. Callers never provide sender, recipient, mint-authority, burn-authority, treasury, RPC, contract/program, signer/key, or finality configuration. If the network is absent, the server selects the configured local default.
-
-Acceptance returns HTTP 202 with a stable `TransferId`, a transfer representation, and `Location: /v1/transfers/{transferId}` only after durable local acceptance commits. `GET` returns the durable parent status, child summaries, distinct finalities, and explicitly allowlisted evidence summaries. It does not return raw idempotency keys, internal digests, private account data, policy facts, signer/provider details, signed bytes, or a single `settled` Boolean.
-
-The caller does not orchestrate five public commands. Test-only inspection or administration endpoints, if later justified, remain separate from the business API and disabled outside the local profile.
-
-## Aggregate, identity, and authority
-
-One durable transfer aggregate owns the business request and child-effect correlation:
+User 1 sends `$100.00`; User 2 receives `$100.00`. Neither customer needs a blockchain wallet or blockchain signature. `ADMIN`, `BANK_1_SETTLEMENT`, `BANK_2_SETTLEMENT`, and `ADMIN_REDEMPTION` are institution- or custody-controlled signing roles.
 
 ```text
-TransferId
-  -> source-bank effect ID and attempt IDs
-  -> mint OperationId and chain AttemptIds
-  -> transfer OperationId and chain AttemptIds
-  -> burn OperationId and chain AttemptIds
-  -> destination-bank effect ID and attempt IDs
-  -> observations, finality records, reconciliation, and cases
+1. Mock Bank 1 debits User 1's bank account by $100.00
+2. ADMIN mints 100.00 USDZELLE to BANK_1_SETTLEMENT
+3. BANK_1_SETTLEMENT transfers 100.00 USDZELLE to BANK_2_SETTLEMENT
+4. BANK_2_SETTLEMENT transfers 100.00 USDZELLE to ADMIN_REDEMPTION
+5. Mock Bank 2 credits User 2's bank account by $100.00
+6. ADMIN burns the redeemed 100.00 USDZELLE
 ```
 
-The parent records participant scope, canonical request version/hash, exact amount/currency, route/configuration versions, authorization and limit decisions, settlement-wallet roles, child identities, current state/version, four finality histories, and append-only evidence. Each child effect has its own stable identity before an external call. A native transaction hash or signature is nullable attempt evidence, never the parent identity.
+The current Phase 3C five-effect parent does not already implement this future six-effect sequence. Phase 6C must add an explicit redemption-transfer child and ADMIN burn rather than hiding both behind the existing burn effect.
 
-The same scoped idempotency key, canonicalization version, and request hash returns the original transfer. The same scope/key with a different canonical identity is a conflict. Duplicate delivery cannot create another parent, child operation, attempt, or external effect.
+### Expected synthetic before/after example
 
-Authorization, participant limits, currency/asset mapping, chain route, wallet roles, signer policy, approvals, and finality policy are server-owned, allowlisted, and versioned. A signing request binds exact bytes/digest to the parent transfer, child operation, attempt, purpose, route, asset, quantity, source/destination, fee/lifetime limits, policy, and approval evidence. Raw production keys never enter the Java application.
+| Record | Before | After successful Demo A |
+| --- | ---: | ---: |
+| User 1 mock-bank balance | `$100.00` | `$0.00` |
+| User 2 mock-bank balance | `$0.00` | `$100.00` |
+| `BANK_1_SETTLEMENT` | `0.00 USDZELLE` | `0.00 USDZELLE` |
+| `BANK_2_SETTLEMENT` | `0.00 USDZELLE` | `0.00 USDZELLE` |
+| `ADMIN_REDEMPTION` | `0.00 USDZELLE` | `0.00 USDZELLE` |
+| USDZELLE total supply | `0.00 USDZELLE` | `0.00 USDZELLE` |
 
-### Phase 3C implementation mapping
+These are synthetic demonstration assertions, not real money movement or accounting statements.
 
-The current `Transfer` aggregate persists participant identity, canonical request and resolved-context digests, exact versioned asset/unit quantity, source/destination synthetic bank references, logical network, opaque sender/recipient wallet identities, route/wallet policy versions, five ordered effect identities/statuses, transitions/evidence, and four separate finalities. The public response omits wallet identities and policy versions.
+### Evidence, failure, and replay contract
 
-V3 commits the parent, hashed idempotency binding, effects, initial transition/evidence, finalities, and `TransferAccepted` outbox row atomically. The Phase 3B handler commits its inbox delivery identity with the single bounded transition from `BANK_WITHDRAWAL/PLANNED` to `PREPARED`; redelivery returns the stored duplicate result. It does not invoke the mock-bank port inside that transaction or mark withdrawal applied.
+| Step | Required durable success evidence | Failure or ambiguity posture |
+| --- | --- | --- |
+| Bank 1 debit | Parent/effect/attempt IDs, exact amount, account-reference digest, idempotency identity, mock journal entry, independent inquiry result | Definitive rejection stops before mint; timeout is inquired by the same effect ID, never re-debited blindly |
+| ADMIN mint | Child operation/attempt IDs, exact quantity, signer decision, nonce/native identity, successful receipt, exact mint event, canonical block/finality evidence | Rejection/no-effect may permit a policy-authorized new attempt; ambiguity uses the original transaction identity and blocks progression |
+| Bank 1 to Bank 2 transfer | Source/destination wallet aliases, exact transfer intent, signer/native identities, receipt/event/canonicality evidence | Insufficient balance, revert, response loss, or observation disagreement holds the saga for inquiry/manual review |
+| Bank 2 to ADMIN redemption transfer | Exact source/redemption destination, signer/native identities, independently confirmed receipt/event | Bank credit cannot begin until the configured receipt/finality gate passes |
+| Bank 2 credit | Exact amount, account-reference digest, effect/attempt/idempotency identity, mock journal and inquiry evidence | Timeout remains ambiguous; compensation is a new authorized effect, never mutation of the original |
+| ADMIN burn | Exact ADMIN-held quantity, burn authority decision, native identity, burn/supply event, canonicality and final supply reconciliation | No arbitrary burn from another wallet; unresolved burn blocks completion and creates manual review/recovery evidence |
 
-The provider-neutral `MockBankPort` binds transfer/effect/participant/account, exact quantity, operation, idempotency and attempt identities, policy version, request time, and deadline. Its synthetic adapter proves applied/already-applied, rejected-no-effect, retryable-no-effect, and ambiguous classifications in tests, but it is not registered as a runtime fallback.
+An exact duplicate command or delivery returns the original durable parent/effect result. A changed payload under the same scope/key conflicts. The final assertion requires correlated bank balances, zero intermediate wallet balances, and zero net token supply for this `$100.00` example; it does not imply legal or accounting settlement.
 
-### Phase 4A signing-authority mapping
+### Current gaps
 
-The framework-free signing aggregate binds a stable signing request to operation/attempt and optional transfer/effect correlation, action, logical network, exact asset/unit quantity, source/destination roles or opaque references, native action/lifetime/fee constraints, payload identity, non-secret key alias/version/role/algorithm metadata, policy version, approval evidence, and expiry. EVM requests carry an exact 32-byte `secp256k1` digest; Solana requests carry exact serialized message bytes for `Ed25519`. These are separate provider methods.
+Runtime mock-bank debit/credit/inquiry, named settlement identities, ERC-20 transfer, redemption receipt, ADMIN burn, six-effect orchestration, compensation execution, supply reconciliation, and a runnable environment are all planned. Phase 5A proves only the separate mint primitive.
 
-The request, provider identity, and authorization evidence are durable before any provider call. Exact replay returns the retained outcome; substitution conflicts. An unresolved or ambiguous call is inquired by its stable provider identity, and a linked retry is allowed only after evidence proves no signature. PostgreSQL V4 stores hashes, lengths, encodings, outcome origins, and evidence references—never raw signable material, signature bytes, private keys, or provider credentials.
+## Demo B — user-held USDZELLE lifecycle
 
-Only the synthetic provider in application test sources is executable today. No signing service/provider is registered in Spring, no public signing endpoint exists, and no transfer effect invokes the boundary. A signed outcome is authorization evidence; it does not mark a token attempt submitted, a transfer effect applied, or any finality reached.
-
-## Workflow and transaction boundary
-
-The transfer is an asynchronous saga/workflow with narrow local transactions, not one distributed transaction spanning a bank adapter and blockchain. A provider-neutral process manager coordinates work through domain commands and ports. It does not become the authoritative ledger or bypass domain transitions.
-
-```mermaid
-sequenceDiagram
-    actor Caller
-    participant CP as Java/Spring control plane
-    participant SB as Source-bank mock
-    participant SG as Signer port
-    participant CA as Chain adapter / local chain
-    participant OB as Independent observer
-    participant DB as Destination-bank mock
-
-    Caller->>CP: POST /v1/transfers + idempotency key
-    CP-->>Caller: 202 + TransferId + Location
-    CP->>SB: idempotent mock withdrawal
-    SB-->>CP: durable effect evidence
-    CP->>SG: authorize exact mint/transfer/burn attempt
-    SG-->>CP: decision + signer evidence
-    CP->>CA: submit exact signed bytes once
-    CA-->>CP: accepted, rejected, or ambiguous evidence
-    OB-->>CP: independent native observations
-    CP->>DB: idempotent mock deposit after required gates
-    DB-->>CP: durable effect evidence
-```
-
-Every step transition records expected/new aggregate version, actor or workload, reason, policy/configuration versions, timestamp, and append-only evidence references. Transactional outbox/inbox delivery, durable timers, leases, retries, deduplication, and restart recovery prevent in-memory progress from becoming business truth.
-
-After ambiguous chain submission, the process manager inquires and independently observes the original attempt before progression or any newly authorized attempt. A timeout is not proof of failure. Blockchain, legal settlement, customer-visible, and accounting finalities remain separate authority/evidence records.
-
-A confirmed external effect is never destructively rolled back. Compensation is a new authorized bank effect, token operation, or ledger correction with its own stable identity, approval, attempts, evidence, and reconciliation.
-
-## BPM and durable-workflow boundary
-
-The repository defines orchestration as a logical control-plane capability, not a selected product. It currently implements domain transitions and durable acceptance/outbox foundations, but no complete process worker or BPM engine.
-
-> In an enterprise deployment, the transfer workflow may be executed by an organization's existing approved BPM or durable-workflow platform, provided it satisfies the repository's state-versioning, idempotency, durable timer, retry, recovery, audit/export, availability, and evidence requirements. The BPM engine coordinates work; it does not replace the domain state machine, authoritative ledger, policy/approval controls, signer boundary, independent observation, or reconciliation records.
-
-Action Request 05 supplies one explicitly labeled inference from a job description: an application-owned Java/Spring state machine with Oracle persistence and Kafka, JMS, or TIBCO EMS messaging is the most plausible existing organizational pattern. This is not a discovered Zelle/Early Warning Services implementation fact. Kafka, JMS, and TIBCO EMS are messaging transports, not BPM engines or financial-state authorities.
-
-TIBCO BusinessWorks/BPM Enterprise, MuleSoft, and SAP integration products are possible organization-standard integration or process platforms only if organizational evidence establishes their use. Integration flows never replace the domain state machine or authoritative ledger. The self-contained reference baseline remains a database-backed Java/Spring worker unless a later evidence spike and ADR select another runtime.
-
-If a new durable-workflow platform is evaluated, compare:
-
-- Camunda 8 for BPMN, human tasks, case/operations visibility, and first-class Java/Spring integration; and
-- Temporal for code-first Java workflows, durable execution, timers, retries, and crash recovery. Temporal's Java/Spring SDK experience does not make its server a Java runtime.
-
-Candidates are evaluated against state ownership, deterministic/versioned behavior, idempotency, durable timers, ambiguous-effect recovery, human tasks, audit/export, availability and disaster recovery, security, operational ownership, deployment constraints, licensing, and exit/migration strategy. No workflow-platform dependency is added without a focused evidence spike and ADR. No vendor is selected by this specification.
-
-## Five-step evidence and retry contract
-
-| Step | Owner / port | Durable evidence | Success condition | Ambiguity or failure | Safe retry posture |
-| --- | --- | --- | --- | --- | --- |
-| 1. Source-bank mock withdrawal | Process manager through `SourceBankPort`; local adapter or stub service | Bank-effect ID, idempotency identity, request hash, account reference hash, exact amount/currency, response classification, timestamp, and mock journal/effect reference | The configured mock debit/reservation is durably recorded and independently readable by stable effect ID | Timeout remains `BANK_EFFECT_AMBIGUOUS`; inquire by effect ID. Definitive rejection stops before mint. Any mismatch opens a case | Repeat inquiry or the same idempotent request identity. Never create another withdrawal merely because the response was lost |
-| 2. Mint to sender settlement wallet | Token-operation service through signer and chain ports | Parent/child IDs, mint `OperationId`, `AttemptId`, exact asset/quantity, sender-wallet role, signer decision, canonical digest, native identity, observation, and blockchain-finality evidence | Independent observation proves the authorized mint effect under the configured local finality policy | Rejection, expiry, native failure, or ambiguous submission is recorded. Ambiguity requires inquiry/observation; no transfer begins without required mint evidence | Resend identical signed bytes only when native policy permits. A new attempt requires proof that the prior attempt cannot create an unintended duplicate effect |
-| 3. Transfer to recipient settlement wallet | Transfer child operation through signer and chain ports | Transfer operation/attempt IDs, sender/recipient wallet roles, exact quantity, authorization, digest, native identity, logs/instructions, observation, and finality evidence | Independent observation proves the exact sender-to-recipient wallet effect and route policy allows progression | Insufficient balance, native failure, response loss, provider disagreement, reorg, commitment regression, or expiry holds progression and may open a case | Inquire and observe the original attempt. EVM replacement preserves sender/nonce lineage; Solana same-signed resend differs from a new-blockhash attempt |
-| 4. Burn from recipient settlement wallet | Token-operation service through signer and chain ports | Burn `OperationId`, `AttemptId`, exact quantity, recipient-wallet role, signer decision, digest, native identity, observation, supply/account effect, and finality evidence | Independent observation proves the authorized burn and required policy gates pass | Rejection or ambiguity cannot be treated as no effect. A confirmed transfer followed by failed burn requires an authorized recovery/compensation decision | Same inquiry and native-safe attempt rules as mint. Never create a new parent transfer or blind-resubmit after timeout |
-| 5. Destination-bank mock deposit | Process manager through `DestinationBankPort`; local adapter or stub service | Bank-effect ID, idempotency identity, request hash, account reference hash, exact amount/currency, prerequisite evidence set, response classification, timestamp, and mock journal/effect reference | The configured mock credit is durably recorded and independently readable after required burn/finality gates | Timeout remains ambiguous and is inquired by stable effect ID. Definitive rejection or mismatch creates a case and a new authorized compensation path | Repeat inquiry or the same idempotent request identity. Any compensating debit/credit is a separately authorized effect, never mutation of history |
-
-Bank account references are opaque and local. Bank adapters never make chain or signing decisions, and chain adapters never authorize bank effects. The parent advances only when the configured evidence gates for the preceding child are satisfied.
-
-## Chain realization
-
-### Ethereum local demonstration
-
-Foundry now owns Solidity build, tests, and Anvil fixtures under `contracts/evm/`; Web3j is confined to `adapters/ethereum-web3j/`. Phase 5A proves only the authorized-mint primitive with a two-decimal, role-gated local token, durable nonce and exact signed bytes/hash, response-loss inquiry, receipt/event matching, confirmations, and canonical block evidence. It does not accept a transfer child from this parent, implement token transfer or burn, or establish replacement/cancellation and longer-lived reorganization policy. Those remain separately gated extensions before this Ethereum demonstration can be claimed complete.
-
-### Solana local demonstration
-
-Use native SVM semantics and the classic SPL Token Program. The initial local realization creates an SPL token mint plus sender and recipient token accounts and exercises native mint, transfer, and burn instructions. The Java client must pass the bounded evaluation required by [ADR 0003](adr/0003-native-solana-spl-token.md). Do not introduce Neon. Do not add a custom Rust/Anchor program unless existing programs cannot safely express a required business rule and a later ADR approves it.
-
-Current and proposed executable locations are:
+### Exact target lifecycle
 
 ```text
-adapters/bank-mock/
-adapters/signer-local/          # current
-adapters/ethereum-web3j/        # current Phase 5A mint only
-adapters/chain-solana/
-contracts/evm/                  # current Phase 5A mint token/tests
-programs/solana/        # only if a custom native program is later justified
-integration-tests/
+On-ramp
+1. User requests conversion of $100.00 to USDZELLE
+2. Mock bank debits or reserves $100.00
+3. Synthetic reserve ledger confirms eligible backing
+4. ADMIN authorizes and signs the mint
+5. 100.00 USDZELLE is minted to USER_WALLET_1
+6. User may retain the 100.00 USDZELLE balance
+
+Optional wallet transfer
+7. USER_WALLET_1 transfers an exact amount to USER_WALLET_2
+8. USER_WALLET_2 may retain that balance; no redemption is forced
+
+Redemption/off-ramp
+9. User requests redemption
+10. The user wallet transfers USDZELLE to ADMIN_REDEMPTION
+11. Independent observation confirms receipt and required blockchain finality
+12. Mock bank credits the user's bank account
+13. ADMIN burns the redeemed USDZELLE
+14. Reserve and token-supply records reconcile
 ```
 
-ADRs 0002 and 0003 explicitly select `adapters/ethereum-web3j/` and `adapters/solana-java/`; Phase 5A realizes the Ethereum path under ADR 0007. The remaining names are roadmap locations, not instructions to create empty modules.
+On-ramp, wallet transfer, and redemption are separate durable parents with their own idempotency, child effects, attempts, evidence, and failure states. Mint and burn remain privileged child operations.
 
-## Wallets, keys, and configuration
+### Expected synthetic examples
 
-- Commit no private key, seed phrase, API key, RPC credential, funded address, `.env` file, keystore, signer credential, or real bank identifier.
-- Generate or provision local-chain wallet authorities as disposable test fixtures in ignored runtime storage. They are not staging or production identities.
-- Keep production-oriented HSM/MPC/custody signing behind the provider-neutral signer port using non-secret key references; raw private keys never enter Java application memory, logs, exceptions, fixtures, or traces.
-- Inject future RPC, database, and provider credentials through approved external configuration and secret mechanisms. A future `.env.example`, if justified, contains names and obvious safe placeholders only.
-- Make local signer and bank-mock adapters impossible to enable through a production profile. Default configuration contains no public-network endpoint or production authority.
+| Point | Mock-bank / reserve state | Wallet and supply state |
+| --- | --- | --- |
+| Before on-ramp | User fiat `$100.00`; eligible reserve `0.00`; redeemable liability `0.00` | `USER_WALLET_1 = 0.00 USDZELLE`; supply `0.00` |
+| After on-ramp | User fiat reduced/reserved by `$100.00`; confirmed eligible reserve and liability `100.00` | `USER_WALLET_1 = 100.00 USDZELLE`; supply `100.00` |
+| After optional full transfer | Reserve and liability remain `100.00` | `USER_WALLET_1 = 0.00`; `USER_WALLET_2 = 100.00`; supply remains `100.00` |
+| After later full redemption | User fiat credited `$100.00`; redeemable liability and encumbrance released to `0.00` after policy gates | User and redemption wallets `0.00`; supply `0.00` after ADMIN burn |
 
-## Completion criteria
+The user may stop after on-ramp or optional transfer and retain USDZELLE. The final redemption row is a later request, not an automatic consequence of receipt.
 
-Completion is two separate claims, never one blended multi-chain claim:
+### Reserve, custody, and evidence contract
 
-1. **Ethereum local end-to-end transfer** - the five steps complete on Anvil through the Ethereum adapter with durable correlation, deterministic deployment/encoding, independent receipt/log observation, idempotent duplicate delivery, restart recovery, timeout inquiry, replacement/canonicality handling, and clean-room local instructions.
-2. **Solana local end-to-end transfer** - the same business contract completes on a local validator through native SPL Token mint/transfer/burn and account setup while preserving message/instruction/account evidence, blockhash lifetime, signature/slot/commitment progression, independent observation, idempotent duplicate delivery, restart recovery, and clean-room local instructions.
+The synthetic reserve subsystem records confirmed deposit evidence, eligible/available/encumbered amounts, outstanding redeemable token liability, mint authorization evidence, redemption liability, payout evidence, reserve-release policy, total-supply observation, and reconciliation. It must preserve:
 
-Each claim requires all five steps to be durably correlated, independently observable where applicable, safe under duplicate delivery, and recoverable across restart and timeout ambiguity. Completing either local demonstration still does not imply production, legal, accounting, compliance, security-certification, or operational readiness.
+```text
+confirmed eligible reserves >= outstanding redeemable USDZELLE supply
+```
+
+Demo B uses segregated local custodial wallet aliases. A future explicit local-demo profile may inject deterministic keys from ignored local secret storage, derive addresses, and fail when optional expected addresses disagree. Keys are never committed, logged, returned by APIs, or persisted in PostgreSQL. Production profiles reject raw-key configuration and use future HSM/MPC/custody implementations of the existing signer port.
+
+Success evidence includes parent/child IDs for bank debit/reserve, mint, optional transfer, redemption receipt, payout, burn, and reserve release; exact quantity/unit; policy/approval versions; signer decisions; native identities/events; independent observations; reserve/supply comparisons; and four separate finality histories. A timeout remains ambiguous and is inquired by stable identity before retry. A payout, burn, or reserve mismatch enters explicit incomplete/manual-review state.
+
+### Current gaps
+
+No user-held balance product, named user-wallet registry, configured deterministic local signer, synthetic reserve ledger, runtime bank effect, generic transfer, redemption workflow, ADMIN burn, reserve/supply reconciliation, identity profile, or public API for these operations exists. Phase 5A cannot be described as reserve-backed on-ramp.
+
+## Shared saga, evidence output, and finality rules
+
+Neither demo is globally atomic. Individual PostgreSQL and blockchain transactions are atomic only within their own systems. Each parent saga preserves:
+
+- idempotent commands and delivery identities;
+- narrow local transactions with external calls outside them;
+- stable parent, child, effect, and attempt identities;
+- independently observed bank and chain effects;
+- inquiry before retry after ambiguity;
+- append-only policy, approval, transition, observation, and reconciliation evidence;
+- explicit compensation or manual review rather than destructive rollback; and
+- separate blockchain, accounting, legal, and customer-visible finality.
+
+The eventual local evidence summary conceptually includes parent/child operation IDs, bank-ledger entries, wallet aliases and derived local addresses, native transaction hashes/signatures, confirmed contract/program events or instructions, reserve/supply reconciliation, and all four finality statuses. It must redact private keys, raw credentials, personal data, internal policy facts, and raw signed material.
+
+## Ethereum-first and Solana-second realization
+
+Ethereum completes the missing local wallet, transfer, redemption/burn, bank/reserve, and orchestration phases first. Foundry/Anvil own native EVM execution and Web3j remains inside `adapters/ethereum-web3j/`. Phase 5A currently supports mint only.
+
+Solana follows through the same provider-neutral business contracts after the Ethereum demonstrations. Its adapter must preserve native fee payer/authority, accounts, instructions, recent blockhash or durable nonce, signature, slot, commitment, expiry, and SPL Token evidence. ADR 0003 requires a bounded Java-client gate, classic SPL Token first, no Neon baseline, and Rust/Anchor only if existing programs cannot express required behavior.
+
+The detailed dependency sequence and exit gates are in [`docs/IMPLEMENTATION.md`](IMPLEMENTATION.md). No future implementation plan exists until its phase is separately authorized.

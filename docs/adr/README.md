@@ -56,3 +56,4 @@ Open questions remain in `docs/DESIGN.md` or `docs/IMPLEMENTATION.md` until evid
 - [ADR 0005: PostgreSQL operation delivery worker and lease recovery](0005-postgresql-operation-delivery-worker.md) - accepted.
 - [ADR 0006: Local-development signing provider](0006-local-development-signing-provider.md) - accepted.
 - [ADR 0007: Local Ethereum mint vertical slice](0007-local-ethereum-mint-vertical-slice.md) - accepted.
+- [ADR 0008: USDZELLE product paths, ownership, custody, and reserve boundaries](0008-usdzelle-product-paths-ownership-custody-reserve-boundaries.md) - accepted.

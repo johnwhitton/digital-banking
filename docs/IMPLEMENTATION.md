@@ -9,12 +9,13 @@ This is the living delivery plan and current-state record. It turns `docs/DESIGN
 | Status        | Meaning                                                                            |
 | ------------- | ---------------------------------------------------------------------------------- |
 | `not_started` | No implementation has begun; design may still contain open questions.              |
+| `planned`     | Direction and exit gate are accepted, but no execution plan is authorized or active. |
 | `in_progress` | Work is active but has not passed its acceptance gate.                             |
 | `blocked`     | A named external input, authority, tool, or decision prevents meaningful progress. |
 | `implemented` | The scoped behavior exists and focused tests pass; broader phase gates may remain. |
 | `verified`    | All phase acceptance commands and evidence have been run, inspected, and recorded. |
 
-`planned` and `scaffolded` may appear in the README's capability view, but phase execution uses the vocabulary above.
+`scaffolded` may appear in the README's capability view; the phase roadmap uses the vocabulary above.
 
 ## Repository baseline discovered on 2026-07-16
 
@@ -50,13 +51,21 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 2. Domain and operation lifecycle      | `verified`    | Exact quantities, guarded lifecycle/finality histories, canonical commands, idempotent acceptance contracts, and bound ports passed 264 pure tests and the 266-test reactor. |
 | 3. Durable API and persistence         | `verified`    | Phase 3A acceptance/read-back, Phase 3B worker/recovery, and Phase 3C transfer acceptance/first deduplicated internal preparation pass the 364-test offline reactor. External workflow effects remain absent by scope. |
 | 4. Signing boundary                    | `verified`    | Phase 4A provides durable authority/evidence; Phase 4B adds explicit-profile, session-ephemeral secp256k1/Ed25519 signing. Production custody remains absent. |
-| 5. Ethereum vertical slice             | `verified`    | Phase 5A proves one accepted mint on local Anvil through durable nonce/attempt, signing, submit-once ambiguity recovery, and independent receipt/event/canonicality observation. Transfer, burn, replacement, and production integration remain absent. |
-| 6. Solana vertical slice               | `not_started` | No Java SDK/Rust/local-validator code.                                                         |
-| 7. Observation and reconciliation      | `not_started` | Design only.                                                                                   |
-| 8. Integrated local environment        | `not_started` | No Compose file.                                                                               |
-| 9. Hardening and publication readiness | `not_started` | No production-readiness claim.                                                                 |
+| 5A. Local Ethereum mint                | `verified`    | One accepted mint completes on local Anvil with durable signing/submission/observation evidence. |
+| 5B. Local multi-wallet custody         | `planned`     | Versioned named ADMIN, bank, redemption, and user identities plus local-demo-only configured signing. |
+| 5C. Ethereum wallet transfer           | `planned`     | Generic exact ERC-20 transfer through the existing provider-neutral lifecycle. |
+| 5D. Ethereum redemption and burn       | `planned`     | Confirm redemption receipt, then ADMIN burns only its redeemed balance. |
+| 6A. Synthetic reserves and mock banks  | `planned`     | Durable synthetic balances, reserve liability, inquiry, replay, and reconciliation. |
+| 6B. User-held workflows                | `planned`     | On-ramp and redemption parents complete Demo B locally. |
+| 6C. Settlement-only orchestration      | `planned`     | Six-effect fiat-to-fiat parent completes Demo A locally. |
+| 6D. Ethereum demo environment          | `planned`     | Reproducible local environment, commands, cleanup, and evidence summaries for both demos. |
+| 7A. Native Solana semantic gate        | `planned`     | Local tooling and Java-client/native-contract mapping gate. |
+| 7B. Solana mint parity                 | `planned`     | SPL mint meets Phase 5A business/evidence guarantees. |
+| 7C. Solana transfer and burn parity    | `planned`     | Native transfer/redemption/burn meet applicable Phase 5C/5D guarantees. |
+| 7D. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
+| 8. Final reference review              | `planned`     | Architecture, code, security, recovery, API/demo, and share-readiness review. |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated local-development provider, and Phase 5A's bounded local-Anvil mint. The Phase 5A closeout records the current complete gate: 414 passing Maven tests across seven modules and five passing Foundry tests. The default runtime has no identity provider, signer, or chain client. Profiles `local-signer` plus `local-ethereum` compose the mint handler, require explicit loopback/local-chain configuration, and expose no new public endpoint. The complete [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) remains future work; Phase 5A is not wired to its five effects. Every later effect/provider/chain slice requires its own newly authorized plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated session-ephemeral local provider, and Phase 5A's bounded local-Anvil mint to one configured recipient. The Phase 5A closeout records the current complete gate: 414 passing Maven tests across seven modules and five passing Foundry tests. The default runtime has no identity provider, signer, or chain client. Profiles `local-signer` plus `local-ethereum` compose the mint handler, require explicit loopback/local-chain configuration, and expose no new public endpoint. No persistent multi-wallet registry, configured deterministic signer, reserve subsystem, runtime bank effect, wallet transfer, burn execution, parent orchestration, demo environment, or Solana adapter exists. Both [USDZELLE demonstrations](TRANSFER_DEMO.md) remain future work. Each planned phase below requires its own separately authorized plan.
 
 ## Phase 1: Foundation
 
@@ -138,9 +147,9 @@ The database-backed Java/Spring worker is the accepted self-contained baseline, 
 
 **Risks:** future attempt/evidence persistence beyond the preparation transition, hiding child ambiguity behind a parent status, treating synthetic adapters as production integrations, and beginning chain execution before signer controls.
 
-**Deferred:** runtime mock-bank execution/inquiry, mint/transfer/burn/deposit execution, child token-operation acceptance, settlement-wallet provisioning, production signer/custody implementations, native chain effects, observation/reconciliation, compensation execution, and the complete five-step demonstrations.
+**Deferred:** runtime mock-bank execution/inquiry, mint/transfer/burn/deposit execution, child token-operation acceptance, settlement-wallet provisioning, production signer/custody implementations, native chain effects, observation/reconciliation, compensation execution, and both complete demonstrations.
 
-Phases 4-9 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Each future phase or bounded sub-slice requires a focused active plan before implementation; this roadmap does not authorize combining both chains in one action.
+Phases 4-8 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Each future phase or bounded sub-slice requires a focused active plan before implementation; this roadmap does not authorize combining both chains in one action.
 
 ## Phase 4: Signing boundary
 
@@ -156,7 +165,7 @@ Phases 4-9 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 **Deferred:** HSM/MPC/custody adapters and recovery ceremony, provider credentials, persistent keys, native transaction construction, submission, observation, and all production integration.
 
-## Phase 5: Ethereum vertical slice
+## Phase 5: Ethereum delivery
 
 **Dependency:** phases 2-4 verified. Build this first, then review the common ports before beginning Solana.
 
@@ -170,64 +179,186 @@ Phases 4-9 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 **Deferred:** Ethereum wallet transfer, burn, replacement/cancellation, longer-lived reorg monitoring, parent-transfer integration, public networks, production contracts/deployment/admin, and provider/custody selection.
 
-## Phase 6: Solana vertical slice
+### Phase 5B: local multi-wallet custody and configured signer
 
-**Dependency:** phases 2-4 verified and the first chain slice reviewed for common-port changes.
+**Status:** `planned`
 
-**Deliverables:** execute [ADR 0003](adr/0003-native-solana-spl-token.md) and the Solana portion of [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md); run the bounded Java-client evaluation; use native SVM semantics and classic SPL Token on a local validator; create the local SPL mint plus sender/recipient token accounts; add a Java adapter only after the client gate passes; define recent-blockhash/durable-nonce and lifetime policy, instruction/account evidence, commitment observation, and native mint/transfer/burn happy and failure paths. Add a pinned Rust/Anchor program only if existing programs cannot safely express required business logic. Neon is excluded from this baseline.
+**Dependency:** verified Phases 4A-4B and 5A.
 
-**Tests:** deterministic mint/account setup and mint/transfer/burn messages/instruction accounts, authority/source/destination/amount binding, blockhash expiry, same-signed-transaction resend versus new-blockhash attempt, instruction error, signature/slot/commitment progression, provider disagreement, duplicate request, and reconciliation evidence.
+**Plan:** not created until separately authorized.
 
-**Acceptance gate:** local native SPL mint/transfer/burn effects are authorized, independently observable, recoverable, and reconcilable; lifetime and commitment semantics remain explicit; Java SDK/Rust types do not leak into domain; Rust is absent if existing programs suffice. This phase proves chain effects, not the complete bank-to-bank demonstration.
+**Deliverables:** a versioned wallet registry for `ADMIN`, `ADMIN_REDEMPTION`, bank-settlement, and user identities; explicit key purpose/authority even if one local ADMIN key serves multiple roles; local-only ignored environment or equivalent secret injection; address derivation and optional expected-address validation; deterministic demo identity across restart; least-authority component composition; and production rejection of raw-key configuration.
 
-**Risks:** unmaintained SDK, unnecessary custom program, erasing Solana semantics to match EVM, upgrade authority ambiguity.
+**Exit gate:** named local identities resolve and sign only authorized exact payloads without leaking key material. Default and production profiles remain raw-key-free.
 
-**Deferred:** public clusters, production program deployment, vendor selection.
+**Non-goals:** chain transfer, burn, reserve/bank behavior, public API changes, self-custody implementation, omnibus accounting, or production custody.
+
+### Phase 5C: Ethereum generic wallet transfer
+
+**Status:** `planned`
+
+**Dependency:** Phase 5B and the verified Phase 5A native attempt/observation seam.
+
+**Plan:** not created until separately authorized.
+
+**Deliverables:** standard ERC-20 transfer from a server-resolved source wallet; the same provider-neutral application contract for bank-settlement and user-wallet aliases; durable nonce and EIP-1559 signing; submit-once ambiguity recovery; independent receipt, exact event, confirmation, and canonicality observation; and participant-safe status evidence.
+
+**Exit gate:** an exact transfer succeeds on Anvil, redelivery cannot duplicate it, and both bank and user wallet aliases use the same bounded adapter path.
+
+**Non-goals:** burn, redemption payout, parent orchestration, arbitrary caller-selected wallets, or production/public networks.
+
+### Phase 5D: Ethereum redemption and ADMIN burn
+
+**Status:** `planned`
+
+**Dependency:** Phase 5C.
+
+**Plan:** not created until separately authorized.
+
+**Deliverables:** transfer from a redeeming wallet to `ADMIN_REDEMPTION`; independent confirmation of exact ADMIN receipt; role-controlled ADMIN burn only for tokens held by ADMIN; durable burn and supply evidence; ambiguity inquiry; restart recovery; and supply reconciliation.
+
+**Exit gate:** one confirmed redemption transfer followed by ADMIN burn reduces the ADMIN balance and total supply by the exact amount once.
+
+**Non-goals:** arbitrary burn from another wallet, bank payout, reserve release, complete redemption parent, or production token administration.
+
+## Phase 6: Synthetic banking, reserves, and Ethereum demonstrations
+
+### Phase 6A: synthetic reserve ledger and executable mock banks
+
+**Status:** `planned`
+
+**Dependency:** Phase 5D.
+
+**Plan:** not created until separately authorized.
+
+**Deliverables:** durable synthetic bank-customer, bank-settlement, and reserve balances; debit, credit, inquiry, ambiguous-outcome, replay, and restart behavior behind provider-neutral bank ports; explicit eligible, available, and encumbered synthetic reserves; and reconciliation of confirmed eligible reserves against outstanding redeemable USDZELLE supply.
+
+**Exit gate:** synthetic bank and reserve transitions are exact, idempotent, durable, restartable, and independently testable; confirmed eligible reserves never fall below outstanding redeemable supply.
+
+**Non-goals:** real bank integration, real deposits or funds, production reserve custody, yield, revenue sharing, or legal/accounting conclusions.
+
+### Phase 6B: user-held on-ramp and redemption workflows
+
+**Status:** `planned`
+
+**Dependency:** Phases 6A and 5D.
+
+**Plan:** not created until separately authorized.
+
+**Deliverables:** an on-ramp parent coordinating synthetic bank debit/reserve credit with mint to a segregated user wallet; a redemption parent coordinating transfer to `ADMIN_REDEMPTION`, synthetic bank payout, ADMIN burn, and reserve release; optional user-to-user transfer through Phase 5C; durable child correlation, evidence, ambiguity handling, compensation/manual-review decisions, and four distinct finalities.
+
+**Exit gate:** Demo B proves exact customer-bank, wallet, supply, and reserve before/after states; a user can retain USDZELLE without forced off-ramp; replay and restart cannot duplicate value effects.
+
+**Non-goals:** settlement-only orchestration, self-custody production support, omnibus subledgering, real bank/reserve integration, or public networks.
+
+### Phase 6C: settlement-only fiat transfer orchestration
+
+**Status:** `planned`
+
+**Dependency:** Phases 6A, 5C, and 5D.
+
+**Plan:** not created until separately authorized.
+
+**Deliverables:** one parent saga for source-bank debit, ADMIN mint to `BANK_1_SETTLEMENT`, transfer to `BANK_2_SETTLEMENT`, transfer to `ADMIN_REDEMPTION`, destination-bank credit, and ADMIN burn; stable child identities; ordered policy gates; ambiguity inquiry; compensation/manual-review decisions; and correlated bank, signer, chain, reserve/supply, and finality evidence.
+
+**Exit gate:** Demo A executes the exact six effects once, preserves recovery evidence across every boundary, and ends with the intended bank balances and unchanged outstanding supply.
+
+**Non-goals:** persistent user holdings, user-to-user transfer, real bank integration, public networks, or a production settlement claim.
+
+### Phase 6D: Ethereum local demonstration environment and scripts
+
+**Status:** `planned`
+
+**Dependency:** Phases 6B and 6C.
+
+**Plan:** not created until separately authorized.
+
+**Deliverables:** Docker Compose or an accepted equivalent for PostgreSQL, Anvil, the control plane, executable mock banks, identity fixtures, contract deployment, health/dependency ordering, deterministic cleanup, and concise evidence output; local keys are generated or supplied through ignored local secret input and never committed.
+
+**Exit gate:** from a trusted clean checkout, one documented command can run each Ethereum demo, produce the specified evidence, and tear down deterministically without public-network access or committed secrets.
+
+**Non-goals:** cloud deployment, CI production topology, public networks, real funds, production custody, or combining the two product paths into one claim.
+
+## Phase 7: Native Solana parity
 
 Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CCTP cross-chain workflow requires its own operation semantics, evidence, and decision gate.
 
-## Phase 7: Observation and reconciliation
+### Phase 7A: native Solana tooling and semantic gate
 
-**Deliverables:** independent observer ports/adapters; versioned native and bank-effect evidence stores; canonicality/commitment policy; transfer/child/bank/signer/chain/inventory reconciliation; ambiguous outcome recovery; break/case model; authorized repair and append-only evidence.
+**Status:** `planned`
 
-**Tests:** submit provider unavailable, observer disagreement, reorg/commitment regression, signer/chain digest mismatch, supply/account mismatch, delayed data, duplicate observations, rerunnable reconciliation, break aging, and repair authorization.
+**Dependency:** Phase 6D and the Ethereum evidence seams it validates.
 
-**Acceptance gate:** every external effect can be located from stable internal IDs and independently observed; unresolved disagreement blocks unsafe progression; repair preserves original history.
+**Plan:** not created until separately authorized.
 
-**Risks:** "independent" sources sharing a failure domain, silent tolerance, mutable evidence, repair becoming a bypass.
+**Deliverables:** a pinned local validator and native tooling; the bounded Java-client evaluation required by [ADR 0003](adr/0003-native-solana-spl-token.md); explicit mapping for recent blockhash/durable nonce, lifetime, instruction/account evidence, signature, slot, commitment, and expiry; classic SPL Token; and a Rust/Anchor program only if existing native programs cannot safely enforce a required invariant. Neon is excluded.
 
-**Deferred:** enterprise case tooling and full accounting-close integration.
+**Exit gate:** the client/toolchain gate passes with deterministic local evidence; native Solana semantics remain visible behind provider-neutral ports; no SDK or Rust type leaks into the core; unnecessary custom program code is absent.
 
-## Phase 8: Integrated local environment
+**Non-goals:** chain effects, public clusters, CCTP, production program deployment, or vendor selection.
 
-**Deliverables:** Docker Compose where practical; API/database/bank-mock/local-chain/observer processes; deterministic fixtures and disposable wallet authorities; development signer; readiness/dependency ordering; end-to-end tests; failure injection; operator runbooks; and two separately evidenced demonstrations from [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md): complete five-step Ethereum and complete five-step Solana.
+### Phase 7B: Solana mint parity
 
-**Tests:** clean startup; five-step Ethereum and Solana happy paths; restart at every bank/worker/signer/chain/observer boundary; duplicate delivery; bank and chain response loss; dependency outage/recovery; chain reset/reorg/expiry/commitment regression; reconciliation rerun; deterministic teardown; and no secret/public-network access.
+**Status:** `planned`
 
-**Acceptance gate:** one command produces a deterministic local environment; each chain's five-step flow is durably correlated, independently observable where applicable, idempotent under duplicate delivery, and recoverable across restart/timeout ambiguity; and clean-room runbooks match executed commands. The two demonstrations remain separate claims and imply no production/legal/accounting/compliance readiness.
+**Dependency:** Phase 7A.
 
-**Risks:** Compose hiding flaky dependencies, slow nondeterministic tests, build artifacts or fixture secrets committed.
+**Plan:** not created until separately authorized.
 
-**Deferred:** cloud/CI deployment and production infrastructure.
+**Deliverables:** native SPL mint creation and authority setup plus the Phase 5A exact mint, durable attempt, sign, submit-once, inquire, observe, ambiguity, restart, reconciliation, and finality guarantees expressed with Solana-native evidence.
 
-## Phase 9: Hardening and publication readiness
+**Exit gate:** an exact local-validator mint reaches the same business and recovery guarantees as Phase 5A without erasing signature/slot/commitment or blockhash-lifetime semantics.
 
-**Deliverables:** threat review; dependency/SBOM and vulnerability evidence; contract/program independent review; authorization/recovery drills; performance and failure budgets; backup/restore; documentation/link verification; deterministic demo script; explicit limitations and exit plan.
+**Non-goals:** transfer, burn, either full demonstration, public clusters, or production authority.
 
-**Tests:** abuse cases, compromised provider/signing scenarios, limit and kill-switch drills, dependency outage, data restore, reconciliation control totals, load/latency tests, and complete clean-room demo.
+### Phase 7C: Solana transfer and burn parity
 
-**Acceptance gate:** evidence shows the bounded demo is reproducible and fails safely. This gate still does not authorize production use or claim certification.
+**Status:** `planned`
 
-**Risks:** publication language exceeding evidence; security tooling treated as certification; scope expansion across asset/network/corridor/authority at once.
+**Dependency:** Phase 7B.
 
-**Deferred:** any production, regulatory, legal, vendor, or mainnet decision.
+**Plan:** not created until separately authorized.
+
+**Deliverables:** native SPL transfer, redemption receipt, and ADMIN burn with the applicable Phase 5C/5D authorization, durable identity, ambiguity, observation, restart, supply reconciliation, and exact-quantity guarantees.
+
+**Exit gate:** local-validator transfer and redemption/burn effects are exact, authorized, independently observable, and non-duplicating under replay or ambiguous response loss.
+
+**Non-goals:** parent bank workflows, public clusters, production custody, or treating EVM and Solana evidence as interchangeable.
+
+### Phase 7D: chain-selectable Solana demonstrations
+
+**Status:** `planned`
+
+**Dependency:** Phase 7C and the accepted Demo A/Demo B contracts.
+
+**Plan:** not created until separately authorized.
+
+**Deliverables:** explicit network selection behind the same business APIs and provider-neutral application boundaries; Solana realization of both demonstrations; local-validator orchestration, fixtures, cleanup, and evidence; and preservation of chain-specific submission, lifetime, observation, and finality semantics.
+
+**Exit gate:** Demo A and Demo B each run on native local Solana with the same economic before/after states and recovery guarantees as Ethereum while retaining Solana-specific evidence.
+
+**Non-goals:** simultaneous cross-chain value movement, bridging, CCTP, public clusters, mainnet/testnet configuration, or one genericized finality model.
+
+## Phase 8: Final reference review and share readiness
+
+**Status:** `planned`
+
+**Dependency:** Phase 7D.
+
+**Plan:** not created until separately authorized.
+
+**Deliverables:** architecture-to-code and implementation-standards audits; threat/security and dependency review; database concurrency, recovery, backup/restore, and reconciliation review; API/OpenAPI and demo-usability review; deterministic clean-room evidence for both demos on both local chains; and reconciliation of README, design, roadmap, ADR, limitation, and operator documentation.
+
+**Exit gate:** all Critical and Important findings are resolved or explicitly accepted; both chain realizations of both demos have reproducible evidence; documentation accurately distinguishes verified capability, planned work, limitations, and non-production status.
+
+**Non-goals:** production certification, regulatory/legal approval, real-fund deployment, vendor selection, cloud/mainnet/testnet rollout, or a claim of operational readiness.
 
 ## Publications
 
 - **Volume II - [Digital Banking Engineering Companion](reference/digital-banking-engineering-companion.pdf)** (`published`): vendor-neutral implementation and operations guidance covering durable workflow, Java/Spring, wallets and signing, EVM, Solana, submission and observation, infrastructure, testing, performance, and delivery. It is not production certification or a runnable implementation. Its code-status discussion is pinned to `e921fcb1877b46a6881437f46b1a6ebfa115ae58`; use this current plan, the README, accepted ADRs, source, and tests for live repository status.
 - **Volume III - [Digital Banking Reference Implementation](reference/digital-banking-reference-implementation.pdf)** (`published`): code companion mapping architecture to repository modules, APIs, database schema and migrations, implementation excerpts, local build/run/test flows, and the boundary between local demonstrations and production integrations. Current design, ADRs, contracts, source, tests, and this living plan remain authoritative for implementation status.
 
-Publishing Volumes II and III does not change executable phase status, replace a focused implementation plan or acceptance test, complete Phase 9, or imply production readiness.
+Publishing Volumes II and III does not change executable phase status, replace a focused implementation plan or acceptance test, complete Phase 8, or imply production readiness.
 
 ## Plans and ADRs
 
@@ -240,6 +371,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Completed Phase 4A signing-authority plan: [`docs/plans/completed/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md`](plans/completed/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md).
 - Completed Phase 4B local signer plan: [`docs/plans/completed/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md`](plans/completed/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md).
 - Completed Phase 5A local Ethereum mint plan: [`docs/plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md`](plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
+- Completed dual-product-path and delivery-roadmap alignment: [`docs/plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md`](plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md).
 - Completed Zelle share-readiness and transfer-roadmap plan: [`docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
 - Accepted build/module choice: [`ADR 0001`](adr/0001-maven-reactor-and-module-boundaries.md).
@@ -249,6 +381,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Accepted PostgreSQL delivery-worker/lease-recovery approach: [`ADR 0005`](adr/0005-postgresql-operation-delivery-worker.md).
 - Accepted local-development signing provider: [`ADR 0006`](adr/0006-local-development-signing-provider.md).
 - Accepted local Ethereum mint realization: [`ADR 0007`](adr/0007-local-ethereum-mint-vertical-slice.md).
+- Accepted USDZELLE product paths, ownership/custody, reserve, and delivery boundaries: [`ADR 0008`](adr/0008-usdzelle-product-paths-ownership-custody-reserve-boundaries.md).
 
 Create a restartable active plan for each newly authorized implementation action and follow the lifecycle above. Create an ADR only when evidence requires an accepted material decision.
 
@@ -309,7 +442,7 @@ Action Request 13 implements **Phase 5A Local Ethereum Mint Vertical Slice**:
 - explicit `local-ethereum` plus `local-signer` composition fenced to uncredentialed loopback HTTP and chain `31337`, with no default contract/recipient address; and
 - Foundry, independent transaction-vector, real PostgreSQL, real Anvil, concurrent nonce, duplicate, response-loss, revert, default-context, and configuration evidence under [ADR 0007](adr/0007-local-ethereum-mint-vertical-slice.md) and the [completed Phase 5A plan](plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
 
-This is one local development mint effect, not the five-step transfer demonstration. It neither executes an accepted transfer effect nor implements burn, wallet transfer, replacement/cancellation, production custody, hosted/public RPC, legal/customer/accounting finality, or settlement. The next bounded recommendation is an Ethereum wallet-transfer slice that reuses the same durable attempt and observation seams without broadening public or production authority.
+This is one local development mint effect, not either complete demonstration. It neither executes an accepted transfer effect nor implements burn, wallet transfer, replacement/cancellation, production custody, hosted/public RPC, legal/customer/accounting finality, or settlement. The next bounded recommendation is Phase 5B local multi-wallet custody and configured signing, which provides named, least-authority local identities before any generic transfer effect.
 
 The preceding Action Request 12 implements **Phase 4B Isolated Local-Development Signer**:
 
@@ -344,7 +477,7 @@ Action Request 10 implements **Phase 3C Chain-Neutral Transfer Aggregate and Moc
 
 The final offline reactor passed 364 tests with zero failures, errors, or skips: 249 domain, 40 application, 38 real-PostgreSQL persistence, and 37 control-plane tests. The independent review has no unresolved Critical or Important findings.
 
-This slice performs no bank, signer, RPC, mint, token-transfer, burn, deposit, observation, reconciliation, compensation, or settlement effect. The server chooses institution-controlled wallet roles; callers supply only amount/currency, source/destination synthetic bank references, and an optional allowlisted logical network. The next bounded recommendation is Phase 4's provider-neutral signing-authority boundary; any attempt to execute the five-effect flow still needs separate bank/chain plans and evidence.
+This slice performs no bank, signer, RPC, mint, token-transfer, burn, deposit, observation, reconciliation, compensation, or settlement effect. The server chooses institution-controlled wallet roles; callers supply only amount/currency, source/destination synthetic bank references, and an optional allowlisted logical network. Phases 4A-5A subsequently added the bounded signing and local-mint capabilities described above; execution of the remaining parent effects still needs separate authorized plans and evidence.
 
 The previously verified Action Request 09 implements **Phase 3B Durable Worker and Delivery Recovery**:
 
@@ -382,4 +515,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum mint, remaining bank/provider/chain effects, and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). The next recommended bounded action is one Ethereum wallet-transfer effect with its own approved plan; it must not be presented as execution of the complete parent transfer.
+The implemented transfer/signing boundaries, bounded local-Ethereum mint, remaining bank/provider/chain effects, and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). The next recommended bounded action is Phase 5B local multi-wallet custody and configured signing with its own approved plan; it must add no transfer, burn, reserve, bank, or public-network behavior.

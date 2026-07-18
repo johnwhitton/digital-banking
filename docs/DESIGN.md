@@ -18,20 +18,20 @@ Zelle is only a public case study in the publications. This repository is organi
 - Isolate chain and signer technology behind ports while preserving native Ethereum and Solana semantics.
 - Recover safely from duplicates, timeouts, ambiguous submission, observation disagreement, and reconciliation breaks.
 - Provide independently testable layers, local infrastructure, and evidence-gated delivery.
-- Specify a planned local bank-to-bank transfer aggregate that coordinates mock bank effects and stablecoin mint/transfer/burn operations without claiming distributed atomicity.
+- Support distinct settlement-only and user-held USDZELLE product paths through explicit durable operations without claiming distributed atomicity.
 
 ### Non-goals
 
 - Production deployment, legal/compliance approval, real funds, mainnet, or public testnets.
 - Reproducing a Zelle product or claiming knowledge of confidential EWS architecture.
 - Selecting an issuer, stablecoin, chain, bridge, custody/HSM/MPC provider, or production node provider.
-- A consumer wallet, custom bridge, full cross-border product, or complete double-entry ledger in the first slices.
+- A consumer wallet application, production custody system, custom bridge, full cross-border product, or complete double-entry ledger in the first slices.
 - Making Ethereum and Solana identical behind a lowest-common-denominator API.
 - Real bank integration, production settlement wallets, or a synchronous transaction spanning a bank and blockchain.
 
 ### Current implementation boundary
 
-The current repository contains documentation, a plain-Java domain module with exact operation, transfer, and signing-authority invariants, a framework-free application module with use cases and provider-neutral ports, PostgreSQL, local-signer, and Ethereum-Web3j adapters, a minimal local reference token, and a Spring Boot control plane. Phases 3A-3C provide durable token-operation/transfer acceptance, delivery/recovery, and only the first internal transfer preparation. Phases 4A-4B provide durable signing authority and session-only local signing. Phase 5A adds one explicit `local-ethereum` plus `local-signer` path that processes an already-accepted mint on Anvil with durable nonce/attempt evidence, submit-once ambiguity recovery, and receipt/event/canonicality observation. The default configuration still has no identity or signer provider and leaves the worker disabled. There is no broker publication, external bank effect, token transfer or burn, production custody/network, Compose environment, or business settlement claim. The [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) records both this implemented boundary and the remaining POC contract.
+The current repository contains documentation, a plain-Java domain module with exact operation, transfer, and signing-authority invariants, a framework-free application module with use cases and provider-neutral ports, PostgreSQL, local-signer, and Ethereum-Web3j adapters, a minimal local reference token, and a Spring Boot control plane. Phases 3A-3C provide durable token-operation/transfer acceptance, delivery/recovery, and only the first internal transfer preparation. Phases 4A-4B provide durable signing authority and session-only local signing. Phase 5A adds one explicit `local-ethereum` plus `local-signer` path that processes an already-accepted mint to one configured recipient on Anvil with durable nonce/attempt evidence, submit-once ambiguity recovery, and receipt/event/canonicality observation. The default configuration still has no identity or signer provider and leaves the worker disabled. There is no persistent configured multi-wallet registry, reserve subsystem, external bank effect, wallet transfer, burn execution, parent orchestration, production custody/network, Solana adapter, Compose environment, or complete product demonstration. The [two local demonstrations](TRANSFER_DEMO.md) record this implemented boundary and the remaining contracts.
 
 ## 3. Terminology
 
@@ -99,6 +99,88 @@ flowchart LR
 ```
 
 The planned transfer is an asynchronous saga/workflow. Each local state transition, outbox/inbox handoff, bank effect, signing decision, chain attempt, observation, and compensation has its own transaction and durable identity. No diagram edge implies a shared atomic transaction or transitive authority.
+
+## 4A. USDZELLE product paths, ownership, custody, and reserves
+
+[ADR 0008](adr/0008-usdzelle-product-paths-ownership-custody-reserve-boundaries.md) accepts two organization-neutral product paths. `USDZELLE` is a reference asset name; it does not identify a real issuer, deposit product, reserve, or announced Zelle/Early Warning Services service.
+
+### Settlement-only path (Demo A)
+
+The customer holds dollars before and after the payment. USDZELLE exists only as an institutional settlement asset inside this future six-effect saga:
+
+```text
+1. Mock Bank 1 debits User 1's bank account by $100.00
+2. ADMIN mints 100.00 USDZELLE to BANK_1_SETTLEMENT
+3. BANK_1_SETTLEMENT transfers 100.00 USDZELLE to BANK_2_SETTLEMENT
+4. BANK_2_SETTLEMENT transfers 100.00 USDZELLE to ADMIN_REDEMPTION
+5. Mock Bank 2 credits User 2's bank account by $100.00
+6. ADMIN burns the redeemed 100.00 USDZELLE
+```
+
+User 1 and User 2 need no blockchain wallets or blockchain signatures. Institution- or custody-controlled settlement wallets sign the native transactions. The current Phase 3C aggregate still records its verified five-effect acceptance model; future Phase 6C must explicitly add the redemption transfer and ADMIN burn boundary rather than relabeling the existing model as this completed six-step flow.
+
+### User-held path (Demo B)
+
+The user can acquire, retain, optionally transfer, and later redeem USDZELLE. On-ramp, wallet transfer, and redemption are separate durable business operations:
+
+```text
+On-ramp: bank debit/reserve -> reserve evidence -> ADMIN mint -> USER_WALLET_1
+Hold: USER_WALLET_1 retains the balance until a later authorized request
+Optional transfer: USER_WALLET_1 -> USER_WALLET_2, without forced redemption
+Redemption: user wallet -> ADMIN_REDEMPTION -> bank payout -> ADMIN burn
+Reconciliation: reserve liability, payout, wallet receipt, burn, and total supply agree
+```
+
+A user-facing on-ramp request cannot invoke unrestricted mint authority. Mint and burn remain privileged child effects authorized by parent workflow, reserve, policy, approval, and evidence gates.
+
+### Neutral roles and ownership/custody matrix
+
+Economic token ownership and control of private-key signing are independent dimensions. Supported conceptual custody modes are self-custody (the user signs outside Java), a segregated custodial wallet assigned to one user, and omnibus custody where on-chain assets are pooled while an internal ledger records beneficial balances. The first local user-held proof uses segregated local custodial identities; it is not self-custody and is not a production custody design.
+
+| Neutral role | Economic or policy responsibility | Signing/custody boundary | Local POC posture |
+| --- | --- | --- | --- |
+| `ISSUER` / `ADMIN` | Authorizes supply changes under policy and reserve evidence | ADMIN mint/burn authority through the signer port | Future named local custodial identity |
+| `RESERVE_CUSTODIAN` | Supplies eligible reserve and release evidence; does not gain mint authority automatically | No chain key implied by the role | Synthetic records only |
+| `DISTRIBUTOR_BANK` | Owns synthetic customer debit/credit effects and inquiries | May use a separate bank-settlement wallet authority | Future mock-bank execution only |
+| `BANK_SETTLEMENT_WALLET` | Holds institutional settlement inventory for one bank/participant | Bank/custody-controlled signer | Future named local custodial identity |
+| `USER` / `USER_WALLET` | User owns the token claim or beneficial balance | Self-custody, segregated custody, or omnibus custody are distinct choices | Segregated local custodial identity for Demo B |
+| `ADMIN_REDEMPTION` | Receives tokens surrendered for redemption before burn | Separate redemption-purpose authority even if one local key later has multiple roles | Future named local custodial identity |
+| `CUSTODY_PROVIDER` | Controls keys under approved policy; does not own the customer's economic balance by implication | Future HSM/MPC/custody implementation of the existing signer port | Absent |
+
+Reserve-income sharing with distributor banks is an unresolved commercial choice, not an implemented or announced model.
+
+### Local configured secrets versus production custody
+
+A future explicit local-demo profile may accept deterministic private keys through an ignored `.env` or equivalent secret injection. A committed `.env.example`, if later justified, contains variable names and safe documentation only. Addresses are derived from keys; an optional expected address must match or startup fails. Each component receives only the aliases or material required for its role. Keys are never committed, logged, returned by APIs, or persisted in PostgreSQL.
+
+Raw-key configuration is local-demo-only. Production profiles reject it and continue through the existing provider-neutral signer port with future HSM, MPC, or custody-provider implementations. The chain adapter receives signed material and non-secret authority context; it remains indifferent to local, self-custodied, bank-custodied, or production-provider key custody. No configured signer or secret file exists in the current repository.
+
+### Synthetic reserve and supply boundary
+
+The future user-held path requires a synthetic reserve subsystem with:
+
+- confirmed reserve-deposit evidence;
+- eligible, available, and encumbered reserve amounts;
+- outstanding redeemable USDZELLE liability;
+- mint authorization tied to reserve evidence;
+- redemption liability and payout evidence;
+- policy-gated reserve release after redemption;
+- on-chain total-supply reconciliation; and
+- bank, custodian, reserve, and token-supply reconciliation.
+
+Its conceptual invariant is:
+
+```text
+confirmed eligible reserves >= outstanding redeemable USDZELLE supply
+```
+
+POC bank balances and reserves are synthetic records only. No real deposit, reserve account, investment, Treasury instrument, yield, revenue share, or financial product is implemented or certified.
+
+### Explicit operations and saga semantics
+
+Future APIs and use cases remain separate commands/workflows for fiat on-ramp, wallet transfer, stablecoin redemption/off-ramp, and settlement-only fiat-to-fiat transfer. Exact endpoint names wait for their authorized API-design slices; no Boolean mode flag or public mint shortcut is implied.
+
+Both product paths are durable sagas, not globally atomic transactions. They require idempotent commands, narrow local transactions, independently observed external effects, inquiry before retry after ambiguity, append-only evidence, explicit compensation/manual review, and separate blockchain, accounting, legal, and customer-visible finality. Ethereum completes the business-contract path first; Solana follows through the same provider-neutral contracts while preserving native SVM authority, lifetime, transaction, observation, and commitment semantics. Phase status and dependencies live in [`docs/IMPLEMENTATION.md`](IMPLEMENTATION.md).
 
 ## 5. Java/Spring control-plane responsibilities
 
@@ -182,7 +264,9 @@ The implemented Phase 3C `Transfer` is a parent business aggregate, not a wrappe
 - ordered child bank-effect and token-operation identities, each with separate attempt lineage;
 - current parent state/version, four distinct finality histories, reconciliation/case posture, and append-only transition/evidence history.
 
-The five planned steps are source-bank withdrawal, mint to the sender settlement wallet, wallet-to-wallet token transfer, burn from the recipient settlement wallet, and destination-bank deposit. Mint and burn reuse the existing token-operation lifecycle; Phase 5A proves the chain-attempt seam for a separately accepted mint but does not connect it to this parent. The wallet transfer adds a separately identified token-transfer operation with the same exactness, signing, ambiguity, observation, and reconciliation rules. Bank effects add provider-neutral `SourceBankPort` and `DestinationBankPort` contracts with idempotent request/inquiry semantics; they do not expose bank-provider types to the domain.
+Phase 3C's verified aggregate contains five planned effects: source-bank withdrawal, mint to a sender settlement wallet, wallet-to-wallet token transfer, burn, and destination-bank deposit. It currently executes none of them and prepares only the withdrawal internally. The accepted settlement-only target in ADR 0008 is a future six-effect saga that adds a distinct transfer from `BANK_2_SETTLEMENT` to `ADMIN_REDEMPTION` before bank credit and ADMIN burn. Demo B instead composes separate on-ramp, optional user-wallet transfer, and redemption parents. Future implementation must evolve explicit effect/parent contracts; documentation does not mutate the existing five-effect aggregate into either completed demonstration.
+
+Mint and burn reuse the existing privileged token-operation lifecycle; Phase 5A proves the chain-attempt seam for a separately accepted mint but does not connect it to a parent. Wallet transfer uses a separately identified token-transfer operation with the same exactness, signing, ambiguity, observation, and reconciliation rules. Bank effects add provider-neutral `SourceBankPort` and `DestinationBankPort` contracts with idempotent request/inquiry semantics; they do not expose bank-provider types to the domain.
 
 The parent advances only after configured evidence gates pass. A child timeout remains ambiguous and is inquired by stable identity. Confirmed effects are never removed from history; compensation is a new authorized child operation/effect. The complete proposed contract and per-step evidence matrix are in [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md).
 
@@ -425,6 +509,7 @@ Retries repeat an idempotent technical read or the exact same safe request ident
 - Application code never stores production raw keys; signer adapters receive only provider references and approved payloads.
 - Synthetic signing remains test-only. The real local-development signer exists only under explicit profile `local-signer`; the default runtime has no signer. It is session-ephemeral, logical-family allowlisted, visibly classified `LOCAL_EPHEMERAL`, and never a production fallback.
 - The planned transfer accepts only logical allowlisted local network choices; RPC URLs, addresses, signer references, keys, and finality thresholds remain server-owned configuration.
+- A future configured-key signer is permitted only under an explicit local-demo profile with ignored secret injection, derived-address validation, and least-authority key distribution. Production profiles reject raw-key configuration and continue through provider references; no such configured signer exists today.
 - No default or production profile activates local bank mocks, signing, or Ethereum execution. Phase 5A requires both explicit `local-signer` and `local-ethereum` profiles, accepts only uncredentialed loopback HTTP on chain `31337`, and has no default contract or recipient address. Opaque bank references and wallet roles never become on-chain personal data.
 - Audit evidence binds actor/workload, intent, canonical payload hash, policy/config versions, approvals, exact digest, signer decision, native identity, observations, transitions, and reconciliation.
 - Kill switches prevent new work while leaving evidence inquiry and reconciliation available.
@@ -445,12 +530,12 @@ The default runtime topology remains one Spring Boot process plus a private/loca
 
 Later phases add components only as needed:
 
-1. runtime source- and destination-bank mock execution/inquiry behind the existing bank port;
-2. Ethereum wallet transfer and burn plus replacement/reorg monitoring beyond the proven Anvil mint;
-3. local Solana validator plus SPL mint/token accounts for the separate Solana demonstration;
-4. materially independent observer endpoints/processes;
-5. Compose orchestration after individual slices are deterministic; and
-6. end-to-end fixtures and operator runbooks proving all five transfer steps.
+1. versioned named local wallet identities and local-demo-only configured signing behind the existing signer port;
+2. Ethereum wallet transfer, redemption receipt, ADMIN burn, and their independent observations;
+3. synthetic reserve and executable mock-bank records plus the two Ethereum sagas;
+4. a reproducible local environment and evidence summaries after individual slices are deterministic;
+5. native Solana tooling, mint, transfer, burn, and both demonstrations after Ethereum; and
+6. final architecture, security, recovery, API, and share-readiness review.
 
 Local chains use disposable deterministic fixtures and no public RPC credentials. Tests must cover restarts, duplicate delivery, timeouts, ambiguous effects, reorg/commitment changes, and reconciliation breaks before a slice is verified.
 
@@ -466,6 +551,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 - The common domain/lifecycle slice precedes either chain slice.
 - Ethereum is the first chain slice; Foundry owns EVM contract development and Web3j stays in its Java adapter; see ADR 0002.
 - The first executable Ethereum effect is a local-Anvil mint with pinned toolchains/dependencies, server-owned configuration, durable nonce/submission evidence, and observation-gated blockchain finality; see ADR 0007.
+- Settlement-only and user-held USDZELLE are distinct product paths; economic ownership and signing custody are independent; the local user-held proof uses segregated custodial identities; and Ethereum precedes native Solana parity; see ADR 0008.
 - Solana uses native SVM semantics and classic SPL Token first; Sava must pass a bounded evaluation before selection; see ADR 0003.
 - Rust/Anchor is conditional on business logic that existing programs cannot safely supply; Neon is outside the baseline.
 - Direct authority mint/burn and CCTP are separate workflows.
@@ -495,7 +581,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 
 ### Unknowns requiring future evidence or ADRs
 
-- Issuer/asset, legal claim, mint/burn authority, reserve/redemption model, and permitted participants.
+- Which legal entities fill the neutral issuer, reserve-custodian, distributor-bank, and custody-provider roles; the legal claim, reserve/redemption accounting policy, and permitted participants.
 - Whether Sava passes the bounded Java-client evaluation and which exact release can be pinned.
 - Whether later Solana business requirements justify a custom Rust/Anchor program.
 - Custody/HSM/MPC provider and authorization interface details.
@@ -507,7 +593,7 @@ Local chains use disposable deterministic fixtures and no public RPC credentials
 
 ### Deferred
 
-Production readiness, executing the transfer aggregate's external effects, runtime bank integration, wallet provisioning/registry, Ethereum transfer/burn/replacement, Solana integration, production cryptographic custody/provider integration, cloud/CI deployment, bridge design, consumer wallet, double-entry ledger completeness, broker/workflow topology, vendor selection, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain deferred. Each future executable slice requires a focused active plan; [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md) defines the remaining end-to-end target.
+Production readiness, executing either product path, runtime bank integration, wallet provisioning/registry, configured local-demo keys, synthetic reserve accounting, Ethereum transfer/burn/replacement, Solana integration, production cryptographic custody/provider integration, cloud/CI deployment, bridge design, consumer wallet software, omnibus beneficial-balance ledger, double-entry ledger completeness, broker/workflow topology, vendor selection, reserve income sharing, SBOM/threat hardening, public testnet/mainnet, and compliance/legal certification remain deferred. Each future executable slice requires a separately authorized active plan; [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md) defines the two remaining demonstrations.
 
 ## 24. Traceability to the source publications
 

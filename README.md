@@ -53,33 +53,32 @@ The current full offline reactor result is **414 passing Maven tests across seve
 ## Designed, Not Executable
 
 - Burn requests are durably accepted but are not executed on Ethereum, and wallet-to-wallet Ethereum transfer is not implemented.
-- The five-step bank-to-bank parent flow is not orchestrated end to end. Phase 3C records its five-effect plan and first-withdrawal preparation, but mock-bank effects are not executed at runtime.
+- The settlement-only bank-to-bank parent flow is not orchestrated end to end. Phase 3C records its existing five-effect aggregate and first-withdrawal preparation; the future six-step Demo A adds a distinct redemption transfer before ADMIN burn, and mock-bank effects are not executed at runtime.
 - Default business endpoints have no runtime identity provider and therefore deny access.
 - The durable provider-neutral signing boundary and isolated local-development signer are verified for their local scope, but no production HSM, MPC, or custody signer exists.
 - No public network, hosted RPC provider, API key, persistent wallet, or production deployment exists. Solana remains planned.
 - The Anvil mint establishes only narrow technical operation state and blockchain finality; it does not establish accounting, legal, or customer-visible finality.
 
-## Target Demonstration
+## Product paths and delivery roadmap
 
-The planned [bank-to-bank stablecoin transfer demonstration](docs/TRANSFER_DEMO.md) is one durable parent workflow:
+The reference architecture supports two distinct USDZELLE outcomes without conflating economic ownership with signing custody:
 
-1. mock withdrawal from the sender's bank account;
-2. mint the stablecoin to the sender's settlement wallet;
-3. transfer the stablecoin to the recipient's settlement wallet;
-4. burn the stablecoin from the recipient's settlement wallet; and
-5. mock deposit to the recipient's bank account.
+| Path | Customer outcome | On-chain holders/signers | Current state | Target |
+| --- | --- | --- | --- | --- |
+| Settlement-only | User sends and receives fiat; USDZELLE is an institutional settlement asset inside the saga | `ADMIN` plus bank settlement and redemption wallets | Phase 3C parent/effect acceptance and first preparation are verified; local mint is verified; remaining effects and orchestration are planned | Demo A on Ethereum, then Solana |
+| User-held USDZELLE | User can acquire, hold, optionally transfer, and later redeem USDZELLE | `ADMIN` plus segregated custodial user wallets in the local POC | Local mint is verified; wallet registry, configured identities, reserve, transfer, redemption, and burn are planned | Demo B on Ethereum, then Solana |
 
-**Completing this flow is future work.** Phase 3C durably records the parent and all five planned effects and can transactionally prepare the first withdrawal. It does not call the mock-bank port at runtime, sign, submit to a chain, mint, transfer tokens, burn, deposit, observe, reconcile, or settle.
+```text
+Verified now: domain + durable API/worker + transfer parent + signing + local Ethereum mint
+Next: local multi-wallet custody -> Ethereum transfer -> Ethereum redemption/burn
+Then: synthetic reserve/mock banks -> both Ethereum demos
+After Ethereum: native Solana parity -> both Solana demos
+Finally: code/security/share-readiness review
+```
 
-## Future Work
+The authoritative [design](docs/DESIGN.md) owns architecture and custody/reserve boundaries; the [implementation roadmap](docs/IMPLEMENTATION.md) owns phase status and completed-plan links; the [demo contract](docs/TRANSFER_DEMO.md) specifies Demo A and Demo B; and the [plan lifecycle](docs/plans/README.md) governs authorization and closeout. No future phase is active until separately authorized.
 
-- **Transfer workflow execution:** authorize attempts and execute/inquire each bank or token effect through later adapter slices; preserve ambiguity and evidence gates before advancing.
-- **HSM/MPC/custody signer implementations:** provider-neutral production authority integrations; raw production keys remain outside application memory.
-- **Ethereum continuation:** authorized ERC-20 wallet transfer and burn, replacement/cancellation, longer-lived reorganization monitoring, and connection to the five-effect parent workflow.
-- **Solana native-SVM/SPL Token local vertical slice:** mint/account setup, native mint/transfer/burn, lifetime/commitment, observation, and recovery on a local validator.
-- **Independent observation and reconciliation:** versioned native evidence, provider disagreement, breaks/cases, and authorized append-only repair.
-- **Integrated local environment and end-to-end tests:** complete five-step Ethereum and Solana demonstrations with restart, duplicate, timeout, and failure injection.
-- **Hardening and publication-readiness evidence:** threat review, dependency/SBOM evidence, security review, runbooks, clean-room reproduction, and performance/failure budgets.
+No persistent configured multi-wallet registry, raw-key local-demo profile, reserve subsystem, executable wallet transfer, Ethereum burn, runtime bank effect, complete parent orchestration, Docker Compose/demo script, or Solana adapter exists. The local Phase 5A mint still uses the session-ephemeral signer and one configured recipient boundary. Production custody, public networks/RPC, real funds or reserve assets, yield, revenue sharing, and accounting/legal/customer-finality claims remain absent.
 
 ## On-Chain Development Approach
 
@@ -227,4 +226,4 @@ Graph queries, reports, plugin advice, and agent suggestions are navigation aids
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, and bounded Phase 5A local mint with their limits. The next bounded recommendation is an Ethereum wallet-transfer slice or the separately approved next effect—not end-to-end transfer execution or production custody.
+[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5A local mint, and separately authorized future phases with their limits. The next bounded recommendation is Phase 5B local multi-wallet custody and configured signing—not wallet transfer, end-to-end orchestration, or production custody.
