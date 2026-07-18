@@ -109,6 +109,7 @@ class PostgresOperationDeliveryQueueTest {
         jdbc.sql("DELETE FROM test_delivery_inbox").update();
         jdbc.sql("DELETE FROM operation_delivery_attempt").update();
         jdbc.sql("DELETE FROM operation_outbox").update();
+        jdbc.sql("DELETE FROM banking_transfer").update();
         jdbc.sql("DELETE FROM operation_finality_evidence").update();
         jdbc.sql("DELETE FROM operation_finality").update();
         jdbc.sql("DELETE FROM operation_attempt").update();
@@ -131,6 +132,26 @@ class PostgresOperationDeliveryQueueTest {
         assertEquals(1, batches.stream().mapToInt(batch -> batch.deliveries().size()).sum());
         assertEquals(1, count("operation_delivery_attempt"));
         assertEquals("IN_PROGRESS", outboxStatus());
+    }
+
+    @Test
+    void mintOnlyQueueLeavesBurnAndTransferWorkUntouched() {
+        OperationId mint = accept("supported-mint", OperationKind.MINT);
+        accept("unsupported-burn", OperationKind.BURN);
+        insertTransferOutbox();
+
+        PostgresOperationDeliveryQueue mintOnly =
+                PostgresOperationDeliveryQueue.mintOnly(dataSource);
+        OperationDeliveryQueue.ClaimBatch claimed = mintOnly.claim(
+                "mint-worker", NOW, LEASE, 10);
+
+        assertEquals(1, claimed.deliveries().size());
+        assertEquals(mint.value(), claimed.deliveries().getFirst().aggregateId());
+        assertEquals(2L, jdbc.sql("""
+                SELECT count(*) FROM operation_outbox WHERE status = 'PENDING'
+                """).query(Long.class).single());
+        assertEquals(0L, mintOnly.measurements(NOW).eligibleWork());
+        assertEquals(1L, mintOnly.measurements(NOW).activeLeases());
     }
 
     @Test
@@ -455,10 +476,13 @@ class PostgresOperationDeliveryQueueTest {
     }
 
     private static OperationId accept(String keyValue) {
+        return accept(keyValue, OperationKind.MINT);
+    }
+
+    private static OperationId accept(String keyValue, OperationKind kind) {
         IdempotencyKey key = IdempotencyKey.of(keyValue);
         OperationAcceptance accepted = operations.accept(
-                new IdempotencyScope(
-                        PARTICIPANT, IdempotencyResource.TOKEN_OPERATION, OperationKind.MINT),
+                new IdempotencyScope(PARTICIPANT, IdempotencyResource.TOKEN_OPERATION, kind),
                 key,
                 CANONICAL,
                 () -> TokenOperation.requested(
@@ -468,11 +492,52 @@ class PostgresOperationDeliveryQueueTest {
                                 IdempotencyResource.TOKEN_OPERATION.name(), key.sha256(), 1,
                                 CANONICAL.canonicalizationVersion(), CANONICAL.digest().value(),
                                 "corr-" + keyValue),
-                        OperationKind.MINT,
+                        kind,
                         TokenQuantity.parse("1", UNIT),
                         NOW,
                         new EvidenceRef("evidence:acceptance")));
         return accepted.operation().operationId();
+    }
+
+    private static void insertTransferOutbox() {
+        UUID transferId = UUID.randomUUID();
+        jdbc.sql("""
+                INSERT INTO banking_transfer (
+                    transfer_id, tenant_id, participant_id, idempotency_key_digest,
+                    request_canonicalization_version, request_digest,
+                    resolved_canonicalization_version, resolved_digest, currency,
+                    source_bank_account_ref, destination_bank_account_ref,
+                    sender_wallet_ref, recipient_wallet_ref, settlement_network,
+                    route_version, wallet_policy_version, asset_id, unit_id,
+                    unit_version, unit_scale, unit_max_atomic, quantity_atomic,
+                    transfer_status, aggregate_version, acceptance_evidence_ref,
+                    created_at, updated_at)
+                VALUES (
+                    :transferId, 'tenant-a', 'participant-a', :digest,
+                    1, :digest, 1, :digest, 'USD',
+                    'synthetic-bank:source', 'synthetic-bank:destination',
+                    'synthetic-wallet:sender', 'synthetic-wallet:recipient', 'ETHEREUM',
+                    'route-v1', 'wallet-v1', 'REFERENCE_ASSET', 'REFERENCE_UNIT',
+                    1, 2, 999999, 100, 'ACCEPTED', 0,
+                    'evidence:transfer-acceptance', :now, :now)
+                """)
+                .param("transferId", transferId)
+                .param("digest", "b".repeat(64))
+                .param("now", OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC))
+                .update();
+        jdbc.sql("""
+                INSERT INTO operation_outbox (
+                    event_id, operation_id, event_type, event_version,
+                    payload_schema_version, payload, status, created_at,
+                    available_at, updated_at, transfer_id)
+                VALUES (
+                    :eventId, NULL, 'TransferAccepted', 1, 1, '{}'::jsonb,
+                    'PENDING', :now, :now, :now, :transferId)
+                """)
+                .param("eventId", UUID.randomUUID())
+                .param("transferId", transferId)
+                .param("now", OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC))
+                .update();
     }
 
     private static String outboxStatus() {

@@ -31,6 +31,11 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>io.github.johnwhitton</groupId>
+            <artifactId>digital-banking-ethereum-web3j</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
@@ -82,28 +87,49 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
-                <configuration>
-                    <rules>
-                        <bannedDependencies>
-                            <searchTransitive>true</searchTransitive>
-                            <excludes>
-                                <exclude>org.web3j:*</exclude>
-                                <exclude>org.p2p.solanaj:*</exclude>
-                                <exclude>software.sava:*</exclude>
-                                <exclude>org.apache.kafka:*</exclude>
-                                <exclude>com.rabbitmq:*</exclude>
-                            </excludes>
-                            <message>The Phase 3A control plane must not submit chain effects or publish messages.</message>
-                        </bannedDependencies>
-                    </rules>
-                </configuration>
                 <executions>
                     <execution>
-                        <id>enforce-no-chain-or-messaging</id>
+                        <id>enforce-no-transitive-solana-sdk-or-messaging</id>
                         <phase>validate</phase>
                         <goals>
                             <goal>enforce</goal>
                         </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <searchTransitive>true</searchTransitive>
+                                    <excludes>
+                                        <exclude>org.p2p.solanaj:*</exclude>
+                                        <exclude>software.sava:*</exclude>
+                                        <exclude>org.apache.kafka:*</exclude>
+                                        <exclude>com.rabbitmq:*</exclude>
+                                    </excludes>
+                                    <message>Solana SDKs and messaging transports remain absent from the control-plane dependency graph.</message>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>enforce-no-direct-chain-sdk-or-messaging</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <bannedDependencies>
+                                    <searchTransitive>false</searchTransitive>
+                                    <excludes>
+                                        <exclude>org.web3j:*</exclude>
+                                        <exclude>org.p2p.solanaj:*</exclude>
+                                        <exclude>software.sava:*</exclude>
+                                        <exclude>org.apache.kafka:*</exclude>
+                                        <exclude>com.rabbitmq:*</exclude>
+                                    </excludes>
+                                    <message>The composition root must not directly declare a chain SDK or messaging transport; native SDKs remain implementation details of isolated adapters.</message>
+                                </bannedDependencies>
+                            </rules>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

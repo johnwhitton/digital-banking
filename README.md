@@ -24,7 +24,7 @@ The executive PDF states an 18-minute estimate. The detailed architecture contai
 - Durable internal state owns business truth. A signature, transaction hash, RPC response, receipt, or commitment is evidence, not complete financial settlement.
 - Exact quantities, stable operation/attempt identities, versioned idempotency, append-only evidence, four separate finalities, and ambiguous-effect recovery are explicit contracts.
 - Chain SDKs, native transaction semantics, and signer/custody providers remain behind ports and adapters.
-- Delivery proceeds in evidence-gated slices: prove the common lifecycle, worker/recovery, and signing authority before any local chain effect.
+- Delivery proceeds in evidence-gated slices: the common lifecycle, worker/recovery, and signing authority now support one bounded local-Ethereum mint effect without implying the complete transfer workflow.
 
 ## Complete Now
 
@@ -41,20 +41,21 @@ Status vocabulary:
 | Foundation and source publications      | `verified` | All four reference PDFs are tracked under `docs/reference/`; architecture, repository policy, Maven reactor, and health/readiness application are synchronized.                                                                                                                                                                                                                     |
 | Plain Java domain boundary              | `verified` | Exact asset/unit quantities, stable IDs, guarded lifecycle, attempt lineage, append-only evidence, and four finalities pass the Phase 2 gate; `domain` has no runtime dependencies.                                                                                                                                                                                                  |
 | Spring control-plane application        | `verified` | `control-plane` composes the durable PostgreSQL adapter, exposes health/readiness plus token-operation and transfer resources, and serves one design-first OpenAPI contract. Business resources deny requests until a future identity adapter supplies an authenticated `ParticipantPrincipal`.                                                                                      |
-| Mint and burn operation lifecycle       | `verified` | Framework-free commands, canonical SHA-256 payloads, kind- and participant-scoped replay/conflict, lifecycle coordination, status lookup, and provider-neutral ports pass their existing gates. No signing provider or chain execution exists.                                                                                                                                       |
+| Mint and burn operation lifecycle       | `verified` | Framework-free commands, canonical SHA-256 payloads, kind- and participant-scoped replay/conflict, lifecycle coordination, status lookup, and provider-neutral ports pass their existing gates. Phase 5A connects only accepted mints to the explicit local-Ethereum profile; burns remain acceptance-only.                                                                          |
 | Phase 3A durable acceptance and OpenAPI | `verified` | Explicit JDBC plus Flyway atomically records operation, hashed idempotency binding, audit evidence, four finalities, and one pending outbox event before HTTP 202. Real PostgreSQL tests cover rollback, concurrency, replay/conflict, restart, security, and read-back; the 302-test clean reactor gate passes.                                                                     |
 | Phase 3B durable delivery worker        | `verified` | Framework-free delivery contracts plus an opt-in Spring worker durably claim PostgreSQL outbox work, fence leases, record attempts/outcomes, retry bounded failures, and recover expiry; the 335-test offline reactor passes. Phase 3C adds one transactional transfer-preparation handler, but no external business/chain effect is wired.                                          |
 | Phase 3C transfer acceptance            | `verified` | A chain-neutral parent durably owns five ordered effects, server-resolved wallet context, exact amount/currency, scoped replay/conflict, PostgreSQL V3 persistence, transfer APIs, a synthetic mock-bank contract/adapter, and a transactional handler inbox that can prepare only the first withdrawal; the 364-test offline reactor passes. No bank or blockchain effect executes. |
 | Phase 4 signing boundary               | `implemented` | Phase 4A supplies durable authority, replay/conflict, ambiguity/inquiry, and PostgreSQL V4 evidence. Phase 4B adds one explicitly enabled `local-signer` profile with session-only secp256k1 and Ed25519 keys, exact-material signatures, and no public endpoint or chain effect. Production custody remains absent. |
+| Phase 5A local Ethereum mint           | `implemented` | One explicit `local-ethereum` + `local-signer` path processes an accepted mint on Anvil through a durable nonce/attempt fence, exact EIP-1559 signing, submit-once ambiguity recovery, and independent receipt/event/canonicality observation. It advances only technical operation state and blockchain finality. |
 
 The current business API includes `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Durable transfer acceptance and effect planning are not bank movement, minting, token transfer, burning, deposit, settlement, or chain execution.
 
 ## Designed, Not Executable
 
-- The durable provider-neutral signing boundary and isolated local-development signer are implemented. Local private-key objects exist only in the explicitly enabled adapter process and change after restart; no HSM/MPC/custody signer, provider credential, chain adapter, or production key material exists.
+- The durable provider-neutral signing boundary and isolated local-development signer are implemented. Local private-key objects exist only in the explicitly enabled adapter process and change after restart; no HSM/MPC/custody signer, provider credential, persistent key, or production key material exists.
 - Phase 3B delivery infrastructure exists and Phase 3C supplies a real transfer-accepted handler/inbox for one bounded internal preparation transition, but the default worker remains disabled and no external effect or broker publication exists.
-- Independent observation, reconciliation, cases, and four-finality authority models are designed, but only the domain records and Phase 3A persistence foundation exist.
-- Ethereum/Foundry/Web3j and native Solana/SPL Token approaches are accepted design directions; no contract, program, SDK, local chain, wallet, or deployment is present.
+- Phase 5A independently observes its own Anvil mint receipt, exact event, and canonical block. General observation, cross-provider reconciliation, cases, and the legal/customer/accounting finality authorities remain designed but not executable.
+- The bounded Ethereum mint contract and Web3j adapter now exist for local Anvil tests. Ethereum transfer/burn/replacement, native Solana/SPL Token, public networks, hosted RPC, persistent wallets, and production deployment are absent.
 - The complete bank-to-bank workflow remains planned in the [target demonstration specification](docs/TRANSFER_DEMO.md); only parent acceptance, the five-effect plan, and first-withdrawal preparation are implemented.
 
 ## Target Demonstration
@@ -73,7 +74,7 @@ The planned [bank-to-bank stablecoin transfer demonstration](docs/TRANSFER_DEMO.
 
 - **Transfer workflow execution:** authorize attempts and execute/inquire each bank or token effect through later adapter slices; preserve ambiguity and evidence gates before advancing.
 - **HSM/MPC/custody signer implementations:** provider-neutral production authority integrations; raw production keys remain outside application memory.
-- **Ethereum/Foundry/Web3j local vertical slice:** authorized mint, ERC-20 transfer, burn, deployment, observation, ambiguity/replacement, and recovery on Anvil.
+- **Ethereum continuation:** authorized ERC-20 wallet transfer and burn, replacement/cancellation, longer-lived reorganization monitoring, and connection to the five-effect parent workflow.
 - **Solana native-SVM/SPL Token local vertical slice:** mint/account setup, native mint/transfer/burn, lifetime/commitment, observation, and recovery on a local validator.
 - **Independent observation and reconciliation:** versioned native evidence, provider disagreement, breaks/cases, and authorized append-only repair.
 - **Integrated local environment and end-to-end tests:** complete five-step Ethereum and Solana demonstrations with restart, duplicate, timeout, and failure injection.
@@ -85,7 +86,7 @@ The planned [bank-to-bank stablecoin transfer demonstration](docs/TRANSFER_DEMO.
 - **Solana/SVM:** use native Solana semantics and the classic SPL Token Program for the initial path. Evaluate the Java client through the bounded gate in ADR 0003 before selecting a dependency.
 - **Custom Solana execution:** add Rust with Anchor only when required business logic cannot safely use existing programs. No speculative Rust workspace is present.
 - **Neon:** excluded from the baseline because the reference path prioritizes native SVM composability. Reconsideration requires a later ADR for a distinct EVM-compatibility requirement.
-- **Sequencing:** complete worker/recovery and signing controls, prove one Ethereum vertical slice, then validate the same business contract against Solana's structurally different semantics.
+- **Sequencing:** extend the proven Ethereum mint boundary only through separately approved effects, then validate the shared business contract against Solana's structurally different semantics.
 
 Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are separate workflows. CCTP is not the initial direct mint/burn mechanism.
 
@@ -97,8 +98,10 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ├── application/               # Framework-free use cases and ports
 ├── adapters/
 │   ├── persistence-postgres/  # Explicit JDBC/Flyway operation, transfer, delivery, and signing evidence
-│   └── signer-local/          # Explicit-profile, in-memory local-development signing only
-├── control-plane/             # Spring APIs, reference route/wallet resolution, opt-in worker/signer
+│   ├── signer-local/          # Explicit-profile, in-memory local-development signing only
+│   └── ethereum-web3j/        # Isolated local-Anvil mint construction, submission, and observation
+├── contracts/evm/             # Foundry project and minimal role-gated local reference token
+├── control-plane/             # Spring APIs plus explicit worker/signer/local-Ethereum composition
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
 │   ├── IMPLEMENTATION.md      # Living delivery plan and current state
@@ -114,11 +117,11 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 └── SECURITY.md
 ```
 
-Future executable slices may add bank and chain adapters plus `contracts/evm/`, conditional `programs/solana/`, and `integration-tests/`. They are planned paths, not current modules, and will not be created empty.
+Future executable slices may add a runtime bank adapter, the accepted conditional Solana paths, and broader integration orchestration. They remain planned and will not be created empty.
 
 ## Build and Inspect the Current Implementation
 
-Prerequisites: JDK 25, Docker, and an internet connection for the first dependency/image resolution. On the bootstrap workstation, Homebrew's JDK is installed but not linked onto `PATH`. The verification suite starts the pinned PostgreSQL container automatically.
+Prerequisites: JDK 25, Docker, Foundry 1.5.1, and local Solidity 0.8.25; the first dependency/image resolution also needs an internet connection. On the bootstrap workstation, Homebrew's JDK is installed but not linked onto `PATH`. The verification suite starts pinned PostgreSQL and disposable Anvil processes automatically.
 
 ```bash
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw --version
@@ -143,10 +146,30 @@ curl --fail --silent http://localhost:8080/actuator/health/readiness
 
 The response has status `UP`. Inspect the authoritative contract at `/openapi/token-operations-v1.yaml` and the current implementation evidence in [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md). Business endpoints return 401 in the default repository configuration because no issuer, decoder, local user, password, or token is configured; integration tests inject fixture-only identities and authorities. Stop the application with `Ctrl-C`. No RPC URL, key, wallet, custody account, chain process, or public service is required.
 
-For isolated local signing, add the explicit `local-signer` Spring profile to the same private/local PostgreSQL launch. The profile generates one ephemeral secp256k1 key and one ephemeral Ed25519 key in process memory, emits a development-only warning, and wires the internal Phase 4A service. It reads no key, seed, mnemonic, keystore, or credential; restart creates new aliases and key versions. There is still no public signing endpoint or chain execution.
+For isolated local signing, add the explicit `local-signer` Spring profile to the same private/local PostgreSQL launch. The profile generates one ephemeral secp256k1 key and one ephemeral Ed25519 key in process memory, emits a development-only warning, and wires the internal Phase 4A service. It reads no key, seed, mnemonic, keystore, or credential; restart creates new aliases and key versions. There is no public signing endpoint.
 
 ```bash
 SPRING_PROFILES_ACTIVE=local-signer \
+SPRING_DATASOURCE_URL="${DB_URL}" \
+SPRING_DATASOURCE_USERNAME="${DB_USERNAME}" \
+SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \
+JAVA_HOME=/opt/homebrew/opt/openjdk /opt/homebrew/opt/openjdk/bin/java \
+  -jar control-plane/target/digital-banking-control-plane-0.1.0-SNAPSHOT.jar
+```
+
+The self-contained Phase 5A proof is the Ethereum adapter integration suite. It starts a random-session Anvil node, deploys and configures the local reference token through unlocked development RPC accounts, uses the ephemeral signer for mint authorization, and tears everything down without a committed private key:
+
+```bash
+JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -o -pl adapters/ethereum-web3j -am test
+```
+
+Standalone runtime composition requires both explicit profiles, a loopback Anvil endpoint on chain `31337`, and operator-provisioned local contract and recipient addresses. The profile rejects public or credentialed RPC URLs and does not deploy contracts, expose a new API, or supply default addresses:
+
+```bash
+SPRING_PROFILES_ACTIVE=local-signer,local-ethereum \
+LOCAL_ETHEREUM_RPC_URL=http://127.0.0.1:8545 \
+LOCAL_ETHEREUM_CONTRACT_ADDRESS="${LOCAL_TOKEN_ADDRESS}" \
+LOCAL_ETHEREUM_RECIPIENT_ADDRESS="${LOCAL_RECIPIENT_ADDRESS}" \
 SPRING_DATASOURCE_URL="${DB_URL}" \
 SPRING_DATASOURCE_USERNAME="${DB_USERNAME}" \
 SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD}" \
@@ -200,4 +223,4 @@ Graph queries, reports, plugin advice, and agent suggestions are navigation aids
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices and Phase 4 signing controls with their limits. The next bounded recommendation is the first Ethereum adapter slice under ADR 0002, not end-to-end transfer execution or production custody.
+[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, and bounded Phase 5A local mint with their limits. The next bounded recommendation is an Ethereum wallet-transfer slice or the separately approved next effect—not end-to-end transfer execution or production custody.

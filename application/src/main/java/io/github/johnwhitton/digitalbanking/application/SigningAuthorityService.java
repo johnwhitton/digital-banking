@@ -115,7 +115,7 @@ public final class SigningAuthorityService {
             case AWAITING_AUTHORIZATION -> resumeAuthorization(request, material, replayed);
             case AUTHORIZED -> resumeAuthorized(request, material, replayed);
             case PROVIDER_REQUEST_PERSISTED, AMBIGUOUS -> inquire(request, replayed);
-            case SIGNED -> new Signed(request, replayed);
+            case SIGNED -> new Signed(request, replayed, Optional.empty());
             case DENIED -> new Denied(request, replayed);
             case RETRYABLE_NO_SIGNATURE -> new RetryableNoSignature(request, replayed);
             case EXPIRED -> new Expired(request, replayed);
@@ -244,6 +244,9 @@ public final class SigningAuthorityService {
             SigningAttemptId attemptId,
             SignerPort.ProviderResult providerResult,
             boolean replayed) {
+        Optional<SignatureMaterial> signatureMaterial = providerResult instanceof SignerPort.Signed signed
+                ? Optional.of(new SignatureMaterial(signed.signature(), signed.encoding()))
+                : Optional.empty();
         SigningRequest.ProviderOutcome outcome = switch (providerResult) {
             case SignerPort.Signed signed -> {
                 byte[] signature = signed.signature();
@@ -266,7 +269,7 @@ public final class SigningAuthorityService {
                 request.version(), attemptId, outcome, now());
         save(request, changed);
         return switch (changed.status()) {
-            case SIGNED -> new Signed(changed, replayed);
+            case SIGNED -> new Signed(changed, replayed, signatureMaterial);
             case DENIED -> new Denied(changed, replayed);
             case RETRYABLE_NO_SIGNATURE -> new RetryableNoSignature(changed, replayed);
             case AMBIGUOUS -> new Ambiguous(changed, replayed);
@@ -419,8 +422,30 @@ public final class SigningAuthorityService {
         boolean replayed();
     }
 
-    public record Signed(SigningRequest request, boolean replayed) implements Result {
-        public Signed { Objects.requireNonNull(request, "request"); }
+    public record Signed(
+            SigningRequest request,
+            boolean replayed,
+            Optional<SignatureMaterial> signatureMaterial) implements Result {
+        public Signed {
+            Objects.requireNonNull(request, "request");
+            signatureMaterial = Objects.requireNonNull(signatureMaterial, "signatureMaterial");
+        }
+    }
+
+    /** Transient provider output for the immediate authorized caller; never persisted here. */
+    public record SignatureMaterial(byte[] bytes, String encoding) {
+        public SignatureMaterial {
+            bytes = Objects.requireNonNull(bytes, "bytes").clone();
+            if (bytes.length == 0 || bytes.length > 65_536
+                    || encoding == null || encoding.isBlank() || encoding.length() > 256) {
+                throw new IllegalArgumentException("signature material is invalid");
+            }
+        }
+
+        @Override
+        public byte[] bytes() {
+            return bytes.clone();
+        }
     }
 
     public record ApprovalRequired(

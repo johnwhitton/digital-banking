@@ -55,8 +55,10 @@ class SigningAuthorityServiceTest {
         fixture.keyStatus = SigningRequest.KeyStatus.REVOKED;
         SigningAuthorityService.Result replay = fixture.service.sign(request);
 
-        assertInstanceOf(SigningAuthorityService.Signed.class, first);
-        assertInstanceOf(SigningAuthorityService.Signed.class, replay);
+        SigningAuthorityService.Signed firstSigned = assertInstanceOf(
+                SigningAuthorityService.Signed.class, first);
+        SigningAuthorityService.Signed replaySigned = assertInstanceOf(
+                SigningAuthorityService.Signed.class, replay);
         assertFalse(first.replayed());
         assertTrue(replay.replayed());
         assertEquals(SigningRequest.Status.SIGNED, first.request().status());
@@ -73,6 +75,11 @@ class SigningAuthorityServiceTest {
         assertEquals(SigningRequest.EvidenceOrigin.SYNTHETIC_TEST,
                 first.request().attempts().getLast().signatureEvidence()
                         .orElseThrow().origin());
+        assertEquals(83, firstSigned.signatureMaterial().orElseThrow().bytes()[0]);
+        byte[] defensive = firstSigned.signatureMaterial().orElseThrow().bytes();
+        defensive[0] = 0;
+        assertEquals(83, firstSigned.signatureMaterial().orElseThrow().bytes()[0]);
+        assertTrue(replaySigned.signatureMaterial().isEmpty());
     }
 
     @Test

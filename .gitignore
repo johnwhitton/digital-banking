@@ -9,6 +9,10 @@
 target/
 **/target/
 
+contracts/evm/cache/
+contracts/evm/out/
+contracts/evm/broadcast/
+
 .env
 .env.*
 !.env.example

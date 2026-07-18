@@ -24,12 +24,14 @@
         <module>application</module>
         <module>adapters/persistence-postgres</module>
         <module>adapters/signer-local</module>
+        <module>adapters/ethereum-web3j</module>
         <module>control-plane</module>
     </modules>
 
     <properties>
         <java.version>25</java.version>
         <bouncycastle.version>1.82</bouncycastle.version>
+        <web3j.version>4.14.0</web3j.version>
         <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     </properties>
 
@@ -39,6 +41,11 @@
                 <groupId>org.bouncycastle</groupId>
                 <artifactId>bcprov-jdk18on</artifactId>
                 <version>${bouncycastle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.web3j</groupId>
+                <artifactId>core</artifactId>
+                <version>${web3j.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

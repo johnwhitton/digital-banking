@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 import io.github.johnwhitton.digitalbanking.domain.operation.AttemptId;
 import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
@@ -15,7 +16,13 @@ public interface ChainPort {
 
     ChainCapabilities capabilities(String routeVersion);
 
-    PreparedAttempt prepare(TokenOperation operation, OperationAttempt attempt);
+    PreparedAttempt prepare(
+            UUID deliveryId, TokenOperation operation, OperationAttempt attempt);
+
+    Optional<SignedAttempt> findSignedAttempt(AttemptIdentity attemptIdentity);
+
+    SignedAttempt attachSignature(
+            AttemptIdentity attemptIdentity, AuthorizedSignature signature);
 
     SubmissionResult submitOnce(SignedAttempt signedAttempt);
 
@@ -30,44 +37,74 @@ public interface ChainPort {
     }
 
     record PreparedAttempt(
-            byte[] unsignedPayload,
+            byte[] signableMaterial,
             String digestReference,
+            String sourceReference,
+            String destinationReference,
+            String nativeActionIdentity,
+            String lifetimeContextDigest,
+            String feeLimit,
+            String nativeConstraintDigest,
+            String policyVersion,
             EvidenceRef evidenceReference) {
 
         public PreparedAttempt {
-            unsignedPayload = Objects.requireNonNull(unsignedPayload, "unsignedPayload").clone();
-            if (unsignedPayload.length == 0) {
-                throw new IllegalArgumentException("prepared payload is required");
+            signableMaterial = Objects.requireNonNull(
+                    signableMaterial, "signableMaterial").clone();
+            if (signableMaterial.length == 0) {
+                throw new IllegalArgumentException("signable material is required");
             }
             digestReference = requireText(digestReference, "digestReference");
+            sourceReference = requireText(sourceReference, "sourceReference");
+            destinationReference = requireText(destinationReference, "destinationReference");
+            nativeActionIdentity = requireText(nativeActionIdentity, "nativeActionIdentity");
+            lifetimeContextDigest = requireDigest(
+                    lifetimeContextDigest, "lifetimeContextDigest");
+            feeLimit = requireText(feeLimit, "feeLimit");
+            nativeConstraintDigest = requireDigest(
+                    nativeConstraintDigest, "nativeConstraintDigest");
+            policyVersion = requireText(policyVersion, "policyVersion");
             Objects.requireNonNull(evidenceReference, "evidenceReference");
         }
 
         @Override
-        public byte[] unsignedPayload() {
-            return unsignedPayload.clone();
+        public byte[] signableMaterial() {
+            return signableMaterial.clone();
         }
     }
 
     record SignedAttempt(
             OperationId operationId,
             AttemptId attemptId,
-            byte[] signedPayload,
-            String digestReference) {
+            NativeIdentity nativeIdentity,
+            EvidenceRef evidenceReference) {
 
         public SignedAttempt {
             Objects.requireNonNull(operationId, "operationId");
             Objects.requireNonNull(attemptId, "attemptId");
-            signedPayload = Objects.requireNonNull(signedPayload, "signedPayload").clone();
-            if (signedPayload.length == 0) {
-                throw new IllegalArgumentException("signed payload is required");
+            Objects.requireNonNull(nativeIdentity, "nativeIdentity");
+            Objects.requireNonNull(evidenceReference, "evidenceReference");
+        }
+    }
+
+    record AuthorizedSignature(
+            byte[] bytes,
+            String encoding,
+            String expectedSignerReference) {
+
+        public AuthorizedSignature {
+            bytes = Objects.requireNonNull(bytes, "bytes").clone();
+            if (bytes.length == 0 || bytes.length > 65_536) {
+                throw new IllegalArgumentException("signature bytes are invalid");
             }
-            digestReference = requireText(digestReference, "digestReference");
+            encoding = requireText(encoding, "encoding");
+            expectedSignerReference = requireText(
+                    expectedSignerReference, "expectedSignerReference");
         }
 
         @Override
-        public byte[] signedPayload() {
-            return signedPayload.clone();
+        public byte[] bytes() {
+            return bytes.clone();
         }
     }
 
@@ -137,7 +174,7 @@ public interface ChainPort {
             OperationId operationId,
             AttemptId attemptId,
             NativeIdentity nativeIdentity,
-            String nativeStatus,
+            ObservationClassification classification,
             String policyVersion,
             Instant observedAt,
             List<EvidenceRef> evidenceReferences) {
@@ -146,7 +183,7 @@ public interface ChainPort {
             Objects.requireNonNull(operationId, "operationId");
             Objects.requireNonNull(attemptId, "attemptId");
             Objects.requireNonNull(nativeIdentity, "nativeIdentity");
-            nativeStatus = requireText(nativeStatus, "nativeStatus");
+            Objects.requireNonNull(classification, "classification");
             policyVersion = requireText(policyVersion, "policyVersion");
             Objects.requireNonNull(observedAt, "observedAt");
             evidenceReferences = List.copyOf(evidenceReferences);
@@ -159,7 +196,16 @@ public interface ChainPort {
     enum SubmissionClassification {
         ACCEPTED,
         DEFINITIVELY_REJECTED,
+        RETRYABLE_NO_EFFECT,
         AMBIGUOUS
+    }
+
+    enum ObservationClassification {
+        ABSENT_OR_PENDING,
+        CONFIRMED,
+        REVERTED,
+        MISMATCHED,
+        ORPHANED
     }
 
     enum RetrySafety {
@@ -173,6 +219,13 @@ public interface ChainPort {
     private static String requireText(String value, String field) {
         if (value == null || value.isBlank() || value.length() > 256) {
             throw new IllegalArgumentException(field + " must be non-blank and bounded");
+        }
+        return value;
+    }
+
+    private static String requireDigest(String value, String field) {
+        if (value == null || !value.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException(field + " must be a lowercase SHA-256 digest");
         }
         return value;
     }

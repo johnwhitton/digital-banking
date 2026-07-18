@@ -4,7 +4,7 @@
 
 This document specifies a local-only, non-production proof of concept for bank-to-bank value movement using a stablecoin settlement rail. It is a capability contract subordinate to accepted [ADRs](adr/README.md), the canonical [design](DESIGN.md), and executable tests.
 
-**Status:** `partially implemented`. Phase 3C implements the transfer resource, durable five-effect plan, server-resolved synthetic custody context, PostgreSQL acceptance/outbox/inbox state, mock-bank contract/test adapter, and first-withdrawal preparation. Phase 4A implements the internal durable signing-authority boundary, but it is not wired to this workflow and has no runtime signer. The repository does not execute the end-to-end flow, bank or token effects, cryptographic signing, chain activity, observation, reconciliation, compensation, or settlement.
+**Status:** `partially implemented`. Phase 3C implements the transfer resource, durable five-effect plan, server-resolved synthetic custody context, PostgreSQL acceptance/outbox/inbox state, mock-bank contract/test adapter, and first-withdrawal preparation. Phases 4A-4B implement durable signing authority plus an explicit local signer. Phase 5A implements a separately accepted local-Anvil mint with durable submission/observation evidence, but it is not wired to this parent or any of its five effects. The repository does not execute the end-to-end flow, bank effects, transfer/burn effects, reconciliation, compensation, or settlement.
 
 Intended reviewers are application engineers, architects, smart-contract and program engineers, security and operations teams, and interview reviewers. This demonstration never implies production, legal, accounting, compliance, or operational readiness.
 
@@ -69,7 +69,7 @@ The provider-neutral `MockBankPort` binds transfer/effect/participant/account, e
 
 ### Phase 4A signing-authority mapping
 
-The framework-free signing aggregate binds a stable signing request to operation/attempt and optional transfer/effect correlation, action, logical network, exact asset/unit quantity, source/destination roles or opaque references, future native action/lifetime/fee constraints, payload identity, non-secret key alias/version/role/algorithm metadata, policy version, approval evidence, and expiry. EVM requests carry an exact 32-byte `secp256k1` digest; Solana requests carry exact serialized message bytes for `Ed25519`. These are separate provider methods.
+The framework-free signing aggregate binds a stable signing request to operation/attempt and optional transfer/effect correlation, action, logical network, exact asset/unit quantity, source/destination roles or opaque references, native action/lifetime/fee constraints, payload identity, non-secret key alias/version/role/algorithm metadata, policy version, approval evidence, and expiry. EVM requests carry an exact 32-byte `secp256k1` digest; Solana requests carry exact serialized message bytes for `Ed25519`. These are separate provider methods.
 
 The request, provider identity, and authorization evidence are durable before any provider call. Exact replay returns the retained outcome; substitution conflicts. An unresolved or ambiguous call is inquired by its stable provider identity, and a linked retry is allowed only after evidence proves no signature. PostgreSQL V4 stores hashes, lengths, encodings, outcome origins, and evidence references—never raw signable material, signature bytes, private keys, or provider credentials.
 
@@ -141,25 +141,25 @@ Bank account references are opaque and local. Bank adapters never make chain or 
 
 ### Ethereum local demonstration
 
-Foundry owns Solidity build, tests, Anvil, diagnostics, and deployment scripts under the future `contracts/evm/` tree. A minimal local stablecoin contract must support the demonstrated authorized mint, ERC-20 transfer, and authorized burn semantics. Web3j remains confined to the Java Ethereum adapter. The adapter preserves chain ID, sender, nonce and replacement lineage, exact signed bytes/hash, receipt status/logs, block identity, confirmations, canonicality, and reorganization evidence.
+Foundry now owns Solidity build, tests, and Anvil fixtures under `contracts/evm/`; Web3j is confined to `adapters/ethereum-web3j/`. Phase 5A proves only the authorized-mint primitive with a two-decimal, role-gated local token, durable nonce and exact signed bytes/hash, response-loss inquiry, receipt/event matching, confirmations, and canonical block evidence. It does not accept a transfer child from this parent, implement token transfer or burn, or establish replacement/cancellation and longer-lived reorganization policy. Those remain separately gated extensions before this Ethereum demonstration can be claimed complete.
 
 ### Solana local demonstration
 
 Use native SVM semantics and the classic SPL Token Program. The initial local realization creates an SPL token mint plus sender and recipient token accounts and exercises native mint, transfer, and burn instructions. The Java client must pass the bounded evaluation required by [ADR 0003](adr/0003-native-solana-spl-token.md). Do not introduce Neon. Do not add a custom Rust/Anchor program unless existing programs cannot safely express a required business rule and a later ADR approves it.
 
-These are proposed future executable locations; this action creates none of them:
+Current and proposed executable locations are:
 
 ```text
 adapters/bank-mock/
-adapters/signer-local/
-adapters/chain-ethereum-web3j/
+adapters/signer-local/          # current
+adapters/ethereum-web3j/        # current Phase 5A mint only
 adapters/chain-solana/
-contracts/evm/
+contracts/evm/                  # current Phase 5A mint token/tests
 programs/solana/        # only if a custom native program is later justified
 integration-tests/
 ```
 
-ADRs 0002 and 0003 explicitly select `adapters/ethereum-web3j/` and `adapters/solana-java/`. The different adapter names in the Action Request's required proposed-path list above are provisional. The accepted ADR paths remain authoritative unless a later ADR supersedes them; the focused chain plans must reconcile the names before creating code. This document does not silently create or rename implementation modules.
+ADRs 0002 and 0003 explicitly select `adapters/ethereum-web3j/` and `adapters/solana-java/`; Phase 5A realizes the Ethereum path under ADR 0007. The remaining names are roadmap locations, not instructions to create empty modules.
 
 ## Wallets, keys, and configuration
 

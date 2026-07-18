@@ -1,0 +1,24 @@
+spring:
+    config:
+        activate:
+            on-profile: local-ethereum
+
+digital-banking:
+    delivery-worker:
+        enabled: true
+        worker-id: local-ethereum-worker
+    local-ethereum:
+        rpc-url: ${LOCAL_ETHEREUM_RPC_URL:http://127.0.0.1:8545}
+        chain-id: 31337
+        contract-address: ${LOCAL_ETHEREUM_CONTRACT_ADDRESS:}
+        recipient-address: ${LOCAL_ETHEREUM_RECIPIENT_ADDRESS:}
+        max-priority-fee-per-gas: 1000000000
+        max-fee-per-gas: 2000000000
+        gas-limit: 180000
+        confirmations: 1
+        asset-id: USD_STABLE
+        unit-id: USD
+        unit-version: 1
+        decimals: 2
+        max-atomic-units: 1000000000000
+        policy-version: local-ethereum-mint-v1

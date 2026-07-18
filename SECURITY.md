@@ -4,7 +4,7 @@
 
 This repository is non-production research and reference software. It is not approved for real funds, production settlement, regulated operations, or compliance reliance. It makes no warranty or claim of legal, regulatory, security, custody, or operational certification.
 
-Do not use this repository with mainnet, public testnets, production RPC providers, production custody/HSM/MPC systems, or real-value accounts. Production signing and all chain integrations remain absent by design. The only cryptographic signer is the explicitly enabled local-development adapter described below.
+Do not use this repository with mainnet, public testnets, production RPC providers, production custody/HSM/MPC systems, or real-value accounts. Production signing remains absent. The only chain integration is the explicit local-Anvil mint path, and the only cryptographic signer is the local-development adapter described below.
 
 ## Durable API boundary
 
@@ -38,6 +38,14 @@ The default profile creates no local signer and generates no key. A local signer
 Shutdown releases key references and attempts provider-supported destruction, but Java/provider objects do not prove physical memory zeroization. No stronger erasure claim is made. Local keys and signatures are disposable development evidence, not a staging form of production authority.
 
 Production-oriented signing designs must keep raw keys outside application memory and bind authorization evidence to the exact operation, attempt, chain, asset, destination, amount, fee/expiry bounds, policy version, approvals, and canonical transaction bytes or digest.
+
+## Local Ethereum boundary
+
+The Phase 5A path activates only when both `local-signer` and `local-ethereum` profiles are selected. Configuration accepts only uncredentialed loopback HTTP, hard-requires local chain ID `31337`, and supplies no default contract or recipient address. The runtime never deploys a contract or assigns roles. Its minimal reference token is non-upgradeable and exposes only standard ERC-20 behavior plus a separately authorized mint; it deliberately omits burn, pause, permit, denylist, fee, bridge, governance, and upgrade features.
+
+Web3j and Ethereum-native types remain in the isolated adapter. PostgreSQL records the nonce, immutable transaction context, finality-policy version, and confirmation threshold before signing; it records the expected transaction hash before submission and append-only source/transaction/receipt/event observation evidence afterward. A readiness failure before the submission fence proves no bytes were sent and is retryable; a lost response after submission starts is ambiguous and must be inquired by the same hash. Neither path authorizes a second mint attempt. Success requires a matching transaction, successful receipt, exact zero-address `Transfer` mint event, the retained confirmation policy, and a canonical block recheck. That evidence advances only blockchain finality and technical operation state—not legal, customer-visible, accounting, transfer, or settlement state.
+
+The real-chain integration test starts Anvil with a random mnemonic, discards its output, uses unlocked disposable development accounts only for deployment/role fixtures, and funds a random session signer. No private key, mnemonic, funded address, RPC credential, signed transaction, or generated Foundry artifact is committed. This design is not suitable for staging or production use.
 
 ## Dependency and native-code review
 

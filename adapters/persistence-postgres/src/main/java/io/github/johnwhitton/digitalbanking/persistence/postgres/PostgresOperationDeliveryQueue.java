@@ -28,13 +28,24 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
 
     private final JdbcClient jdbc;
     private final TransactionTemplate transaction;
+    private final boolean mintOnly;
 
     public PostgresOperationDeliveryQueue(DataSource dataSource) {
+        this(dataSource, false);
+    }
+
+    private PostgresOperationDeliveryQueue(DataSource dataSource, boolean mintOnly) {
         Objects.requireNonNull(dataSource, "dataSource");
         this.jdbc = JdbcClient.create(dataSource);
+        this.mintOnly = mintOnly;
         this.transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         this.transaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
         this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
+
+    /** Queue view used by the bounded Phase 5A worker; unsupported outbox rows remain untouched. */
+    public static PostgresOperationDeliveryQueue mintOnly(DataSource dataSource) {
+        return new PostgresOperationDeliveryQueue(dataSource, true);
     }
 
     @Override
@@ -70,6 +81,12 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                             AND candidate.available_at <= :now)
                         OR (candidate.status = 'IN_PROGRESS'
                             AND candidate.lease_expires_at <= :now))
+                  AND (:mintOnly = FALSE OR (
+                      candidate.event_type = 'TokenOperationAccepted'
+                      AND EXISTS (
+                          SELECT 1 FROM token_operation supported_operation
+                          WHERE supported_operation.operation_id = candidate.operation_id
+                            AND supported_operation.operation_kind = 'MINT')))
                   AND NOT EXISTS (
                       SELECT 1
                       FROM operation_outbox prior
@@ -91,6 +108,7 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                 """)
                 .param("now", utc(claimedAt))
                 .param("limit", limit)
+                .param("mintOnly", mintOnly)
                 .query((row, rowNumber) -> new Candidate(
                         row.getObject("event_id", UUID.class),
                         row.getObject("aggregate_id", UUID.class),
@@ -327,6 +345,12 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                     AND candidate.available_at <= :now)
                                 OR (candidate.status = 'IN_PROGRESS'
                                     AND candidate.lease_expires_at <= :now))
+                          AND (:mintOnly = FALSE OR (
+                              candidate.event_type = 'TokenOperationAccepted'
+                              AND EXISTS (
+                                  SELECT 1 FROM token_operation supported_operation
+                                  WHERE supported_operation.operation_id = candidate.operation_id
+                                    AND supported_operation.operation_kind = 'MINT')))
                           AND NOT EXISTS (
                               SELECT 1 FROM operation_outbox prior
                               WHERE ((prior.operation_id = candidate.operation_id
@@ -340,15 +364,25 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                     FROM eligible
                     """)
                     .param("now", utc(measuredAt))
+                    .param("mintOnly", mintOnly)
                     .query((row, rowNumber) -> new MetricsRow(
                             row.getLong("eligible_count"),
                             instantOrNull(row.getObject("oldest_at", OffsetDateTime.class))))
                     .single();
             long active = jdbc.sql("""
                     SELECT count(*)
-                    FROM operation_outbox
+                    FROM operation_outbox candidate
                     WHERE status = 'IN_PROGRESS' AND lease_expires_at > :now
-                    """).param("now", utc(measuredAt)).query(Long.class).single();
+                      AND (:mintOnly = FALSE OR (
+                          candidate.event_type = 'TokenOperationAccepted'
+                          AND EXISTS (
+                              SELECT 1 FROM token_operation supported_operation
+                              WHERE supported_operation.operation_id = candidate.operation_id
+                                AND supported_operation.operation_kind = 'MINT')))
+                    """)
+                    .param("now", utc(measuredAt))
+                    .param("mintOnly", mintOnly)
+                    .query(Long.class).single();
             Duration oldestAge = eligible.oldestAt() == null
                     ? Duration.ZERO : Duration.between(eligible.oldestAt(), measuredAt);
             return new QueueMeasurements(eligible.eligibleCount(), active, oldestAge);

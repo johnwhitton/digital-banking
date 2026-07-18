@@ -49,14 +49,14 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 1. Foundation                          | `verified`    | Source publications and the full foundation gate are verified; see the closed bootstrap plan. |
 | 2. Domain and operation lifecycle      | `verified`    | Exact quantities, guarded lifecycle/finality histories, canonical commands, idempotent acceptance contracts, and bound ports passed 264 pure tests and the 266-test reactor. |
 | 3. Durable API and persistence         | `verified`    | Phase 3A acceptance/read-back, Phase 3B worker/recovery, and Phase 3C transfer acceptance/first deduplicated internal preparation pass the 364-test offline reactor. External workflow effects remain absent by scope. |
-| 4. Signing boundary                    | `implemented` | Phase 4A provides durable authority/evidence; Phase 4B adds explicit-profile, session-ephemeral secp256k1/Ed25519 signing. Production custody and native-chain integration remain absent. |
-| 5. Ethereum vertical slice             | `not_started` | No Web3j/Solidity/local-chain code.                                                            |
+| 4. Signing boundary                    | `implemented` | Phase 4A provides durable authority/evidence; Phase 4B adds explicit-profile, session-ephemeral secp256k1/Ed25519 signing. Production custody remains absent. |
+| 5. Ethereum vertical slice             | `implemented` | Phase 5A proves one accepted mint on local Anvil through durable nonce/attempt, signing, submit-once ambiguity recovery, and independent receipt/event/canonicality observation. Transfer, burn, replacement, and production integration remain absent. |
 | 6. Solana vertical slice               | `not_started` | No Java SDK/Rust/local-validator code.                                                         |
 | 7. Observation and reconciliation      | `not_started` | Design only.                                                                                   |
 | 8. Integrated local environment        | `not_started` | No Compose file.                                                                               |
 | 9. Hardening and publication readiness | `not_started` | No production-readiness claim.                                                                 |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, and Phase 4B's isolated local-development provider. The default runtime has no signer. Explicit profile `local-signer` composes the internal use case and generates one session-only secp256k1 key plus one session-only Ed25519 key; it exposes no signing endpoint and performs no native transaction or chain effect. The complete [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) remains future work. Every later effect/provider/chain slice requires its own focused active plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4A's durable signing-authority use case, Phase 4B's isolated local-development provider, and Phase 5A's bounded local-Anvil mint. The default runtime has no signer and no chain client. Profiles `local-signer` plus `local-ethereum` compose the mint handler, require explicit loopback/local-chain configuration, and expose no new public endpoint. The complete [bank-to-bank transfer demonstration](TRANSFER_DEMO.md) remains future work; Phase 5A is not wired to its five effects. Every later effect/provider/chain slice requires its own focused active plan.
 
 ## Phase 1: Foundation
 
@@ -160,15 +160,15 @@ Phases 4-9 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 **Dependency:** phases 2-4 verified. Build this first, then review the common ports before beginning Solana.
 
-**Deliverables:** execute [ADR 0002](adr/0002-evm-foundry-and-web3j.md) and the Ethereum portion of [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md); use Foundry (`forge`, `anvil`, `cast`, and scripts) as the sole contract toolchain; add and deploy a minimal reviewed local stablecoin contract supporting authorized mint, ERC-20 transfer, and authorized burn; add a Web3j adapter; prove deterministic encoding, nonce/replacement lineage, event/receipt observation, independent inquiry, and mint/transfer/burn happy, rejection, revert, timeout, ambiguity, replacement, and reorg/canonicality paths.
+**Phase 5A implemented deliverables:** Foundry 1.5.1 with Solidity 0.8.25 and pinned OpenZeppelin Contracts v5.6.1; one non-upgradeable two-decimal `LocalReferenceToken` with explicit admin and `MINTER_ROLE`; one isolated `adapters/ethereum-web3j` module using Web3j Core 4.14.0; deterministic EIP-1559 mint encoding and signer recovery; one forward-only V5 migration for local-chain nonce cursors, immutable mint/finality context, signature/submission evidence, detailed observations, and reconciliation disposition; one mint-only delivery handler and queue view reusing the Phase 3B and Phase 4 boundaries without claiming burn/transfer work; and explicit `local-ethereum` plus `local-signer` Spring composition. See [ADR 0007](adr/0007-local-ethereum-mint-vertical-slice.md).
 
-**Tests:** deterministic deployment, golden mint/transfer/burn encoding, chain ID/nonce/source/destination/amount binding, signer digest, submit-once, response loss, inquiry, replacement rules, failed receipt, event effect, canonicality change, duplicate request, and reconciliation evidence.
+**Phase 5A tests:** Foundry role/exact-mint/event/zero-address behavior; independent Cast/Web3j transaction vector, low-`s` and signer checks; real PostgreSQL V1-V5 migration and concurrent nonce allocation; mint-only queue isolation; and a real random-session Anvil path covering exact balance/supply/event, detailed durable observation evidence, full-operation concurrent nonces, a pre-send outage with zero transmitted bytes, post-acceptance response loss recovered by the precomputed hash without resubmission, changed restart configuration without policy drift, duplicate delivery, and unauthorized-minter revert/manual review. Default-context/readiness and local-only configuration tests remain green.
 
-**Acceptance gate:** local mint/transfer/burn effects on Anvil are authorized, independently observable, recoverable, and reconcilable by stable IDs; ambiguous submission never blind-resubmits; no Web3j/native model leaks into domain. This phase proves chain effects, not the complete bank-to-bank demonstration.
+**Phase 5A acceptance gate:** an already-accepted mint can progress through durable authorization, signing, submission, and observation on chain `31337`; the adapter records stable nonce/hash/evidence, never blind-resubmits after ambiguity, verifies transaction plus exact mint event and canonical block, and advances only blockchain finality and narrow technical completion. Web3j/native models do not enter application/domain signatures. The public API and default runtime remain unchanged.
 
 **Risks:** unsafe admin/upgrade authority, fake finality, submit/observe provider coupling, fixture keys presented as production patterns.
 
-**Deferred:** public networks, production contracts, provider/custody selection.
+**Deferred:** Ethereum wallet transfer, burn, replacement/cancellation, longer-lived reorg monitoring, parent-transfer integration, public networks, production contracts/deployment/admin, and provider/custody selection.
 
 ## Phase 6: Solana vertical slice
 
@@ -238,6 +238,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Active Phase 3C transfer plan: [`docs/plans/active/PHASE_3C_TRANSFER_AGGREGATE_AND_MOCK_BANK.md`](plans/active/PHASE_3C_TRANSFER_AGGREGATE_AND_MOCK_BANK.md).
 - Active Phase 4A signing-authority plan: [`docs/plans/active/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md`](plans/active/PHASE_4A_SIGNING_AUTHORITY_BOUNDARY.md).
 - Active Phase 4B local signer plan: [`docs/plans/active/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md`](plans/active/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md).
+- Active Phase 5A local Ethereum mint plan: [`docs/plans/active/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md`](plans/active/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
 - Active Zelle share-readiness and transfer-roadmap plan: [`docs/plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/active/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
 - Accepted build/module choice: [`ADR 0001`](adr/0001-maven-reactor-and-module-boundaries.md).
@@ -246,6 +247,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Accepted PostgreSQL/JDBC/Flyway/atomic-outbox approach: [`ADR 0004`](adr/0004-postgresql-jdbc-flyway-atomic-outbox.md).
 - Accepted PostgreSQL delivery-worker/lease-recovery approach: [`ADR 0005`](adr/0005-postgresql-operation-delivery-worker.md).
 - Accepted local-development signing provider: [`ADR 0006`](adr/0006-local-development-signing-provider.md).
+- Accepted local Ethereum mint realization: [`ADR 0007`](adr/0007-local-ethereum-mint-vertical-slice.md).
 
 Create or update an active plan before implementation. Create an ADR only when evidence requires an accepted material decision.
 
@@ -275,6 +277,8 @@ JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl domain enforcer:enforce
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl application enforcer:enforce dependency:tree
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl adapters/persistence-postgres -am test
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl control-plane -am test
+(cd contracts/evm && forge test)
+JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -o -pl adapters/ethereum-web3j -am test
 graphify --version
 test -f .agents/skills/graphify/SKILL.md
 jq -e '.hooks.PreToolUse[] | select(.matcher == "^Bash$")' .codex/hooks.json
@@ -295,7 +299,18 @@ The restartable RED-GREEN and validation record is [`docs/plans/active/PHASE_3A_
 
 ## Latest bounded vertical slice
 
-Action Request 12 implements **Phase 4B Isolated Local-Development Signer**:
+Action Request 13 implements **Phase 5A Local Ethereum Mint Vertical Slice**:
+
+- a Foundry project pinned to Solidity 0.8.25 and OpenZeppelin Contracts v5.6.1, with a minimal role-gated, two-decimal, non-upgradeable local reference token;
+- a Web3j 4.14.0 adapter that owns ABI/EIP-1559 encoding, signer recovery, nonce/hash/native evidence, RPC submission/inquiry, and receipt/event/canonicality interpretation;
+- PostgreSQL V5 nonce, immutable attempt, signature/submission, observation, and reconciliation records with short transaction scopes and attempt-before-effect fencing;
+- a mint-only application handler that reuses accepted operation, delivery, signing-authority, and finality models without adding an endpoint or transfer path;
+- explicit `local-ethereum` plus `local-signer` composition fenced to uncredentialed loopback HTTP and chain `31337`, with no default contract/recipient address; and
+- Foundry, independent transaction-vector, real PostgreSQL, real Anvil, concurrent nonce, duplicate, response-loss, revert, default-context, and configuration evidence under [ADR 0007](adr/0007-local-ethereum-mint-vertical-slice.md) and the [Phase 5A plan](plans/active/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
+
+This is one local development mint effect, not the five-step transfer demonstration. It neither executes an accepted transfer effect nor implements burn, wallet transfer, replacement/cancellation, production custody, hosted/public RPC, legal/customer/accounting finality, or settlement. The next bounded recommendation is an Ethereum wallet-transfer slice that reuses the same durable attempt and observation seams without broadening public or production authority.
+
+The preceding Action Request 12 implements **Phase 4B Isolated Local-Development Signer**:
 
 - one focused `adapters/signer-local` module reusing the Phase 4A `SignerPort` and `SigningKeyRegistry` rather than creating another authority model;
 - one Bouncy Castle 1.82 dependency confined to exact 32-byte secp256k1 digest signing, low-`s` normalization, and compact recovery encoding, with JDK-native Ed25519 for exact Solana message bytes;
@@ -304,7 +319,7 @@ Action Request 12 implements **Phase 4B Isolated Local-Development Signer**:
 - explicit Spring composition, safe startup warning, invalid-configuration failure, and unchanged default context/readiness/OpenAPI/public resources; and
 - accepted [ADR 0006](adr/0006-local-development-signing-provider.md) plus the restartable [Phase 4B plan](plans/active/PHASE_4B_LOCAL_DEVELOPMENT_SIGNER.md).
 
-This capability is local-development infrastructure, not production custody. It reads or persists no private key, seed, mnemonic, keystore, credential, or wallet address; constructs/submits no transaction; and advances no effect, finality, reconciliation, or settlement state. The next bounded recommendation is the first Ethereum adapter slice under ADR 0002, with its own focused plan and local-chain evidence.
+This capability is local-development infrastructure, not production custody. It reads or persists no private key, seed, mnemonic, keystore, credential, or wallet address. Phase 5A now consumes its transient EVM signature only under the separate local-Ethereum profile; the signer itself still constructs/submits no transaction and grants no finality.
 
 The preceding Action Request 11 implements **Phase 4A Durable Signing-Authority Boundary**:
 
@@ -315,7 +330,7 @@ The preceding Action Request 11 implements **Phase 4A Durable Signing-Authority 
 - one forward-only V4 migration and explicit JDBC repository storing hashes, lengths, encodings, non-secret metadata, and opaque evidence references rather than raw payloads, signatures, keys, or credentials; and
 - a deterministic test-only synthetic provider with success, denial, retryable-no-signature, ambiguity/inquiry, conflict, and infrastructure-failure fixtures.
 
-At the Phase 4A checkpoint this internal use case was deliberately not composed into Spring and exposed no runtime provider or real cryptography. Action Request 12 now supplies only the isolated local-development implementation described above. HSM/MPC/custody adapters, native transaction construction, submission, and observation remain later slices, and every future provider/chain change must retain Phase 4A's durable identity/inquiry boundary.
+At the Phase 4A checkpoint this internal use case was deliberately not composed into Spring and exposed no runtime provider or real cryptography. Action Request 12 supplies the isolated local-development implementation described above; Action Request 13 consumes its EVM mode for one bounded mint. HSM/MPC/custody adapters and all other native effects remain later slices, and every provider/chain change must retain Phase 4A's durable identity/inquiry boundary.
 
 Action Request 10 implements **Phase 3C Chain-Neutral Transfer Aggregate and Mock-Bank Boundary**:
 
@@ -366,4 +381,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer and signing-authority boundaries and the remaining bank/provider/chain effects and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). Runtime signing composition is the next recommended bounded action; it must not be combined with an external bank or chain effect without its own approved slice.
+The implemented transfer/signing boundaries, bounded local-Ethereum mint, remaining bank/provider/chain effects, and two end-to-end demonstrations are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). The next recommended bounded action is one Ethereum wallet-transfer effect with its own approved plan; it must not be presented as execution of the complete parent transfer.

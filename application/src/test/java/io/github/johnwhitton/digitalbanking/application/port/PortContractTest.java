@@ -74,7 +74,8 @@ class PortContractTest {
                 operationId, attemptId, new ChainPort.NativeIdentity("native-opaque"),
                 "finality-v1");
 
-        assertEquals("prepared", port.prepare(null, null).evidenceReference().value());
+        assertEquals("prepared", port.prepare(new UUID(0, 1), null, null)
+                .evidenceReference().value());
         assertEquals(ChainPort.SubmissionClassification.AMBIGUOUS,
                 port.submitOnce(null).classification());
         assertEquals(ChainPort.RetrySafety.REQUIRES_OBSERVATION,
@@ -140,9 +141,26 @@ class PortContractTest {
 
         @Override
         public PreparedAttempt prepare(
+                UUID deliveryId,
                 io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation operation,
                 io.github.johnwhitton.digitalbanking.domain.operation.OperationAttempt attempt) {
-            return new PreparedAttempt(new byte[] {1}, "digest", new EvidenceRef("prepared"));
+            return new PreparedAttempt(
+                    new byte[] {1}, "digest", "source", "destination", "native-action",
+                    "a".repeat(64), "fee-limit", "b".repeat(64), "policy-v1",
+                    new EvidenceRef("prepared"));
+        }
+
+        @Override
+        public Optional<SignedAttempt> findSignedAttempt(AttemptIdentity attemptIdentity) {
+            return Optional.empty();
+        }
+
+        @Override
+        public SignedAttempt attachSignature(
+                AttemptIdentity attemptIdentity, AuthorizedSignature signature) {
+            return new SignedAttempt(
+                    attemptIdentity.operationId(), attemptIdentity.attemptId(),
+                    new NativeIdentity("native-opaque"), new EvidenceRef("evidence:signed"));
         }
 
         @Override
@@ -164,7 +182,8 @@ class PortContractTest {
         public Observation observe(ObservationRequest request) {
             return new Observation(
                     request.operationId(), request.attemptId(), request.nativeIdentity(),
-                    "PENDING", request.policyVersion(), START,
+                    ObservationClassification.ABSENT_OR_PENDING,
+                    request.policyVersion(), START,
                     List.of(new EvidenceRef("evidence:observation")));
         }
     }
