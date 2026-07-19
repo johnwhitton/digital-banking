@@ -19,6 +19,8 @@ contracts/evm/broadcast/
 !.env.demo.example
 
 .demo-runtime/
+.solana-tools/
+.solana-runtime/
 compose.override.yaml
 compose.override.yml
 *.demo-dump

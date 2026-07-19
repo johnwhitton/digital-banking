@@ -54,6 +54,7 @@ Status vocabulary:
 | Phase 6B user-held workflows            | `verified` | The combined `local-demo,local-ethereum` profile adds participant-scoped acquisition and redemption parents with exact amounts, immutable server-resolved bank/wallet/policy context, V9 persistence, one-step durable recovery, payout-before-burn, and final reconciliation. The consolidated PostgreSQL+Anvil proof and full offline repository gate are green. |
 | Phase 6C settlement-only orchestration  | `verified` | The existing transfer API can now accept one configured local route from `USER_1`'s synthetic bank account to `USER_2`'s account. A V10 companion durably orders sender acquisition, exact `USER_WALLET_1` to `USER_WALLET_2` transfer, recipient `AUTO_REDEEM`, and final reconciliation while callers remain unable to select wallets, ADMIN, child identities, policies, or outcomes. The consolidated PostgreSQL/Anvil proof, stable-diff reviews, and full offline repository gate are green. |
 | Phase 6D reproducible Ethereum demos    | `verified` | One digest-pinned, loopback-only Compose environment starts PostgreSQL, Anvil, deterministic contract deployment, and the packaged non-root control plane. API-driven user-held and settlement-only commands assert exact cents/atomic units, six bounded effects, payout-before-burn, reconciliation, replay, durable restart recovery, and scoped teardown. The stable-diff reviews, runtime gates, and 503-test offline reactor are green. |
+| Phase 7A native Solana semantic gate    | `verified` | Pinned repository-local Agave 4.1.2 and SPL Token CLI 5.6.1 run a loopback-only native validator proof. Classic SPL checked mint/transfer/redemption/burn instructions move exactly 10,000 base units at two decimals through canonical associated accounts, classify rejected authority and valid-second-mint/account cases, retain finalized signature/blockhash/slot evidence, and finish at zero supply/balances. No Java adapter, API, custom program, or public network is added. |
 
 The latest completed full offline reactor result is **503 passing Maven tests across seven modules** for Phase 6D. The current Foundry contract suite remains at **nine tests** from Phase 5D; Phase 6D rebuilt its unchanged contract artifact offline but did not repeat the already-green Solidity suite because no Solidity file changed. The default business API remains `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Under the combined local profiles, the existing transfer POST/GET gains the bounded Phase 6C route and participant-safe orchestration status; the same profiles also expose the separate Phase 6B acquisition/redemption resources under `/v1/usdzelle`. These are synthetic local workflows, not production banking endpoints.
 
@@ -63,7 +64,7 @@ The latest completed full offline reactor result is **503 passing Maven tests ac
 - Phase 6C does not rewrite Phase 3C's historical five-effect aggregate or implement arbitrary institutional routing. Its V10 companion and the Phase 6D environment prove the settlement-only economic outcome with segregated local custody aliases and forced recipient `AUTO_REDEEM`; broader bank-settlement-wallet routing and compensation execution remain absent.
 - Default business endpoints have no runtime identity provider and therefore deny access.
 - The durable provider-neutral signing boundary, session-ephemeral signer, and configured local-custody signer are limited to their explicit local profiles; no production HSM, MPC, secret-manager, or custody signer exists.
-- No public network, hosted RPC provider, API key, dynamic wallet-management service, or production deployment exists. Solana remains planned.
+- No public network, hosted RPC provider, API key, dynamic wallet-management service, or production deployment exists. Phase 7A proves local native Solana semantics only; the Java adapter and product-path parity remain planned.
 - The Anvil mint establishes only narrow technical operation state and blockchain finality; it does not establish accounting, legal, or customer-visible finality.
 
 ## Product paths and delivery roadmap
@@ -76,9 +77,9 @@ The reference architecture supports two distinct USDZELLE outcomes without confl
 | User-held USDZELLE | User can acquire, hold, optionally transfer, and later redeem USDZELLE | `ADMIN` plus segregated custodial user wallets in the local POC | Phase 6D Demo A runs Phase 6B's exact acquisition, visible held-token checkpoint, later payout-before-burn redemption, replay, and reconciliation; optional transfer remains a separate internal Phase 5C primitive | Native Solana parity |
 
 ```text
-Implemented now: domain + durable API/worker + transfer parents + signing + local Ethereum effects + configured local custody + synthetic finance + user-held and settlement-only workflows + reproducible local Ethereum demos
-Next: native Solana tooling and semantic gate (Phase 7A)
-Then: native Solana mint/transfer/burn parity -> both Solana demos
+Implemented now: domain + durable API/worker + transfer parents + signing + local Ethereum effects + configured local custody + synthetic finance + user-held and settlement-only workflows + reproducible local Ethereum demos + native Solana semantic gate
+Next: Java Solana client compatibility and mint parity (Phase 7B)
+Then: native Solana transfer/burn parity -> both Solana demos
 Finally: code/security/share-readiness review
 ```
 
@@ -110,6 +111,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ├── control-plane/             # Spring APIs plus explicit worker/signer/local-Ethereum composition
 ├── docker/demo/               # Fixed local genesis and aggregate demo-only runtime configuration
 ├── scripts/demo/              # Start, readiness, status, demos, recovery, stop, and scoped reset
+├── scripts/solana/            # Pinned native tooling, semantic gate, status, stop, and scoped reset
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
 │   ├── IMPLEMENTATION.md      # Living delivery plan and current state
@@ -131,7 +133,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 └── SECURITY.md
 ```
 
-Future executable slices may add accepted conditional Solana paths and later production-oriented integrations only under separate authorization. They remain planned and will not be created empty.
+Future executable slices may add the accepted Solana Java adapter and product-path parity, then later production-oriented integrations, only under separate authorization. They remain planned and will not be created empty.
 
 ## Build and Inspect the Current Implementation
 
@@ -154,6 +156,15 @@ scripts/demo/stop.sh
 ```
 
 The [local Ethereum demo runbook](docs/runbooks/LOCAL_ETHEREUM_DEMO.md) records prerequisites, immutable image identities and licenses, exact assertions, restart recovery, troubleshooting, preserved-state behavior, and destructive teardown.
+
+The separate Phase 7A gate uses the approved native Apple Silicon Agave archive and repository-local SPL Token CLI build; it does not change Compose or start the Java control plane. The confirmed semantic command rejects redirected scoped paths, resets only ignored `.solana-runtime/`, runs the exact local mint/transfer/redemption/burn proof, retains sanitized evidence, and stops only its exactly identified validator. See the [native Solana script guide](scripts/solana/README.md) for immutable artifact identities, prerequisites, and cleanup boundaries.
+
+```bash
+scripts/solana/bootstrap.sh
+scripts/solana/status.sh --json
+scripts/solana/semantic-gate.sh --yes
+scripts/solana/reset.sh --yes
+```
 
 After Maven builds the packaged JAR, run it with `java -jar`. Running the application does not start PostgreSQL: the operator must provide an existing private/local PostgreSQL 17 server and inject its credentials through environment variables or another secret mechanism. Flyway validates and migrates that database at startup; it neither creates the PostgreSQL server nor provides an in-memory fallback. No credentials are committed.
 
@@ -267,4 +278,4 @@ Graph queries, reports, plugin advice, and agent suggestions are navigation aids
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5A local mint, Phase 5B configured local custody, Phase 5C local user-wallet transfer, Phase 5D local redemption/burn, Phase 6A synthetic finance primitives, Phase 6B user-held orchestration, and separately authorized future phases with their limits. The next bounded recommendation is Phase 6C settlement-only orchestration—not a public network or production-custody rollout.
+[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5A local mint, Phase 5B configured local custody, Phase 5C local user-wallet transfer, Phase 5D local redemption/burn, Phase 6 synthetic finance/workflow/demonstration slices, Phase 7A's native semantic gate, and separately authorized future phases with their limits. The next bounded recommendation is Phase 7B Java-client compatibility and Solana mint parity—not a public network or production-custody rollout.

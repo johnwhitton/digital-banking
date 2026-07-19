@@ -58,3 +58,4 @@ Open questions remain in `docs/DESIGN.md` or `docs/IMPLEMENTATION.md` until evid
 - [ADR 0007: Local Ethereum mint vertical slice](0007-local-ethereum-mint-vertical-slice.md) - accepted.
 - [ADR 0008: USDZELLE product paths, ownership, custody, and reserve boundaries](0008-usdzelle-product-paths-ownership-custody-reserve-boundaries.md) - accepted.
 - [ADR 0009: Synthetic reserve ledger and reconciliation](0009-synthetic-reserve-ledger-and-reconciliation.md) - accepted.
+- [ADR 0010: Native Solana toolchain and classic SPL Token semantics](0010-native-solana-toolchain-and-classic-spl-semantics.md) - accepted.

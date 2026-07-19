@@ -59,13 +59,13 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 6B. User-held workflows                | `verified` | Separate acquisition and redemption parents compose exact synthetic bank, accounting, custody, mint/burn, payout-before-burn, and reconciliation boundaries under the combined local profiles; the 487-test offline reactor is green. |
 | 6C. Settlement-only orchestration      | `verified` | A V10 companion durably composes sender acquisition, exact custody transfer, recipient `AUTO_REDEEM`, and final reconciliation for one server-registered local transfer route; the consolidated PostgreSQL/Anvil proof, stable-diff reviews, and 498-test offline reactor are green. |
 | 6D. Ethereum demo environment          | `verified` | Digest-pinned loopback-only Compose, deterministic contract bootstrap, API-driven Demo A/B assertions, durable restart recovery, scoped cleanup, stable-diff reviews, and the 503-test offline reactor are green. |
-| 7A. Native Solana semantic gate        | `planned`     | Local tooling and Java-client/native-contract mapping gate. |
+| 7A. Native Solana semantic gate        | `verified`    | Pinned native Agave/SPL tooling proves classic checked mint/transfer/redemption/burn semantics, exact quantities, canonical accounts, classified authority/valid-second-mint failures, finalized evidence, and zero end state on loopback. |
 | 7B. Solana mint parity                 | `planned`     | SPL mint meets Phase 5A business/evidence guarantees. |
 | 7C. Solana transfer and burn parity    | `planned`     | Native transfer/redemption/burn meet applicable Phase 5C/5D guarantees. |
 | 7D. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
 | 8. Final reference review              | `planned`     | Architecture, code, security, recovery, API/demo, and share-readiness review. |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil mint/custody/transfer/redemption/burn primitives, Phase 6A's exact-USD synthetic bank and reserve/liability accounting primitives, Phase 6B's separate configured user-held acquisition/redemption parents, Phase 6C's one configured settlement-only parent composition, and Phase 6D's reproducible local operator environment. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the separate local mock-bank contract; combined with `local-ethereum` it composes the existing chain handlers, participant-scoped `/v1/usdzelle` workflow resources, and the registered local route behind `/v1/transfers`. The additional `local-demo-environment` profile supplies only generated local bearer identities and a bounded read-only aggregate status/OpenAPI projection for the digest-pinned Compose runtime. `local-signer` plus `local-ethereum` composes the separate Phase 5A mint handler. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. No dynamic wallet management, real bank/reserve, arbitrary settlement routing, automatic compensation, or Solana adapter exists. Each planned phase below requires its own separately authorized plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil mint/custody/transfer/redemption/burn primitives, Phase 6A's exact-USD synthetic bank and reserve/liability accounting primitives, Phase 6B's separate configured user-held acquisition/redemption parents, Phase 6C's one configured settlement-only parent composition, Phase 6D's reproducible local operator environment, and Phase 7A's separate native local-Solana semantic gate. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the separate local mock-bank contract; combined with `local-ethereum` it composes the existing chain handlers, participant-scoped `/v1/usdzelle` workflow resources, and the registered local route behind `/v1/transfers`. The additional `local-demo-environment` profile supplies only generated local bearer identities and a bounded read-only aggregate status/OpenAPI projection for the digest-pinned Compose runtime. `local-signer` plus `local-ethereum` composes the separate Phase 5A mint handler. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. Phase 7A changes none of those runtime profiles and adds no Java adapter. No dynamic wallet management, real bank/reserve, arbitrary settlement routing, automatic compensation, or durable Solana product path exists. Each planned phase below requires its own separately authorized plan.
 
 ## Phase 1: Foundation
 
@@ -289,17 +289,17 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 ### Phase 7A: native Solana tooling and semantic gate
 
-**Status:** `planned`
+**Status:** `verified`
 
 **Dependency:** Phase 6D and the Ethereum evidence seams it validates.
 
-**Plan:** not created until separately authorized.
+**Plan:** completed in [`docs/plans/completed/PHASE_7A_NATIVE_SOLANA_TOOLCHAIN_AND_SEMANTIC_GATE.md`](plans/completed/PHASE_7A_NATIVE_SOLANA_TOOLCHAIN_AND_SEMANTIC_GATE.md).
 
-**Deliverables:** a pinned local validator and native tooling; the bounded Java-client evaluation required by [ADR 0003](adr/0003-native-solana-spl-token.md); explicit mapping for recent blockhash/durable nonce, lifetime, instruction/account evidence, signature, slot, commitment, and expiry; classic SPL Token; and a Rust/Anchor program only if existing native programs cannot safely enforce a required invariant. Neon is excluded.
+**Deliverables:** approved repository-local Agave 4.1.2 and `spl-token-cli 5.6.1` on the native Apple Silicon host; loopback-only validator, symlink-safe mode-restricted disposable keys/state, exact PID/command/RPC-identity cleanup, safe status/stop/reset commands, and sanitized evidence; classic SPL Token plus canonical associated token accounts; one exact `10000`-base-unit checked mint, USER_1-to-USER_2 transfer, USER_2-to-ADMIN-redemption transfer, and ADMIN-owner burn; rejected unauthorized mint/transfer/burn and valid-second-mint account mismatch with classified outcomes and unchanged state; actual signatures/recent blockhashes/slots, live validity and pre-submission expiry-window observations, finalized commitment, and zero final supply/balances. The gate records Sava as the provisional Phase 7B candidate but accepts no Java dependency. [ADR 0010](adr/0010-native-solana-toolchain-and-classic-spl-semantics.md) records the toolchain and semantic decisions.
 
-**Exit gate:** the client/toolchain gate passes with deterministic local evidence; native Solana semantics remain visible behind provider-neutral ports; no SDK or Rust type leaks into the core; unnecessary custom program code is absent.
+**Exit gate:** the semantic gate passes twice from scoped clean reset state with deterministic local evidence; native Solana semantics remain explicit; restrictive state modes and loopback-only RPC hold; no SDK or Rust type enters the core; unnecessary custom program code is absent.
 
-**Non-goals:** chain effects, public clusters, CCTP, production program deployment, or vendor selection.
+**Non-goals:** Java adapter or durable application chain effects, business API/database/profile changes, public clusters, CCTP, custom/production program deployment, or Java-client dependency selection. The CLI's UI decimal parser is not an application exactness boundary; Phase 7B must convert through the versioned asset/unit catalog to integer atomic units and persist the exact chosen blockhash/last-valid height before signing.
 
 ### Phase 7B: Solana mint parity
 
@@ -382,6 +382,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Completed Phase 6B user-held workflow plan: [`docs/plans/completed/PHASE_6B_USER_HELD_ONRAMP_AND_REDEMPTION.md`](plans/completed/PHASE_6B_USER_HELD_ONRAMP_AND_REDEMPTION.md).
 - Completed Phase 6C settlement-only orchestration plan: [`docs/plans/completed/PHASE_6C_SETTLEMENT_ONLY_TRANSFER_ORCHESTRATION.md`](plans/completed/PHASE_6C_SETTLEMENT_ONLY_TRANSFER_ORCHESTRATION.md).
 - Completed Phase 6D reproducible local demo plan: [`docs/plans/completed/PHASE_6D_REPRODUCIBLE_ETHEREUM_DEMO_ENVIRONMENT.md`](plans/completed/PHASE_6D_REPRODUCIBLE_ETHEREUM_DEMO_ENVIRONMENT.md).
+- Completed Phase 7A native Solana semantic-gate plan: [`docs/plans/completed/PHASE_7A_NATIVE_SOLANA_TOOLCHAIN_AND_SEMANTIC_GATE.md`](plans/completed/PHASE_7A_NATIVE_SOLANA_TOOLCHAIN_AND_SEMANTIC_GATE.md).
 - Completed dual-product-path and delivery-roadmap alignment: [`docs/plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md`](plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md).
 - Completed Zelle share-readiness and transfer-roadmap plan: [`docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
@@ -394,6 +395,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Accepted local Ethereum mint realization: [`ADR 0007`](adr/0007-local-ethereum-mint-vertical-slice.md).
 - Accepted USDZELLE product paths, ownership/custody, reserve, and delivery boundaries: [`ADR 0008`](adr/0008-usdzelle-product-paths-ownership-custody-reserve-boundaries.md).
 - Accepted synthetic reserve ledger, trusted posting, and reconciliation boundary: [`ADR 0009`](adr/0009-synthetic-reserve-ledger-and-reconciliation.md).
+- Accepted native Solana toolchain and classic SPL semantic boundary: [`ADR 0010`](adr/0010-native-solana-toolchain-and-classic-spl-semantics.md).
 
 Create a restartable active plan for each newly authorized implementation action and follow the lifecycle above. Create an ADR only when evidence requires an accepted material decision.
 
@@ -425,6 +427,10 @@ JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl adapters/persistence-postgres -am
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl control-plane -am test
 (cd contracts/evm && forge test)
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -o -pl adapters/ethereum-web3j -am test
+sh -n scripts/solana/*.sh
+scripts/solana/bootstrap.sh
+scripts/solana/semantic-gate.sh --yes
+scripts/solana/status.sh --json
 graphify --version
 test -f .agents/skills/graphify/SKILL.md
 jq -e '.hooks.PreToolUse[] | select(.matcher == "^Bash$")' .codex/hooks.json
@@ -445,6 +451,16 @@ The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A
 
 ## Latest bounded vertical slice
 
+Action Request 22 implements **Phase 7A Native Solana Toolchain and Semantic Gate**:
+
+- exact approved native Agave 4.1.2 and SPL Token CLI 5.6.1 artifacts are checksum-verified and kept under ignored repository-local tooling state on the Apple Silicon host;
+- scoped commands reject symlinks/symlinked parents, provision mode-`0700`/`0600` disposable local identities, bind only loopback RPC, report truthful health/completion state, stop only the exact PID/command/RPC identity, and reset only ignored Solana runtime state;
+- the original Token Program and canonical associated token accounts execute checked mint, user transfer, redemption-custody transfer, and owner burn instructions for exactly `10000` base units at two decimals;
+- classified authority failures and a valid-second-mint account mismatch leave both supplies and exact balances unchanged, while every successful transaction retains native signature, actual recent blockhash, slot, finalized commitment, validity-window observations, and zero final supply/balances; and
+- [ADR 0010](adr/0010-native-solana-toolchain-and-classic-spl-semantics.md) preserves classic SPL first, no freeze/extension/custom program, distinct ADMIN/redemption/user owners, and the Phase 7B exactness/blockhash obligations.
+
+This slice adds no Java dependency/module, API, migration, runtime profile, custom Rust program, Compose change, public network, production custody, or parity claim. The root Compose file and all Maven-controlled files remain unchanged, so the Phase 6D 503-test offline reactor remains the latest full Maven evidence and was not repeated. The semantic gate passes twice from scoped clean resets; Phase 7B Java-client compatibility and Solana mint parity are the next bounded recommendation.
+
 Action Request 21 implements **Phase 6D Reproducible Ethereum Demo Environment**:
 
 - one root digest-pinned Compose topology for the cached/approved PostgreSQL, Foundry/Anvil, and Temurin images, with an internal network, loopback ports, persistent database/chain volumes, deterministic contract/role bootstrap, health ordering, and a minimal non-root application image;
@@ -453,7 +469,7 @@ Action Request 21 implements **Phase 6D Reproducible Ethereum Demo Environment**
 - exact API-driven cents/atomic-unit, bank/ledger/custody/supply, six-effect, payout-before-burn, reconciliation, replay, and no-duplicate assertions; and
 - ordinary control-plane and whole-stack restart evidence preserving authoritative PostgreSQL and Anvil state.
 
-This slice adds no dependency, migration, Solidity behavior, public product field, general orchestration, public network, real bank/reserve/funds, production identity/custody/deployment, automatic compensation, or Solana behavior. The [local runbook](runbooks/LOCAL_ETHEREUM_DEMO.md) is the operator entry point. The 503-test offline reactor and stable-diff reviews are green; Phase 7A is the next bounded slice.
+This slice adds no dependency, migration, Solidity behavior, public product field, general orchestration, public network, real bank/reserve/funds, production identity/custody/deployment, automatic compensation, or Solana behavior. The [local runbook](runbooks/LOCAL_ETHEREUM_DEMO.md) is the operator entry point. The 503-test offline reactor and stable-diff reviews are green; Phase 7A subsequently established the separate native Solana semantic gate without changing this environment.
 
 Action Request 20 implements **Phase 6C Settlement-Only Transfer Orchestration**:
 
@@ -601,4 +617,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, and Phase 6D operator environment—plus the remaining Solana paths—are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 6D closeout, the next recommended bounded action is Phase 7A's native Solana tooling and semantic gate; it must preserve both product meanings and native Solana evidence without adding public-network or production-custody behavior.
+The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, and remaining Solana product paths are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 7A closeout, the next recommended bounded action is Phase 7B Java-client compatibility and Solana mint parity; it must preserve both product meanings and native Solana evidence without adding public-network or production-custody behavior.
