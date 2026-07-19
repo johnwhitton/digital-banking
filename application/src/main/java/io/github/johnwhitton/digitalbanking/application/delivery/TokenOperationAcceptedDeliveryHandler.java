@@ -4,9 +4,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import io.github.johnwhitton.digitalbanking.application.SigningAuthorityService;
@@ -84,27 +86,60 @@ public final class TokenOperationAcceptedDeliveryHandler
             OperationAttempt attempt = operation.attempts().getLast();
             ChainPort.PreparedAttempt prepared = chain.prepare(
                     delivery.deliveryId(), operation, attempt);
+            List<ChainPort.SigningRequirement> requirements = signingRequirements(
+                    identity, prepared);
             Optional<ChainPort.SignedAttempt> retained = chain.findSignedAttempt(identity);
             if (retained.isEmpty()) {
-                SigningAuthorityService.Result result = signing.sign(
-                        signingRequest(operation, attemptId, prepared));
-                if (!(result instanceof SigningAuthorityService.Signed signed)) {
-                    return signingFailure(operation, result);
+                Set<Integer> attached = chain.retainedSignatureOrders(identity);
+                for (ChainPort.SigningRequirement requirement : requirements) {
+                    if (attached.contains(requirement.order())) {
+                        continue;
+                    }
+                    SigningAuthorityService.Result result = signing.sign(
+                            signingRequest(operation, attemptId, prepared, requirement));
+                    if (!(result instanceof SigningAuthorityService.Signed signed)) {
+                        return signingFailure(operation, result);
+                    }
+                    if (!"resolved-by-signing-registry".equals(requirement.keyVersion())
+                            && !signed.request().keyContext().keyVersion()
+                            .equals(Optional.of(requirement.keyVersion()))) {
+                        operation = transition(
+                                operation, OperationState.MANUAL_REVIEW,
+                                "signing-key-version-mismatch",
+                                evidence(operation, "signing-key-version-mismatch"));
+                        return DeliveryOutcome.terminalFailure(
+                                "signing-key-version-mismatch");
+                    }
+                    Optional<SigningAuthorityService.SignatureMaterial> material =
+                            signed.signatureMaterial();
+                    if (material.isEmpty()) {
+                        material = signing.recoverSignature(
+                                signed.request().requestId(), prepared.signableMaterial());
+                    }
+                    if (material.isEmpty()) {
+                        operation = transition(
+                                operation, OperationState.MANUAL_REVIEW,
+                                "signed-material-unavailable",
+                                evidence(operation, "restart-fence"));
+                        return DeliveryOutcome.terminalFailure(
+                                "signed-material-unavailable");
+                    }
+                    SigningAuthorityService.SignatureMaterial signature =
+                            material.orElseThrow();
+                    chain.attachSignature(
+                            identity,
+                            new ChainPort.AuthorizedSignature(
+                                    signature.bytes(), signature.encoding(),
+                                    requirement.signerReference()));
                 }
-                Optional<SigningAuthorityService.SignatureMaterial> material =
-                        signed.signatureMaterial();
-                if (material.isEmpty()) {
-                    operation = transition(
-                            operation, OperationState.MANUAL_REVIEW,
-                            "signed-material-unavailable", evidence(operation, "restart-fence"));
-                    return DeliveryOutcome.terminalFailure("signed-material-unavailable");
-                }
-                SigningAuthorityService.SignatureMaterial signature = material.orElseThrow();
-                retained = Optional.of(chain.attachSignature(
-                        identity,
-                        new ChainPort.AuthorizedSignature(
-                                signature.bytes(), signature.encoding(),
-                                policy.expectedSignerReference())));
+                retained = chain.findSignedAttempt(identity);
+            }
+            if (retained.isEmpty()) {
+                operation = transition(
+                        operation, OperationState.MANUAL_REVIEW,
+                        "required-signatures-incomplete",
+                        evidence(operation, "required-signatures-incomplete"));
+                return DeliveryOutcome.terminalFailure("required-signatures-incomplete");
             }
             operation = transition(
                     operation, OperationState.SUBMISSION_PENDING,
@@ -240,26 +275,66 @@ public final class TokenOperationAcceptedDeliveryHandler
     private SigningAuthorityService.Request signingRequest(
             TokenOperation operation,
             AttemptId attemptId,
-            ChainPort.PreparedAttempt prepared) {
-        if (!prepared.sourceReference().equals(policy.expectedSignerReference())) {
-            throw new IllegalStateException("prepared signer does not match server policy");
-        }
+            ChainPort.PreparedAttempt prepared,
+            ChainPort.SigningRequirement requirement) {
         Instant issuedAt = now();
         UUID requestId = UUID.nameUUIDFromBytes(
-                ((action() + "-signing-v1:") + operation.operationId() + ":" + attemptId)
+                ((action() + "-signing-v2:") + operation.operationId() + ":" + attemptId
+                        + ":" + requirement.order() + ":" + requirement.keyRole())
                         .getBytes(StandardCharsets.UTF_8));
         return new SigningAuthorityService.Request(
                 new SigningRequestId(requestId),
                 new SigningRequest.Correlation(
                         operation.operationId(), attemptId, Optional.empty(), Optional.empty()),
-                Optional.empty(), policy.signingAction(), SettlementNetwork.ETHEREUM,
-                operation.quantity(), prepared.sourceReference(), prepared.destinationReference(),
+                Optional.empty(), policy.signingAction(), requirement.network(),
+                operation.quantity(), requirement.signerReference(),
+                prepared.destinationReference(),
                 prepared.nativeActionIdentity(), prepared.lifetimeContextDigest(),
-                prepared.feeLimit(), prepared.nativeConstraintDigest(), policy.keyAlias(),
-                policy.keyRole(), SigningRequest.Mode.EVM_DIGEST,
-                SigningRequest.Algorithm.SECP256K1, prepared.signableMaterial(),
+                prepared.feeLimit(), prepared.nativeConstraintDigest(), requirement.keyAlias(),
+                requirement.keyRole(), requirement.mode(), requirement.algorithm(),
+                prepared.signableMaterial(),
                 prepared.policyVersion(), List.of(prepared.evidenceReference()), issuedAt,
                 issuedAt.plus(policy.signingLifetime()));
+    }
+
+    private List<ChainPort.SigningRequirement> signingRequirements(
+            ChainPort.AttemptIdentity identity,
+            ChainPort.PreparedAttempt prepared) {
+        if (policy.network() == SettlementNetwork.SOLANA
+                && !policy.finalityPolicyVersion().equals(prepared.policyVersion())) {
+            throw new IllegalStateException(
+                    "prepared native attempt policy differs from active worker policy");
+        }
+        List<ChainPort.SigningRequirement> requirements = chain.requiredSigners(identity);
+        if (requirements.isEmpty()) {
+            requirements = List.of(new ChainPort.SigningRequirement(
+                    0, policy.keyAlias(), policy.keyRole(), policy.network(),
+                    policy.mode(), policy.algorithm(), policy.expectedSignerReference(),
+                    "resolved-by-signing-registry"));
+        }
+        Set<Integer> orders = new HashSet<>();
+        for (int index = 0; index < requirements.size(); index++) {
+            ChainPort.SigningRequirement requirement = requirements.get(index);
+            if (requirement.order() != index || !orders.add(requirement.order())
+                    || requirement.network() != policy.network()
+                    || requirement.mode() != policy.mode()
+                    || requirement.algorithm() != policy.algorithm()) {
+                throw new IllegalStateException(
+                        "native signer requirements do not match server policy");
+            }
+        }
+        ChainPort.SigningRequirement first = requirements.getFirst();
+        if (!prepared.sourceReference().equals(first.signerReference())
+                || !policy.keyAlias().equals(first.keyAlias())
+                || policy.keyRole() != first.keyRole()
+                || !policy.expectedSignerReference().equals(first.signerReference())) {
+            throw new IllegalStateException("prepared signer does not match server policy");
+        }
+        Set<Integer> attached = chain.retainedSignatureOrders(identity);
+        if (!orders.containsAll(attached)) {
+            throw new IllegalStateException("retained signature order is not required");
+        }
+        return List.copyOf(requirements);
     }
 
     private DeliveryOutcome signingFailure(
@@ -280,7 +355,8 @@ public final class TokenOperationAcceptedDeliveryHandler
         TokenOperation withFinality = operation.recordFinality(
                 operation.version(), FinalityRecord.assessed(
                         FinalityType.BLOCKCHAIN, FinalityStatus.REACHED,
-                        "independent-ethereum-observer", observation.policyVersion(),
+                        "independent-" + networkName() + "-observer",
+                        observation.policyVersion(),
                         now(), observation.evidenceReferences()));
         operations.save(withFinality, operation.version());
         return transition(withFinality, OperationState.CHAIN_FINALITY_REACHED,
@@ -294,7 +370,7 @@ public final class TokenOperationAcceptedDeliveryHandler
             String reason,
             EvidenceRef evidence) {
         TokenOperation changed = operation.transition(
-                operation.version(), target, "local-ethereum-worker", reason,
+                operation.version(), target, "local-" + networkName() + "-worker", reason,
                 now(), List.of(evidence));
         operations.save(changed, operation.version());
         return changed;
@@ -309,9 +385,14 @@ public final class TokenOperationAcceptedDeliveryHandler
         return policy.operationKind().name().toLowerCase(java.util.Locale.ROOT);
     }
 
-    private static EvidenceRef evidence(TokenOperation operation, String kind) {
+    private EvidenceRef evidence(TokenOperation operation, String kind) {
         return new EvidenceRef(
-                "internal:local-ethereum:" + kind + ":" + operation.operationId());
+                "internal:local-" + networkName() + ":" + kind + ":"
+                        + operation.operationId());
+    }
+
+    private String networkName() {
+        return policy.network().name().toLowerCase(java.util.Locale.ROOT);
     }
 
     public record Policy(
@@ -321,7 +402,10 @@ public final class TokenOperationAcceptedDeliveryHandler
             String finalityPolicyVersion,
             OperationKind operationKind,
             SigningRequest.Action signingAction,
-            SigningRequest.KeyRole keyRole) {
+            SigningRequest.KeyRole keyRole,
+            SettlementNetwork network,
+            SigningRequest.Mode mode,
+            SigningRequest.Algorithm algorithm) {
 
         public Policy(
                 KeyAlias keyAlias,
@@ -330,7 +414,23 @@ public final class TokenOperationAcceptedDeliveryHandler
                 String finalityPolicyVersion) {
             this(keyAlias, expectedSignerReference, signingLifetime,
                     finalityPolicyVersion, OperationKind.MINT,
-                    SigningRequest.Action.MINT, SigningRequest.KeyRole.MINT_AUTHORITY);
+                    SigningRequest.Action.MINT, SigningRequest.KeyRole.MINT_AUTHORITY,
+                    SettlementNetwork.ETHEREUM, SigningRequest.Mode.EVM_DIGEST,
+                    SigningRequest.Algorithm.SECP256K1);
+        }
+
+        public Policy(
+                KeyAlias keyAlias,
+                String expectedSignerReference,
+                Duration signingLifetime,
+                String finalityPolicyVersion,
+                OperationKind operationKind,
+                SigningRequest.Action signingAction,
+                SigningRequest.KeyRole keyRole) {
+            this(keyAlias, expectedSignerReference, signingLifetime,
+                    finalityPolicyVersion, operationKind, signingAction, keyRole,
+                    SettlementNetwork.ETHEREUM, SigningRequest.Mode.EVM_DIGEST,
+                    SigningRequest.Algorithm.SECP256K1);
         }
 
         public Policy {
@@ -346,14 +446,28 @@ public final class TokenOperationAcceptedDeliveryHandler
             Objects.requireNonNull(operationKind, "operationKind");
             Objects.requireNonNull(signingAction, "signingAction");
             Objects.requireNonNull(keyRole, "keyRole");
+            Objects.requireNonNull(network, "network");
+            Objects.requireNonNull(mode, "mode");
+            Objects.requireNonNull(algorithm, "algorithm");
             if ((operationKind == OperationKind.MINT
                         && (signingAction != SigningRequest.Action.MINT
-                            || keyRole != SigningRequest.KeyRole.MINT_AUTHORITY))
+                            || (keyRole != SigningRequest.KeyRole.MINT_AUTHORITY
+                                && keyRole != SigningRequest.KeyRole.FEE_PAYER)))
                     || (operationKind == OperationKind.BURN
                         && (signingAction != SigningRequest.Action.BURN
                             || keyRole != SigningRequest.KeyRole.BURN_AUTHORITY))) {
                 throw new IllegalArgumentException(
                         "token operation policy action and key role do not match");
+            }
+            if ((network == SettlementNetwork.ETHEREUM
+                        && (mode != SigningRequest.Mode.EVM_DIGEST
+                            || algorithm != SigningRequest.Algorithm.SECP256K1
+                            || keyRole == SigningRequest.KeyRole.FEE_PAYER))
+                    || (network == SettlementNetwork.SOLANA
+                        && (mode != SigningRequest.Mode.SOLANA_MESSAGE
+                            || algorithm != SigningRequest.Algorithm.ED25519))) {
+                throw new IllegalArgumentException(
+                        "token operation policy network and signing mode do not match");
             }
         }
 

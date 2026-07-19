@@ -100,6 +100,25 @@ class SigningAuthorityServiceTest {
     }
 
     @Test
+    void recoversDurableSignedResultByProviderInquiryWithoutSigningAgain() {
+        Fixture fixture = new Fixture();
+        fixture.signer.inquiryScenario(SyntheticSigner.Scenario.SIGNED);
+        byte[] message = bytes(96, 12);
+        SigningAuthorityService.Request request = fixture.request(
+                4, SigningRequest.Mode.SOLANA_MESSAGE, SigningRequest.Algorithm.ED25519,
+                message, List.of(new EvidenceRef("evidence:approval:four-eyes")));
+        assertInstanceOf(SigningAuthorityService.Signed.class,
+                fixture.service.sign(request));
+
+        SigningAuthorityService.SignatureMaterial recovered = fixture.service
+                .recoverSignature(request.requestId(), message).orElseThrow();
+
+        assertEquals(83, recovered.bytes()[0]);
+        assertEquals(1, fixture.signer.solanaCalls());
+        assertEquals(1, fixture.signer.inquiryCalls());
+    }
+
+    @Test
     void missingApprovalWaitsWithoutInvokingProvider() {
         Fixture fixture = new Fixture();
         SigningAuthorityService.Result result = fixture.service.sign(fixture.request(
@@ -169,6 +188,33 @@ class SigningAuthorityServiceTest {
                         SigningRequest.Algorithm.SECP256K1, bytes(32, 1),
                         List.of(new EvidenceRef("evidence:approval")))));
         assertEquals(0, wrongNetwork.signer.evmCalls());
+    }
+
+    @Test
+    void feePayerRoleIsAuthorizedOnlyForMintInThisSlice() {
+        for (SigningRequest.Action action : List.of(
+                SigningRequest.Action.TRANSFER, SigningRequest.Action.BURN)) {
+            Fixture fixture = new Fixture();
+            fixture.allowedRoles = Set.of(SigningRequest.KeyRole.FEE_PAYER);
+            SigningAuthorityService.Request request = fixture.request(
+                    24 + action.ordinal(), SigningRequest.Mode.SOLANA_MESSAGE,
+                    SigningRequest.Algorithm.ED25519, bytes(64, 1), List.of(),
+                    action, SigningRequest.KeyRole.FEE_PAYER);
+
+            assertInstanceOf(SigningAuthorityService.Denied.class,
+                    fixture.service.sign(request));
+            assertEquals(0, fixture.signer.solanaCalls());
+        }
+
+        Fixture ethereum = new Fixture();
+        ethereum.allowedRoles = Set.of(SigningRequest.KeyRole.FEE_PAYER);
+        SigningAuthorityService.Request request = ethereum.request(
+                29, SigningRequest.Mode.EVM_DIGEST,
+                SigningRequest.Algorithm.SECP256K1, bytes(32, 1), List.of(),
+                SigningRequest.Action.MINT, SigningRequest.KeyRole.FEE_PAYER);
+        assertInstanceOf(SigningAuthorityService.Denied.class,
+                ethereum.service.sign(request));
+        assertEquals(0, ethereum.signer.evmCalls());
     }
 
     @Test
@@ -417,6 +463,18 @@ class SigningAuthorityServiceTest {
                 SigningRequest.Algorithm algorithm,
                 byte[] material,
                 List<EvidenceRef> approvals) {
+            return request(seed, mode, algorithm, material, approvals,
+                    SigningRequest.Action.MINT, SigningRequest.KeyRole.MINT_AUTHORITY);
+        }
+
+        private SigningAuthorityService.Request request(
+                long seed,
+                SigningRequest.Mode mode,
+                SigningRequest.Algorithm algorithm,
+                byte[] material,
+                List<EvidenceRef> approvals,
+                SigningRequest.Action action,
+                SigningRequest.KeyRole role) {
             SettlementNetwork network = mode == SigningRequest.Mode.EVM_DIGEST
                     ? SettlementNetwork.ETHEREUM : SettlementNetwork.SOLANA;
             return new SigningAuthorityService.Request(
@@ -426,7 +484,7 @@ class SigningAuthorityServiceTest {
                             new AttemptId(new UUID(3, seed)),
                             Optional.empty(), Optional.empty()),
                     Optional.empty(),
-                    SigningRequest.Action.MINT,
+                    action,
                     network,
                     TokenQuantity.parse("12.34", UNIT),
                     "mint-authority-role",
@@ -436,7 +494,7 @@ class SigningAuthorityServiceTest {
                     "fee-limit-policy-v1",
                     B,
                     new KeyAlias("institution-mint"),
-                    SigningRequest.KeyRole.MINT_AUTHORITY,
+                    role,
                     mode,
                     algorithm,
                     material,

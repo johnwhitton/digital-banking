@@ -185,7 +185,8 @@ class LocalConfiguredSignerTest {
         assertInstanceOf(SignerPort.Signed.class, beforeRestart.signEvmDigest(command));
         SignerPort.Conflict held = assertInstanceOf(
                 SignerPort.Conflict.class,
-                afterRestart.inquire(new SignerPort.Inquiry(command.context())));
+                afterRestart.inquire(new SignerPort.Inquiry(
+                        command.context(), command.digest())));
         assertEquals("local-provider-outcome-unknown", held.safeCode());
     }
 

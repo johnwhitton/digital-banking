@@ -1,0 +1,36 @@
+spring:
+    config:
+        activate:
+            on-profile: local-solana
+
+digital-banking:
+    delivery-worker:
+        enabled: true
+        worker-id: local-solana-worker
+    transfer:
+        default-network: SOLANA
+    local-solana:
+        rpc-uri: ${LOCAL_SOLANA_RPC_URI:http://127.0.0.1:8899}
+        cluster-identity: ${LOCAL_SOLANA_CLUSTER_IDENTITY:}
+        mint-address: ${LOCAL_SOLANA_MINT_ADDRESS:}
+        destination-owner: ${LOCAL_SOLANA_DESTINATION_OWNER:}
+        runtime-root: ${LOCAL_SOLANA_RUNTIME_ROOT:.solana-runtime}
+        fee-payer-key-file: ${LOCAL_SOLANA_FEE_PAYER_KEY_FILE:.solana-runtime/keys/fee-payer.json}
+        fee-payer-public-key: ${LOCAL_SOLANA_FEE_PAYER_PUBLIC_KEY:}
+        fee-payer-key-alias: local-solana:fee-payer
+        fee-payer-key-version: local-solana-fee-payer-v1
+        mint-authority-key-file: ${LOCAL_SOLANA_MINT_AUTHORITY_KEY_FILE:.solana-runtime/keys/admin-mint-authority.json}
+        mint-authority-public-key: ${LOCAL_SOLANA_MINT_AUTHORITY_PUBLIC_KEY:}
+        mint-authority-key-alias: local-solana:admin-mint-authority
+        mint-authority-key-version: local-solana-mint-authority-v1
+        asset-id: USD_STABLE
+        unit-id: USD
+        unit-version: 1
+        decimals: 2
+        max-atomic-units: 1000000000000
+        policy-version: local-solana-mint-v1
+        preparation-commitment: CONFIRMED
+        observation-commitment: FINALIZED
+        minimum-fee-payer-lamports: 1000000
+        maximum-fee-lamports: 100000
+        request-timeout: 5s

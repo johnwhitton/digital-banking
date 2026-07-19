@@ -36,6 +36,11 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>io.github.johnwhitton</groupId>
+            <artifactId>digital-banking-solana-sava</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
@@ -100,11 +105,10 @@
                                     <searchTransitive>true</searchTransitive>
                                     <excludes>
                                         <exclude>org.p2p.solanaj:*</exclude>
-                                        <exclude>software.sava:*</exclude>
                                         <exclude>org.apache.kafka:*</exclude>
                                         <exclude>com.rabbitmq:*</exclude>
                                     </excludes>
-                                    <message>Solana SDKs and messaging transports remain absent from the control-plane dependency graph.</message>
+                                    <message>Unapproved Solana clients and messaging transports remain absent from the control-plane dependency graph; Sava is isolated behind the approved adapter dependency.</message>
                                 </bannedDependencies>
                             </rules>
                         </configuration>

@@ -191,7 +191,8 @@ class LocalEphemeralSignerTest {
         assertEquals(1, signer.signingInvocationCount());
         SignerPort.Signed recovered = assertInstanceOf(
                 SignerPort.Signed.class,
-                signer.inquire(new SignerPort.Inquiry(ambiguous.context())));
+                signer.inquire(new SignerPort.Inquiry(
+                        ambiguous.context(), ambiguous.digest())));
         assertEquals(65, recovered.signature().length);
         assertEquals(1, signer.signingInvocationCount());
 

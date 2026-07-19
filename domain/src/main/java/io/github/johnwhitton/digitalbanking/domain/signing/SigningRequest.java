@@ -684,6 +684,7 @@ public final class SigningRequest {
     }
 
     public enum KeyRole {
+        FEE_PAYER,
         MINT_AUTHORITY,
         TRANSFER_AUTHORITY,
         BURN_AUTHORITY

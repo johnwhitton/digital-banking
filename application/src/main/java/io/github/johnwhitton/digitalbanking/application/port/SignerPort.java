@@ -87,15 +87,23 @@ public interface SignerPort {
         }
     }
 
-    record Inquiry(ProviderContext context) {
+    record Inquiry(ProviderContext context, byte[] signableMaterial) {
 
         public Inquiry {
             Objects.requireNonNull(context, "context");
+            signableMaterial = verifiedMaterial(
+                    context.request(), signableMaterial,
+                    context.request().payloadIdentity().mode());
+        }
+
+        @Override
+        public byte[] signableMaterial() {
+            return signableMaterial.clone();
         }
 
         @Override
         public String toString() {
-            return "Inquiry[context=" + context + "]";
+            return "Inquiry[context=" + context + ", material=[REDACTED]]";
         }
     }
 

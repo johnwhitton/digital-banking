@@ -109,12 +109,47 @@ public final class SigningAuthorityService {
         return authorize(awaiting, signableMaterial, false);
     }
 
+    /** Recovers a previously signed public result by durable provider identity. */
+    public Optional<SignatureMaterial> recoverSignature(
+            SigningRequestId requestId, byte[] signableMaterial) {
+        SigningRequest request = requests.findById(
+                        Objects.requireNonNull(requestId, "requestId"))
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "signing request was not found"));
+        verifyMaterial(request, signableMaterial);
+        if (request.status() != SigningRequest.Status.SIGNED
+                || request.attempts().isEmpty()) {
+            return Optional.empty();
+        }
+        SigningRequest.Attempt attempt = request.attempts().getLast();
+        SignerPort.ProviderResult result = provider.inquire(new SignerPort.Inquiry(
+                new SignerPort.ProviderContext(
+                        request, attempt.attemptId(), attempt.providerRequestId()),
+                signableMaterial));
+        if (!(result instanceof SignerPort.Signed signed)) {
+            return Optional.empty();
+        }
+        SigningRequest.SignatureEvidence expected = attempt.signatureEvidence()
+                .orElseThrow(() -> new IllegalStateException(
+                        "signed request has no signature evidence"));
+        byte[] signature = signed.signature();
+        if (signature.length != expected.length()
+                || !SigningRequestCanonicalizer.sha256(signature).equals(expected.sha256())
+                || !signed.encoding().equals(expected.encoding())
+                || signed.origin() != expected.origin()) {
+            throw new IllegalStateException(
+                    "recovered signature differs from durable signing evidence");
+        }
+        return Optional.of(new SignatureMaterial(signature, signed.encoding()));
+    }
+
     private Result resume(SigningRequest request, byte[] material, boolean replayed) {
         return switch (request.status()) {
             case REQUESTED -> validateKeyAndAuthorize(request, material, replayed);
             case AWAITING_AUTHORIZATION -> resumeAuthorization(request, material, replayed);
             case AUTHORIZED -> resumeAuthorized(request, material, replayed);
-            case PROVIDER_REQUEST_PERSISTED, AMBIGUOUS -> inquire(request, replayed);
+            case PROVIDER_REQUEST_PERSISTED, AMBIGUOUS ->
+                    inquire(request, material, replayed);
             case SIGNED -> new Signed(request, replayed, Optional.empty());
             case DENIED -> new Denied(request, replayed);
             case RETRYABLE_NO_SIGNATURE -> new RetryableNoSignature(request, replayed);
@@ -143,7 +178,8 @@ public final class SigningAuthorityService {
                 || !key.allowedRoles().contains(key.role())
                 || !key.allowedAlgorithms().contains(key.algorithm())
                 || !key.allowedNetworks().contains(key.network())
-                || !roleMatchesAction(key.role(), request.authorityContext().action())) {
+                || !roleMatchesAction(
+                        key.role(), request.authorityContext().action(), key.network())) {
             SigningRequest denied = request.deny(
                     request.version(), "key-metadata-mismatch", now(),
                     evidence("key-denied", request.requestId()));
@@ -230,12 +266,14 @@ public final class SigningAuthorityService {
         return recordProviderResult(persisted, attemptId, result, replayed);
     }
 
-    private Result inquire(SigningRequest request, boolean replayed) {
+    private Result inquire(
+            SigningRequest request, byte[] material, boolean replayed) {
         SigningRequest.Attempt attempt = request.attempts().getLast();
         SignerPort.ProviderContext context = new SignerPort.ProviderContext(
                 request, attempt.attemptId(), attempt.providerRequestId());
         return recordProviderResult(
-                request, attempt.attemptId(), provider.inquire(new SignerPort.Inquiry(context)),
+                request, attempt.attemptId(), provider.inquire(
+                        new SignerPort.Inquiry(context, material)),
                 replayed);
     }
 
@@ -291,9 +329,13 @@ public final class SigningAuthorityService {
     }
 
     private static boolean roleMatchesAction(
-            SigningRequest.KeyRole role, SigningRequest.Action action) {
+            SigningRequest.KeyRole role,
+            SigningRequest.Action action,
+            SettlementNetwork network) {
         return switch (action) {
-            case MINT -> role == SigningRequest.KeyRole.MINT_AUTHORITY;
+            case MINT -> role == SigningRequest.KeyRole.MINT_AUTHORITY
+                    || (role == SigningRequest.KeyRole.FEE_PAYER
+                        && network == SettlementNetwork.SOLANA);
             case TRANSFER -> role == SigningRequest.KeyRole.TRANSFER_AUTHORITY;
             case BURN -> role == SigningRequest.KeyRole.BURN_AUTHORITY;
         };

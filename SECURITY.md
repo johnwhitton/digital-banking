@@ -4,7 +4,7 @@
 
 This repository is non-production research and reference software. It is not approved for real funds, production settlement, regulated operations, or compliance reliance. It makes no warranty or claim of legal, regulatory, security, custody, or operational certification.
 
-Do not use this repository with mainnet, public testnets, production RPC providers, production custody/HSM/MPC systems, or real-value accounts. Production signing remains absent. Chain integration is limited to explicit local-Anvil mint, user-transfer, and redemption-custody/burn paths, and the only cryptographic signers are the two explicit modes of the isolated local-development adapter described below.
+Do not use this repository with mainnet, public testnets, production RPC providers, production custody/HSM/MPC systems, or real-value accounts. Production signing remains absent. Chain integration is limited to explicit local-Anvil mint, user-transfer, and redemption-custody/burn paths plus one local-validator classic-SPL mint. The only cryptographic signers are the explicit modes of the isolated local-development adapter described below.
 
 ## Durable API boundary
 
@@ -38,6 +38,14 @@ The default profile creates no local signer and generates no key. A local signer
 Shutdown releases key references and attempts provider-supported destruction, but Java/provider objects do not prove physical memory zeroization. No stronger erasure claim is made. Local keys and signatures are disposable development evidence, not a staging form of production authority.
 
 Production-oriented signing designs must keep raw keys outside application memory and bind authorization evidence to the exact operation, attempt, chain, asset, destination, amount, fee/expiry bounds, policy version, approvals, and canonical transaction bytes or digest.
+
+### Configured local Solana authority
+
+The mutually exclusive `local-solana` profile is a disposable Phase 7B exception, not production custody. It accepts only uncredentialed loopback HTTP, explicit Agave cluster/mint/destination identities, the classic Token and Associated Token Account programs, and the two Phase 7A keypair files for `FEE_PAYER` and `MINT_AUTHORITY`. The ignored runtime root and key directory must be mode `0700`; key files must be regular, non-symlink mode-`0600` files beneath that root. Startup verifies each configured public identity, private/public pair, alias, role, key version, and network before any signing is possible.
+
+The local signer parses the fixed 64-byte JSON keypair directly from a wipeable byte buffer, retains private-key objects only inside the signer, signs only an authorized exact Solana message with JDK Ed25519, verifies every produced signature, and binds replay to the durable provider request. To close the crash window between durable signing and adapter attachment, it retains only the public 64-byte signature plus its binding under ignored `signing-results/`; that directory is mode `0700`, each result is a regular non-symlink mode-`0600` file, and recovery re-verifies both binding and signature against the exact durable message. Sava receives public keys, transaction bytes, and already verified signatures only; it has no key-file path or private-key bridge. Neither key bytes nor signed transaction bytes are logged, returned by the API, or persisted as participant-visible evidence. Java/provider objects still do not prove physical memory zeroization.
+
+The profile adds no new business endpoint and cannot run with `local-ethereum`, `local-demo`, or `local-signer`. Server configuration—not the caller—selects the fee payer, mint authority, mint, destination owner, asset/unit, policies, programs, and finality. Submission is fenced once by the precomputed first signature; a lost response is inquired and independently observed by that identity before completion. Only finalized matching transaction, instruction, mint/ATA ownership, and exact supply/balance deltas advance blockchain finality. Transfer, redemption, burn, public clusters, automatic replacement, and every production or non-blockchain finality remain disabled.
 
 ### Configured local-demo custody
 

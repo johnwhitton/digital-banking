@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import io.github.johnwhitton.digitalbanking.domain.operation.AttemptId;
@@ -11,6 +12,9 @@ import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationAttempt;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationId;
 import io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation;
+import io.github.johnwhitton.digitalbanking.domain.signing.KeyAlias;
+import io.github.johnwhitton.digitalbanking.domain.signing.SigningRequest;
+import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
 
 public interface ChainPort {
 
@@ -20,6 +24,16 @@ public interface ChainPort {
             UUID deliveryId, TokenOperation operation, OperationAttempt attempt);
 
     Optional<SignedAttempt> findSignedAttempt(AttemptIdentity attemptIdentity);
+
+    /** Ordered signer requirements retained with the native attempt. */
+    default List<SigningRequirement> requiredSigners(AttemptIdentity attemptIdentity) {
+        return List.of();
+    }
+
+    /** Signature orders already retained durably for restart-safe multi-signing. */
+    default Set<Integer> retainedSignatureOrders(AttemptIdentity attemptIdentity) {
+        return Set.of();
+    }
 
     SignedAttempt attachSignature(
             AttemptIdentity attemptIdentity, AuthorizedSignature signature);
@@ -34,6 +48,37 @@ public interface ChainPort {
             boolean supportsMint,
             boolean supportsBurn,
             boolean supportsIndependentInquiry) {
+    }
+
+    record SigningRequirement(
+            int order,
+            KeyAlias keyAlias,
+            SigningRequest.KeyRole keyRole,
+            SettlementNetwork network,
+            SigningRequest.Mode mode,
+            SigningRequest.Algorithm algorithm,
+            String signerReference,
+            String keyVersion) {
+
+        public SigningRequirement {
+            if (order < 0 || order > 15) {
+                throw new IllegalArgumentException("signer order must be between 0 and 15");
+            }
+            Objects.requireNonNull(keyAlias, "keyAlias");
+            Objects.requireNonNull(keyRole, "keyRole");
+            Objects.requireNonNull(network, "network");
+            Objects.requireNonNull(mode, "mode");
+            Objects.requireNonNull(algorithm, "algorithm");
+            signerReference = requireText(signerReference, "signerReference");
+            keyVersion = requireText(keyVersion, "keyVersion");
+            if ((mode == SigningRequest.Mode.EVM_DIGEST
+                        && algorithm != SigningRequest.Algorithm.SECP256K1)
+                    || (mode == SigningRequest.Mode.SOLANA_MESSAGE
+                        && algorithm != SigningRequest.Algorithm.ED25519)) {
+                throw new IllegalArgumentException(
+                        "signing mode and algorithm are inconsistent");
+            }
+        }
     }
 
     record PreparedAttempt(

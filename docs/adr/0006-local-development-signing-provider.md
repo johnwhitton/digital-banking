@@ -15,7 +15,7 @@ The adapter is explicitly local-development infrastructure. Its keys are generat
 ## Decision
 
 - Add one executable `adapters/signer-local` module that implements the existing `SignerPort` and `SigningKeyRegistry`.
-- Pin `org.bouncycastle:bcprov-jdk18on:1.82` as the module's only cryptographic dependency. Bouncy Castle's official Java source is <https://www.bouncycastle.org/java.html>; the artifact uses the Bouncy Castle License (MIT-style), published at <https://www.bouncycastle.org/licence.html>.
+- Pin `org.bouncycastle:bcprov-jdk18on:1.85` centrally and keep `adapters/signer-local` as the only module with a direct dependency. Sava Core uses the same version at runtime, avoiding two cryptographic-provider versions on the composed classpath. Bouncy Castle's official Java source is <https://www.bouncycastle.org/java.html>; the artifact uses the Bouncy Castle License (MIT-style), published at <https://www.bouncycastle.org/licence.html>.
 - Use Bouncy Castle only for ephemeral secp256k1 key generation, exact-digest ECDSA, low-`s` normalization, compact signature encoding, recovery identity, and verification helpers inside the adapter.
 - Use JDK-native Ed25519 for Solana exact-message signing.
 - Seed ephemeral generation with JCA `SecureRandom`; read no key, seed, mnemonic, keystore, credential, or deterministic private fixture from any external source.
@@ -44,7 +44,7 @@ Rejected because restart must create a new local authority identity and stale pe
 ## Consequences
 
 - The local signer can produce and verify real EVM/Solana signatures while remaining isolated and explicitly enabled.
-- One third-party dependency is added and must stay confined to the adapter by Maven/`jdeps` checks.
+- One direct third-party dependency is added and must stay confined to the adapter by Maven/`jdeps` checks. Its centrally managed version also governs the approved Sava Core runtime transitive.
 - Java private-key objects and Bouncy Castle parameters may not guarantee physical memory zeroization; shutdown releases references and attempts supported destruction without claiming stronger erasure.
 - Local signatures and metadata are synthetic development evidence only. This ADR selects no production HSM/MPC/custody provider and authorizes no public network or chain effect.
 - Replacing the dependency, changing encoding, persisting keys, or selecting a production signer requires a later decision and focused evidence.

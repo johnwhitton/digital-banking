@@ -60,12 +60,12 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 6C. Settlement-only orchestration      | `verified` | A V10 companion durably composes sender acquisition, exact custody transfer, recipient `AUTO_REDEEM`, and final reconciliation for one server-registered local transfer route; the consolidated PostgreSQL/Anvil proof, stable-diff reviews, and 498-test offline reactor are green. |
 | 6D. Ethereum demo environment          | `verified` | Digest-pinned loopback-only Compose, deterministic contract bootstrap, API-driven Demo A/B assertions, durable restart recovery, scoped cleanup, stable-diff reviews, and the 503-test offline reactor are green. |
 | 7A. Native Solana semantic gate        | `verified`    | Pinned native Agave/SPL tooling proves classic checked mint/transfer/redemption/burn semantics, exact quantities, canonical accounts, classified authority/valid-second-mint failures, finalized evidence, and zero end state on loopback. |
-| 7B. Solana mint parity                 | `planned`     | SPL mint meets Phase 5A business/evidence guarantees. |
+| 7B. Solana mint parity                 | `verified`    | Sava 25.8.0 passes the Java 25 compatibility gate; an explicit local profile executes one exact classic-SPL mint through ordered external Ed25519 signatures, V11 durable attempt/fence/observation state, response-loss inquiry, restart recovery, and finalized exact supply/balance evidence. The 521-test offline reactor is green. |
 | 7C. Solana transfer and burn parity    | `planned`     | Native transfer/redemption/burn meet applicable Phase 5C/5D guarantees. |
 | 7D. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
 | 8. Final reference review              | `planned`     | Architecture, code, security, recovery, API/demo, and share-readiness review. |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil mint/custody/transfer/redemption/burn primitives, Phase 6A's exact-USD synthetic bank and reserve/liability accounting primitives, Phase 6B's separate configured user-held acquisition/redemption parents, Phase 6C's one configured settlement-only parent composition, Phase 6D's reproducible local operator environment, and Phase 7A's separate native local-Solana semantic gate. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the separate local mock-bank contract; combined with `local-ethereum` it composes the existing chain handlers, participant-scoped `/v1/usdzelle` workflow resources, and the registered local route behind `/v1/transfers`. The additional `local-demo-environment` profile supplies only generated local bearer identities and a bounded read-only aggregate status/OpenAPI projection for the digest-pinned Compose runtime. `local-signer` plus `local-ethereum` composes the separate Phase 5A mint handler. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. Phase 7A changes none of those runtime profiles and adds no Java adapter. No dynamic wallet management, real bank/reserve, arbitrary settlement routing, automatic compensation, or durable Solana product path exists. Each planned phase below requires its own separately authorized plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil mint/custody/transfer/redemption/burn primitives, Phase 6A's exact-USD synthetic bank and reserve/liability accounting primitives, Phase 6B's separate configured user-held acquisition/redemption parents, Phase 6C's one configured settlement-only parent composition, Phase 6D's reproducible local operator environment, Phase 7A's native local-Solana semantic gate, and Phase 7B's separate local Solana mint. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the separate local mock-bank contract; combined with `local-ethereum` it composes the existing chain handlers, participant-scoped `/v1/usdzelle` workflow resources, and the registered local route behind `/v1/transfers`. The additional `local-demo-environment` profile supplies only generated local bearer identities and a bounded read-only aggregate status/OpenAPI projection for the digest-pinned Compose runtime. `local-signer` plus `local-ethereum` composes the Phase 5A mint handler. The mutually exclusive `local-solana` profile composes only the existing mint queue/API, local Ed25519 authority, and isolated Sava adapter. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. No dynamic wallet management, real bank/reserve, arbitrary settlement routing, automatic compensation, Solana transfer/burn, or complete Solana product path exists. Each planned phase below requires its own separately authorized plan.
 
 ## Phase 1: Foundation
 
@@ -155,7 +155,7 @@ Phases 4-8 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 **Phase 4A implemented deliverables:** framework-free typed signing request/attempt/provider/key identities; exact mint/transfer/burn authority context; distinct EVM `secp256k1` digest and Solana `Ed25519` serialized-message commands; versioned complete-context canonicalization; non-secret key-registry and policy ports; durable replay/conflict, provider-request-before-call, ambiguity inquiry, linked retry, append-only evidence, and optimistic concurrency; explicit JDBC/Flyway V4 persistence; and a deterministic synthetic signer in test sources only.
 
-**Phase 4B implemented deliverables:** one executable `adapters/signer-local` module implementing the Phase 4A provider and key registry; Bouncy Castle 1.82 confined to real exact-digest secp256k1 signing with compact low-`s` recovery encoding; JDK-native exact-message Ed25519; two session-only in-memory keys with opaque aliases/versions, public fingerprints, typed role/network allowlists, safe local evidence, and supported cleanup; and explicit Spring profile `local-signer` composition with no default bean, fallback, endpoint, or key source. See [ADR 0006](adr/0006-local-development-signing-provider.md).
+**Phase 4B implemented deliverables:** one executable `adapters/signer-local` module implementing the Phase 4A provider and key registry; centrally managed Bouncy Castle 1.85 confined to real exact-digest secp256k1 signing with compact low-`s` recovery encoding; JDK-native exact-message Ed25519; two session-only in-memory keys with opaque aliases/versions, public fingerprints, typed role/network allowlists, safe local evidence, and supported cleanup; and explicit Spring profile `local-signer` composition with no default bean, fallback, endpoint, or key source. See [ADR 0006](adr/0006-local-development-signing-provider.md).
 
 **Tests:** Phase 4A defensive copies/redaction, complete-context binding, authorization, replay/conflict, ambiguity/inquiry/retry, V1-V4 persistence, concurrency, restart, and no-secret schema; plus Phase 4B exact EVM verification/no-double-hash/low-`s`/recovery, exact 64-byte Solana verification, length/mode/authority/session fencing, same-provider replay/conflict, no-signature and ambiguity fixtures, completed replay without re-signing, stale-pending manual review, explicit-profile/default-disabled/invalid-config behavior, warning, and no public signing mapping.
 
@@ -303,15 +303,15 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 ### Phase 7B: Solana mint parity
 
-**Status:** `planned`
+**Status:** `verified`
 
 **Dependency:** Phase 7A.
 
-**Plan:** not created until separately authorized.
+**Plan:** completed in [`docs/plans/completed/PHASE_7B_JAVA_SAVA_COMPATIBILITY_AND_SOLANA_MINT_PARITY.md`](plans/completed/PHASE_7B_JAVA_SAVA_COMPATIBILITY_AND_SOLANA_MINT_PARITY.md).
 
-**Deliverables:** native SPL mint creation and authority setup plus the Phase 5A exact mint, durable attempt, sign, submit-once, inquire, observe, ambiguity, restart, reconciliation, and finality guarantees expressed with Solana-native evidence.
+**Deliverables:** one isolated `adapters/solana-sava` module with Sava Core/RPC 25.8.0 and parser 25.3.0; centrally aligned Bouncy Castle 1.85; Java 25/Agave compatibility fixtures; one V11 migration for immutable Solana mint context, policy/fee snapshots, ordered signatures, a single active local preparation lane, submit fence, replacement lineage, and observations; provider-neutral ordered fee-payer/mint-authority signing; a mode-restricted local Ed25519 signer that never exposes key material to Sava and retains only bound public signature outcomes for crash-safe inquiry; an explicit loopback-only `local-solana` profile; canonical ATA creation plus exact two-decimal `MintToChecked`; inquiry-before-retry and finalized independent effect matching; and a public-only native fixture command.
 
-**Exit gate:** an exact local-validator mint reaches the same business and recovery guarantees as Phase 5A without erasing signature/slot/commitment or blockhash-lifetime semantics.
+**Exit gate:** compatibility, codec, signer, default-profile, real-PostgreSQL/HTTP, and real private-validator gates are green. The real gate accepts exactly `100.00`/`10000` atomic units, loses the submission response after node acceptance, reconstructs signer/adapter/handler state, submits no second transaction, and completes only after finalized transaction/instruction/account/supply/balance evidence agrees. The final offline reactor reports 521 tests across eight modules, with 520 executed successfully and only the separately green opt-in validator test skipped by default.
 
 **Non-goals:** transfer, burn, either full demonstration, public clusters, or production authority.
 
@@ -383,6 +383,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Completed Phase 6C settlement-only orchestration plan: [`docs/plans/completed/PHASE_6C_SETTLEMENT_ONLY_TRANSFER_ORCHESTRATION.md`](plans/completed/PHASE_6C_SETTLEMENT_ONLY_TRANSFER_ORCHESTRATION.md).
 - Completed Phase 6D reproducible local demo plan: [`docs/plans/completed/PHASE_6D_REPRODUCIBLE_ETHEREUM_DEMO_ENVIRONMENT.md`](plans/completed/PHASE_6D_REPRODUCIBLE_ETHEREUM_DEMO_ENVIRONMENT.md).
 - Completed Phase 7A native Solana semantic-gate plan: [`docs/plans/completed/PHASE_7A_NATIVE_SOLANA_TOOLCHAIN_AND_SEMANTIC_GATE.md`](plans/completed/PHASE_7A_NATIVE_SOLANA_TOOLCHAIN_AND_SEMANTIC_GATE.md).
+- Completed Phase 7B Java/Sava compatibility and Solana mint-parity plan: [`docs/plans/completed/PHASE_7B_JAVA_SAVA_COMPATIBILITY_AND_SOLANA_MINT_PARITY.md`](plans/completed/PHASE_7B_JAVA_SAVA_COMPATIBILITY_AND_SOLANA_MINT_PARITY.md).
 - Completed dual-product-path and delivery-roadmap alignment: [`docs/plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md`](plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md).
 - Completed Zelle share-readiness and transfer-roadmap plan: [`docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
@@ -427,8 +428,11 @@ JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl adapters/persistence-postgres -am
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -pl control-plane -am test
 (cd contracts/evm && forge test)
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -o -pl adapters/ethereum-web3j -am test
+JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -o -pl adapters/solana-sava -am test
+JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -o -pl adapters/solana-sava dependency:tree
 sh -n scripts/solana/*.sh
 scripts/solana/bootstrap.sh
+scripts/solana/phase7b-fixture.sh
 scripts/solana/semantic-gate.sh --yes
 scripts/solana/status.sh --json
 graphify --version
@@ -450,6 +454,16 @@ Action Request 07 corrects the Phase 3A API boundary without adding capability:
 The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md`](plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md). This correction adds no endpoint, dependency, migration, runtime configuration, worker, external effect, signer, chain adapter, or production-readiness claim.
 
 ## Latest bounded vertical slice
+
+Action Request 23 implements **Phase 7B Java/Sava Compatibility and Solana Mint Parity**:
+
+- Sava Core/RPC 25.8.0 and `json-iterator` 25.3.0 pass executable Java 25 coverage for Phase 7A public vectors, classic Token/ATA layouts, checked-instruction fields, legacy message/signer ordering, external JDK Ed25519 signatures, and Agave 4.1.2 response shapes; Sava remains isolated to one adapter;
+- Bouncy Castle is centrally aligned from 1.82 to 1.85, the resolved tree contains only the approved Sava/parser/BC graph, and the existing Ethereum secp256k1 plus Solana Ed25519 signer suites remain green;
+- V11 durably retains immutable cluster/program/account/asset/unit/policy/fee context, serializes preparation-to-observation for the bounded single local route, and records recent blockhash and last-valid height, ordered fee-payer/mint-authority signatures, stable pre-submission identity, submit fence, replacement lineage, and bounded observations;
+- the unchanged participant-scoped mint API can run under a mutually exclusive loopback-only `local-solana` profile whose configured signer reads only ignored mode-restricted Phase 7A key files, retains only bound public signature results for crash-safe inquiry, and gives Sava no raw key access; and
+- real PostgreSQL plus Agave 4.1.2 proves one exact `100.00`/`10000` atomic-unit classic-SPL mint, forced response loss, process-boundary reconstruction, inquiry by the retained signature, no second submission, and finalized exact transaction/instruction/account/supply/balance evidence. Only blockchain finality advances.
+
+Transfer, redemption, burn, either Solana demonstration, public clusters, production custody, custom programs, Token-2022, CCTP, API expansion, and automatic replacement remain out of scope. ADR 0010 already governs the implemented native authority and evidence decisions, so no new ADR is required. Phase 7C native Solana transfer and burn parity is the next bounded recommendation.
 
 Action Request 22 implements **Phase 7A Native Solana Toolchain and Semantic Gate**:
 
@@ -549,7 +563,7 @@ This is one local development mint effect, not either complete demonstration. It
 The preceding Action Request 12 implements **Phase 4B Isolated Local-Development Signer**:
 
 - one focused `adapters/signer-local` module reusing the Phase 4A `SignerPort` and `SigningKeyRegistry` rather than creating another authority model;
-- one Bouncy Castle 1.82 dependency confined to exact 32-byte secp256k1 digest signing, low-`s` normalization, and compact recovery encoding, with JDK-native Ed25519 for exact Solana message bytes;
+- one centrally managed Bouncy Castle 1.85 dependency confined to exact 32-byte secp256k1 digest signing, low-`s` normalization, and compact recovery encoding, with JDK-native Ed25519 for exact Solana message bytes;
 - one in-memory EVM key and one in-memory Solana key generated only under explicit profile `local-signer`, with opaque session aliases/versions, public fingerprints, typed role/network allowlists, and no persisted/private input;
 - exact replay through the durable Phase 4A result without re-signing, stable provider-identity conflict, inquiry after ambiguity, bounded no-signature retry, and stale-session manual review;
 - explicit Spring composition, safe startup warning, invalid-configuration failure, and unchanged default context/readiness/OpenAPI/public resources; and
@@ -617,4 +631,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, and remaining Solana product paths are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 7A closeout, the next recommended bounded action is Phase 7B Java-client compatibility and Solana mint parity; it must preserve both product meanings and native Solana evidence without adding public-network or production-custody behavior.
+The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, Phase 7B local Solana mint, and remaining Solana product paths are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). The next recommended bounded action is Phase 7C native Solana transfer and burn parity; it must preserve both product meanings and native Solana evidence without adding public-network or production-custody behavior.
