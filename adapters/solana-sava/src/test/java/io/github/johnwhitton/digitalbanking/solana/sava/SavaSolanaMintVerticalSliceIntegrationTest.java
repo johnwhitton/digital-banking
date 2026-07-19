@@ -51,6 +51,7 @@ import io.github.johnwhitton.digitalbanking.application.command.MintCommand;
 import io.github.johnwhitton.digitalbanking.application.command.ParticipantScope;
 import io.github.johnwhitton.digitalbanking.application.delivery.DeliveryOutcome;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDelivery;
+import io.github.johnwhitton.digitalbanking.application.delivery.RedemptionAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.WalletTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.port.IdGenerator;
@@ -234,6 +235,8 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                 "local-solana:transfer-mint");
         TestKey source = key(temporary.resolve("transfer-source.json"),
                 "local-solana:transfer-source");
+        TestKey burnAuthority = key(temporary.resolve("transfer-burn.json"),
+                "local-solana:transfer-burn");
         Files.setPosixFilePermissions(temporary, Set.of(
                 PosixFilePermission.OWNER_READ,
                 PosixFilePermission.OWNER_WRITE,
@@ -245,7 +248,10 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                                     SigningRequest.KeyRole.MINT_AUTHORITY, "mint-v1"),
                             configured(source,
                                     SigningRequest.KeyRole.TRANSFER_AUTHORITY,
-                                    "source-v1"))));
+                                    "source-v1"),
+                            configured(burnAuthority,
+                                    SigningRequest.KeyRole.BURN_AUTHORITY,
+                                    "burn-v1"))));
                 RpcFixture rpc = new RpcFixture(
                         fee.publicKey(), mintAuthority.publicKey(), source.publicKey(),
                         TRANSFER_DESTINATION_OWNER, BigInteger.valueOf(10_000),
@@ -256,7 +262,10 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                             source.address(), fee.address(), fee.alias().value(), "fee-v1",
                             mintAuthority.address(), mintAuthority.alias().value(), "mint-v1",
                             TRANSFER_DESTINATION_OWNER.toBase58(), source.alias().value(),
-                            "source-v1", UNIT.assetId(), UNIT.unitId(), UNIT.version(),
+                            "source-v1", burnAuthority.address(),
+                            burnAuthority.alias().value(), "burn-v1",
+                            "registry-v1",
+                            UNIT.assetId(), UNIT.unitId(), UNIT.version(),
                             UNIT.scale(), "local-solana-transfer-v1",
                             SavaSolanaMintChainAdapter.CommitmentLevel.CONFIRMED,
                             SavaSolanaMintChainAdapter.CommitmentLevel.FINALIZED,
@@ -347,7 +356,7 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                             CLOCK::instant, Duration.ofMinutes(5));
             OperationDelivery delivery = walletDelivery(
                     accepted.operation().operationId());
-            assertEquals("PENDING", jdbc.sql("""
+            assertEquals("IN_PROGRESS", jdbc.sql("""
                     SELECT status FROM operation_outbox WHERE operation_id = :operationId
                     """).param("operationId", burn.operation().operationId().value())
                     .query(String.class).single());
@@ -533,7 +542,291 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
     }
 
     @Test
-    void v12MigratesAnExistingV11Schema() {
+    void burnsOnlyExactFinalizedCustodyOnceAcrossRestartAndConfigurationChange()
+            throws Exception {
+        TestKey fee = key(temporary.resolve("burn-fee.json"),
+                "local-solana:burn-fee");
+        TestKey mintAuthority = key(temporary.resolve("burn-mint.json"),
+                "local-solana:burn-mint");
+        TestKey source = key(temporary.resolve("burn-source.json"),
+                "local-solana:burn-source");
+        TestKey burnAuthority = key(temporary.resolve("burn-admin.json"),
+                "local-solana:burn-admin");
+        Files.setPosixFilePermissions(temporary, Set.of(
+                PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE,
+                PosixFilePermission.OWNER_EXECUTE));
+        try (LocalSolanaConfiguredSigner signer = new LocalSolanaConfiguredSigner(
+                    new LocalSolanaConfiguredSigner.Configuration(temporary, List.of(
+                            configured(fee, SigningRequest.KeyRole.FEE_PAYER, "fee-v1"),
+                            configured(mintAuthority,
+                                    SigningRequest.KeyRole.MINT_AUTHORITY, "mint-v1"),
+                            configured(source,
+                                    SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                    "source-v1"),
+                            configured(burnAuthority,
+                                    SigningRequest.KeyRole.BURN_AUTHORITY,
+                                    "burn-v1"))));
+                RpcFixture rpc = new RpcFixture(
+                        fee.publicKey(), mintAuthority.publicKey(), source.publicKey(),
+                        burnAuthority.publicKey(), BigInteger.valueOf(10_000),
+                        BigInteger.valueOf(10_000))) {
+            SavaSolanaMintChainAdapter.Configuration configuration =
+                    new SavaSolanaMintChainAdapter.Configuration(
+                            rpc.endpoint(), rpc.genesis(), rpc.mint().toBase58(),
+                            source.address(), fee.address(), fee.alias().value(), "fee-v1",
+                            mintAuthority.address(), mintAuthority.alias().value(), "mint-v1",
+                            TRANSFER_DESTINATION_OWNER.toBase58(), source.alias().value(),
+                            "source-v1", burnAuthority.address(),
+                            burnAuthority.alias().value(), "burn-v1",
+                            "registry-v1",
+                            UNIT.assetId(), UNIT.unitId(), UNIT.version(), UNIT.scale(),
+                            "local-solana-redemption-v1",
+                            SavaSolanaMintChainAdapter.CommitmentLevel.CONFIRMED,
+                            SavaSolanaMintChainAdapter.CommitmentLevel.FINALIZED,
+                            BigInteger.valueOf(1_000_000), BigInteger.valueOf(100_000),
+                            Duration.ofSeconds(2));
+            PostgresOperationRepository operations =
+                    new PostgresOperationRepository(dataSource);
+            PostgresWalletTransferRepository transfers =
+                    new PostgresWalletTransferRepository(dataSource);
+            WalletReference sourceRef = new WalletReference("synthetic-wallet:USER_1");
+            WalletReference adminRef =
+                    new WalletReference("synthetic-wallet:ADMIN_REDEMPTION");
+            WalletIdentityRegistry wallets = walletRegistry(
+                    new WalletIdentityRegistry.WalletIdentity(
+                            sourceRef, Set.of(),
+                            WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
+                            SettlementNetwork.SOLANA, source.address(), source.alias(),
+                            "registry-v1", "source-v1",
+                            Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
+                            WalletIdentityRegistry.Status.ENABLED),
+                    new WalletIdentityRegistry.WalletIdentity(
+                            adminRef, Set.of(new WalletReference("synthetic-wallet:ADMIN")),
+                            WalletIdentityRegistry.OwnerCategory.ADMIN,
+                            SettlementNetwork.SOLANA, burnAuthority.address(),
+                            burnAuthority.alias(), "registry-v1", "burn-v1",
+                            Set.of(WalletIdentityRegistry.Purpose.REDEMPTION_CUSTODY,
+                                    WalletIdentityRegistry.Purpose.BURN_AUTHORITY),
+                            WalletIdentityRegistry.Status.ENABLED));
+            WalletTransferAcceptanceService acceptance =
+                    new WalletTransferAcceptanceService(
+                            transfers, (asset, unit, version) ->
+                                    asset.equals(UNIT.assetId())
+                                            && unit.equals(UNIT.unitId())
+                                            && version == UNIT.version()
+                                            ? Optional.of(UNIT) : Optional.empty(),
+                            wallets, CLOCK::instant, ids(), transferIds(),
+                            new WalletTransferAcceptanceService.Policy(
+                                    configuration.mintAddress(), "local-solana-token-v1",
+                                    configuration.policyVersion()));
+            OperationAcceptance burn = new TokenOperationService(
+                    operations, CLOCK::instant, ids(),
+                    (canonical, participant) -> new EvidenceRef(
+                            "participant:test:solana-burn:" + canonical.sha256()))
+                    .accept(new BurnCommand(
+                                    1, PARTICIPANT, TokenQuantity.parse("100", UNIT),
+                                    "solana-burn-recovery"),
+                            IdempotencyKey.of("solana-burn-recovery"));
+            OperationDelivery burnDelivery = tokenDelivery(
+                    burn.operation().operationId());
+            SavaSolanaMintChainAdapter chain = new SavaSolanaMintChainAdapter(
+                    dataSource, client(rpc.endpoint()), client(rpc.endpoint()),
+                    configuration, CLOCK);
+            RedemptionAcceptedDeliveryHandler initialHandler = redemption(
+                    operations, transfers, acceptance, chain, signer, wallets,
+                    sourceRef, adminRef, configuration);
+
+            assertEquals(DeliveryOutcome.Classification.RETRYABLE_NO_EFFECT,
+                    initialHandler.handle(burnDelivery).classification());
+            OperationId custodyId = new OperationId(jdbc.sql("""
+                    SELECT custody_operation_id FROM ethereum_redemption_correlation
+                    WHERE burn_operation_id = :burnOperationId
+                    """).param("burnOperationId", burn.operation().operationId().value())
+                    .query(UUID.class).single());
+            assertEquals(DeliveryOutcome.Classification.RETRYABLE_NO_EFFECT,
+                    initialHandler.handle(burnDelivery).classification());
+            assertEquals(DeliveryOutcome.Classification.DELIVERED,
+                    initialHandler.handle(walletDelivery(custodyId)).classification());
+
+            jdbc.sql("""
+                    UPDATE solana_mint_observation SET expected_instructions = false
+                    WHERE operation_id = :operationId AND effect_kind = 'TRANSFER'
+                    """).param("operationId", custodyId.value()).update();
+            assertThrows(IllegalStateException.class,
+                    () -> initialHandler.handle(burnDelivery));
+            assertEquals(0, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_attempt
+                    WHERE operation_id = :operationId AND effect_kind = 'BURN'
+                    """).param("operationId", burn.operation().operationId().value())
+                    .query(Integer.class).single());
+            jdbc.sql("""
+                    UPDATE solana_mint_observation SET expected_instructions = true
+                    WHERE operation_id = :operationId AND effect_kind = 'TRANSFER'
+                    """).param("operationId", custodyId.value()).update();
+
+            jdbc.sql("""
+                    UPDATE solana_mint_attempt SET cluster_identity = :cluster
+                    WHERE operation_id = :operationId AND effect_kind = 'TRANSFER'
+                    """).param("cluster", TRANSFER_DESTINATION_OWNER.toBase58())
+                    .param("operationId", custodyId.value()).update();
+            assertThrows(IllegalStateException.class,
+                    () -> initialHandler.handle(burnDelivery));
+            jdbc.sql("""
+                    UPDATE solana_mint_attempt SET cluster_identity = :cluster
+                    WHERE operation_id = :operationId AND effect_kind = 'TRANSFER'
+                    """).param("cluster", rpc.genesis())
+                    .param("operationId", custodyId.value()).update();
+
+            jdbc.sql("""
+                    UPDATE wallet_transfer_operation SET destination_registry_version = 'registry-v2'
+                    WHERE operation_id = :operationId
+                    """).param("operationId", custodyId.value()).update();
+            assertThrows(IllegalStateException.class,
+                    () -> initialHandler.handle(burnDelivery));
+            jdbc.sql("""
+                    UPDATE wallet_transfer_operation SET destination_registry_version = 'registry-v1'
+                    WHERE operation_id = :operationId
+                    """).param("operationId", custodyId.value()).update();
+
+            TokenOperation pendingBurn = operations.findById(
+                    burn.operation().operationId()).orElseThrow();
+            CountDownLatch prepareStart = new CountDownLatch(1);
+            ExecutorService prepareWorkers = Executors.newFixedThreadPool(2);
+            try {
+                var prepareLeft = prepareWorkers.submit(() -> {
+                    prepareStart.await();
+                    return chain.prepare(burnDelivery.deliveryId(), pendingBurn,
+                            pendingBurn.attempts().getLast());
+                });
+                var prepareRight = prepareWorkers.submit(() -> {
+                    prepareStart.await();
+                    return chain.prepare(burnDelivery.deliveryId(), pendingBurn,
+                            pendingBurn.attempts().getLast());
+                });
+                prepareStart.countDown();
+                int prepared = 0;
+                for (Future<?> result : List.of(prepareLeft, prepareRight)) {
+                    try {
+                        result.get();
+                        prepared++;
+                    } catch (java.util.concurrent.ExecutionException fenced) {
+                        assertTrue(fenced.getCause() instanceof IllegalStateException);
+                    }
+                }
+                assertTrue(prepared >= 1);
+            } finally {
+                prepareWorkers.shutdownNow();
+            }
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_attempt
+                    WHERE operation_id = :operationId AND effect_kind = 'BURN'
+                    """).param("operationId", burn.operation().operationId().value())
+                    .query(Integer.class).single());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM ethereum_redemption_correlation
+                    WHERE burn_operation_id = :operationId
+                      AND correlation_status = 'CONSUMED'
+                    """).param("operationId", burn.operation().operationId().value())
+                    .query(Integer.class).single());
+
+            rpc.expired(true);
+            client(rpc.endpoint()).getBlockHeight(Commitment.CONFIRMED).join();
+            assertEquals(DeliveryOutcome.Classification.RETRYABLE_NO_EFFECT,
+                    initialHandler.handle(burnDelivery).classification());
+            rpc.expired(false);
+
+            AtomicBoolean loseBurnResponse = new AtomicBoolean(true);
+            SolanaRpcClient burnSubmission = client(rpc.endpoint());
+            SavaSolanaMintChainAdapter responseLoss = new SavaSolanaMintChainAdapter(
+                    dataSource, burnSubmission, client(rpc.endpoint()), base64 -> {
+                        String signature = burnSubmission.sendTransaction(base64, 0).join();
+                        if (loseBurnResponse.compareAndSet(true, false)) {
+                            throw new IllegalStateException(
+                                    "synthetic response loss after ADMIN burn");
+                        }
+                        return signature;
+                    }, configuration, CLOCK);
+            RedemptionAcceptedDeliveryHandler lossHandler = redemption(
+                    operations, transfers, acceptance, responseLoss, signer, wallets,
+                    sourceRef, adminRef, configuration);
+            assertEquals(DeliveryOutcome.Classification.AMBIGUOUS_ACKNOWLEDGEMENT,
+                    lossHandler.handle(burnDelivery).classification());
+
+            SavaSolanaMintChainAdapter.Configuration rotatedMintAuthority =
+                    new SavaSolanaMintChainAdapter.Configuration(
+                            configuration.rpcUri(), configuration.clusterIdentity(),
+                            configuration.mintAddress(), configuration.destinationOwner(),
+                            configuration.feePayerPublicKey(),
+                            configuration.feePayerKeyAlias(),
+                            configuration.feePayerKeyVersion(), publicKey((byte) 20),
+                            configuration.mintAuthorityKeyAlias(), "mint-v2",
+                            configuration.transferDestinationOwner(),
+                            configuration.transferAuthorityKeyAlias(),
+                            configuration.transferAuthorityKeyVersion(),
+                            configuration.redemptionOwner(),
+                            configuration.burnAuthorityKeyAlias(),
+                            configuration.burnAuthorityKeyVersion(),
+                            configuration.walletRegistryVersion(),
+                            configuration.assetId(), configuration.unitId(),
+                            configuration.unitVersion(), configuration.decimals(),
+                            configuration.policyVersion(),
+                            configuration.preparationCommitment(),
+                            configuration.observationCommitment(),
+                            configuration.minimumFeePayerLamports(),
+                            configuration.maximumFeeLamports(),
+                            configuration.requestTimeout());
+            RedemptionAcceptedDeliveryHandler restartedHandler = redemption(
+                    new PostgresOperationRepository(dataSource),
+                    new PostgresWalletTransferRepository(dataSource), acceptance,
+                    new SavaSolanaMintChainAdapter(
+                            dataSource, client(rpc.endpoint()), client(rpc.endpoint()),
+                            rotatedMintAuthority, CLOCK),
+                    signer, wallets, sourceRef, adminRef, rotatedMintAuthority);
+            assertEquals(DeliveryOutcome.Classification.DELIVERED,
+                    restartedHandler.handle(burnDelivery).classification());
+            assertEquals(DeliveryOutcome.Classification.DUPLICATE,
+                    restartedHandler.handle(burnDelivery).classification());
+            assertEquals(BigInteger.ZERO, rpc.supply());
+            assertEquals(BigInteger.ZERO, rpc.destinationBalance());
+            assertEquals(2, rpc.submissionCalls());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM ethereum_redemption_correlation
+                    JOIN solana_mint_attempt consumed
+                      ON consumed.operation_attempt_id =
+                          ethereum_redemption_correlation.consumed_by_burn_attempt_id
+                     AND consumed.operation_id =
+                          ethereum_redemption_correlation.burn_operation_id
+                    WHERE burn_operation_id = :operationId
+                      AND correlation_status = 'CONSUMED'
+                      AND consumed.effect_kind = 'BURN'
+                      AND consumed.replacement_sequence = 0
+                    """).param("operationId", burn.operation().operationId().value())
+                    .query(Integer.class).single());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_attempt
+                    WHERE operation_id = :operationId AND effect_kind = 'BURN'
+                      AND attempt_status = 'CONFIRMED'
+                    """).param("operationId", burn.operation().operationId().value())
+                    .query(Integer.class).single());
+            assertEquals(2, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_attempt
+                    WHERE operation_id = :operationId AND effect_kind = 'BURN'
+                      AND redemption_correlation_id IS NOT NULL
+                    """).param("operationId", burn.operation().operationId().value())
+                    .query(Integer.class).single());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_attempt
+                    WHERE operation_id = :operationId AND effect_kind = 'BURN'
+                      AND replacement_parent_id IS NOT NULL
+                      AND replacement_sequence = 1
+                    """).param("operationId", burn.operation().operationId().value())
+                    .query(Integer.class).single());
+        }
+    }
+
+    @Test
+    void v13MigratesAnExistingV11Schema() {
         String schema = "phase7c_v11_" + UUID.randomUUID().toString().replace("-", "");
         Flyway v11 = Flyway.configure()
                 .dataSource(dataSource)
@@ -655,12 +948,24 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                 .schemas(schema)
                 .defaultSchema(schema)
                 .createSchemas(false)
+                .target(MigrationVersion.fromVersion("12"))
                 .cleanDisabled(true)
                 .load();
         v12.migrate();
-
         assertEquals("12", v12.info().current().getVersion().getVersion());
-        assertEquals(List.of("effect_kind", "pre_source_balance", "source_ata",
+
+        Flyway v13 = Flyway.configure()
+                .dataSource(dataSource)
+                .schemas(schema)
+                .defaultSchema(schema)
+                .createSchemas(false)
+                .cleanDisabled(true)
+                .load();
+        v13.migrate();
+
+        assertEquals("13", v13.info().current().getVersion().getVersion());
+        assertEquals(List.of("effect_kind", "pre_source_balance",
+                        "redemption_correlation_id", "source_ata",
                         "source_owner", "token_operation_id",
                         "wallet_transfer_operation_id"),
                 jdbc.sql("""
@@ -670,7 +975,8 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                           AND table_name = 'solana_mint_attempt'
                           AND column_name IN (
                               'effect_kind', 'pre_source_balance', 'source_ata',
-                              'source_owner', 'token_operation_id',
+                              'source_owner', 'redemption_correlation_id',
+                              'token_operation_id',
                               'wallet_transfer_operation_id')
                         ORDER BY column_name
                         """).param("schema", schema).query(String.class).list());
@@ -911,6 +1217,12 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                 """).param("operationId", operationId.value()).query(UUID.class).single();
     }
 
+    private static OperationDelivery tokenDelivery(OperationId operationId) {
+        return new OperationDelivery(
+                eventId(operationId), operationId, 1, 1, UUID.randomUUID(),
+                "solana-redemption-worker", 1);
+    }
+
     private static TokenOperation submissionPending(
             PostgresOperationRepository operations, TokenOperation operation) {
         for (OperationState target : List.of(
@@ -983,6 +1295,35 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
         return new EvidenceRef("internal:test:solana-store:" + kind);
     }
 
+    private static RedemptionAcceptedDeliveryHandler redemption(
+            PostgresOperationRepository operations,
+            PostgresWalletTransferRepository transfers,
+            WalletTransferAcceptanceService acceptance,
+            SavaSolanaMintChainAdapter chain,
+            LocalSolanaConfiguredSigner signer,
+            WalletIdentityRegistry wallets,
+            WalletReference source,
+            WalletReference admin,
+            SavaSolanaMintChainAdapter.Configuration configuration) {
+        SigningAuthorityService signing = signingService(signer);
+        var burn = new TokenOperationAcceptedDeliveryHandler(
+                operations, chain, signing, CLOCK::instant, ids(),
+                new TokenOperationAcceptedDeliveryHandler.Policy(
+                        new KeyAlias(configuration.burnAuthorityKeyAlias()),
+                        configuration.redemptionOwner(), Duration.ofMinutes(5),
+                        configuration.policyVersion(), OperationKind.BURN,
+                        SigningRequest.Action.BURN,
+                        SigningRequest.KeyRole.BURN_AUTHORITY,
+                        SettlementNetwork.SOLANA,
+                        SigningRequest.Mode.SOLANA_MESSAGE,
+                        SigningRequest.Algorithm.ED25519));
+        var custody = new WalletTransferAcceptedDeliveryHandler(
+                transfers, chain, signing, wallets,
+                CLOCK::instant, Duration.ofMinutes(5));
+        return new RedemptionAcceptedDeliveryHandler(
+                operations, transfers, acceptance, burn, custody, source, admin);
+    }
+
     private Scenario scenario(boolean loseResponse) throws Exception {
         TestKey fee = key(temporary.resolve("fee-" + loseResponse + ".json"),
                 "local-solana:fee-" + loseResponse);
@@ -992,6 +1333,9 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
         TestKey transfer = key(
                 temporary.resolve("transfer-" + loseResponse + ".json"),
                 "local-solana:transfer-" + loseResponse);
+        TestKey burn = key(
+                temporary.resolve("burn-" + loseResponse + ".json"),
+                "local-solana:burn-" + loseResponse);
         Files.setPosixFilePermissions(temporary, Set.of(
                 PosixFilePermission.OWNER_READ,
                 PosixFilePermission.OWNER_WRITE,
@@ -1002,7 +1346,9 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                         configured(authority, SigningRequest.KeyRole.MINT_AUTHORITY,
                                 "authority-v1"),
                         configured(transfer, SigningRequest.KeyRole.TRANSFER_AUTHORITY,
-                                "transfer-v1"))));
+                                "transfer-v1"),
+                        configured(burn, SigningRequest.KeyRole.BURN_AUTHORITY,
+                                "burn-v1"))));
         RpcFixture rpc = new RpcFixture(fee.publicKey(), authority.publicKey());
         SolanaRpcClient submission = client(rpc.endpoint());
         SolanaRpcClient observation = client(rpc.endpoint());
@@ -1401,7 +1747,7 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                 submissionCalls++;
                 BigInteger amount = amount(signedTransaction);
                 int opcode = opcode(signedTransaction);
-                transactionPreSource = balance;
+                transactionPreSource = opcode == 15 ? destinationBalance : balance;
                 transactionPreDestination = destinationBalance;
                 if (finalizedFailure) {
                     // The deterministic node seam retains the failed transaction identity
@@ -1412,6 +1758,9 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                 } else if (opcode == 12) {
                     balance = balance.subtract(amount);
                     destinationBalance = destinationBalance.add(amount);
+                } else if (opcode == 15) {
+                    supply = supply.subtract(amount);
+                    destinationBalance = destinationBalance.subtract(amount);
                 } else {
                     throw new IOException("unexpected classic SPL instruction");
                 }
@@ -1465,6 +1814,7 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                 space = TokenAccount.BYTES;
             } else if (request.contains(destinationAta.toBase58())
                     && (destinationBalance.signum() > 0
+                        || (signedTransaction != null && opcode(signedTransaction) == 15)
                         || accountFault.name().startsWith("DESTINATION_"))) {
                 PublicKey accountMint = accountFault == AccountFault.DESTINATION_WRONG_MINT
                         ? PublicKey.createPubKey(fill((byte) 8)) : mint;
@@ -1502,9 +1852,11 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
         }
 
         private String transaction() {
-            String tokenBalances = opcode(signedTransaction) == 12
-                    ? transferTokenBalances() : "\"preTokenBalances\":[],"
-                            + "\"postTokenBalances\":[],";
+            int opcode = opcode(signedTransaction);
+            String tokenBalances = opcode == 12
+                    ? transferTokenBalances()
+                    : opcode == 15 ? burnTokenBalances()
+                    : "\"preTokenBalances\":[],\"postTokenBalances\":[],";
             return "{\"slot\":200,\"blockTime\":1784472000,"
                     + "\"meta\":{\"err\":" + (finalizedFailure
                             ? "{\"InstructionError\":[0,{\"Custom\":1}]}"
@@ -1533,6 +1885,17 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                     + tokenBalance(sourceIndex, sourceOwner, balance) + ","
                     + tokenBalance(destinationIndex, destinationOwner,
                             destinationBalance) + "],";
+        }
+
+        private String burnTokenBalances() {
+            var accounts = software.sava.core.tx.TransactionSkeleton
+                    .deserializeSkeleton(signedTransaction).parseAccounts();
+            int adminIndex = accountIndex(accounts, destinationAta);
+            return "\"preTokenBalances\":["
+                    + tokenBalance(adminIndex, destinationOwner, transactionPreSource)
+                    + "],\"postTokenBalances\":["
+                    + tokenBalance(adminIndex, destinationOwner, destinationBalance)
+                    + "],";
         }
 
         private String tokenBalance(int accountIndex, PublicKey owner, BigInteger amount) {

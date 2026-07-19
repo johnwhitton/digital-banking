@@ -207,6 +207,35 @@ class WalletTransferAcceptanceServiceTest {
     }
 
     @Test
+    void acceptsServerResolvedSolanaRedemptionWithoutChangingTheBurnContract() {
+        String sourceOwner = "86Cud6zB3MZRYcCBgYftqoZRZw1jVqQfDkobchgk9vir";
+        String redemptionOwner = "9xQeWvG816bUx9EPfEZvT9YcDT4VQ5cMfbX6LEK2q4H";
+        String mint = "Cai56Lab3CBjqgRzGpB42BYe8cXURLuynreV2spWbVLN";
+        InMemoryRepository repository = new InMemoryRepository();
+        WalletTransferAcceptanceService service = service(repository, Map.of(
+                DESTINATION, identity(
+                        DESTINATION, SettlementNetwork.SOLANA, sourceOwner),
+                ADMIN_REDEMPTION, adminIdentity(
+                        SettlementNetwork.SOLANA, redemptionOwner)), mint);
+        TokenOperation burn = burnOperation("100");
+
+        var accepted = service.acceptRedemption(
+                burn, DESTINATION, ADMIN_REDEMPTION);
+        var replay = service.acceptRedemption(
+                burn, DESTINATION, ADMIN_REDEMPTION);
+
+        assertEquals(SettlementNetwork.SOLANA, accepted.operation().network());
+        assertEquals(mint, accepted.operation().contractAddress());
+        assertEquals(sourceOwner, accepted.operation().source().normalizedAddress());
+        assertEquals(redemptionOwner,
+                accepted.operation().destination().normalizedAddress());
+        assertEquals(new BigInteger("10000"),
+                accepted.operation().quantity().atomicUnits());
+        assertTrue(replay.replayed());
+        assertEquals(accepted.operation(), replay.operation());
+    }
+
+    @Test
     void acceptsWorkflowCustodyBeforeTheLaterBurnExists() {
         InMemoryRepository repository = new InMemoryRepository();
         WalletTransferAcceptanceService service = service(repository, Map.of(
@@ -314,11 +343,17 @@ class WalletTransferAcceptanceServiceTest {
     }
 
     private static WalletIdentityRegistry.WalletIdentity adminIdentity() {
+        return adminIdentity(
+                SettlementNetwork.ETHEREUM,
+                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    }
+
+    private static WalletIdentityRegistry.WalletIdentity adminIdentity(
+            SettlementNetwork network, String address) {
         return new WalletIdentityRegistry.WalletIdentity(
                 wallet("ADMIN"), Set.of(ADMIN_REDEMPTION),
                 WalletIdentityRegistry.OwnerCategory.ADMIN,
-                SettlementNetwork.ETHEREUM,
-                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                network, address,
                 new KeyAlias("local-demo:ADMIN"), "registry-v1", "admin-key-v1",
                 Set.of(WalletIdentityRegistry.Purpose.MINT_AUTHORITY,
                         WalletIdentityRegistry.Purpose.BURN_AUTHORITY,

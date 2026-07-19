@@ -108,7 +108,10 @@ class LocalSolanaConfiguredSignerTest {
                                         "authority-v1"),
                                 configured(transfer,
                                         SigningRequest.KeyRole.TRANSFER_AUTHORITY,
-                                        "transfer-v1"))))) {
+                                        "transfer-v1"),
+                                configured(fixture.burn(),
+                                        SigningRequest.KeyRole.BURN_AUTHORITY,
+                                        "burn-v1"))))) {
             SignerPort.SolanaMessageCommand command = command(
                     signer, transfer, SigningRequest.KeyRole.TRANSFER_AUTHORITY,
                     message, "transfer-provider", transfer.address(),
@@ -126,6 +129,44 @@ class LocalSolanaConfiguredSignerTest {
                     transfer.alias(), SigningRequest.KeyRole.MINT_AUTHORITY,
                     SigningRequest.Algorithm.ED25519,
                     SettlementNetwork.SOLANA).status());
+        }
+    }
+
+    @Test
+    void signsBurnOnlyWithTheConfiguredAdminRedemptionAuthority() throws Exception {
+        Fixture fixture = fixture();
+        byte[] message = "one exact burn message".getBytes(StandardCharsets.UTF_8);
+        try (LocalSolanaConfiguredSigner signer = new LocalSolanaConfiguredSigner(
+                new LocalSolanaConfiguredSigner.Configuration(
+                        fixture.root(), List.of(
+                                configured(fixture.fee(), SigningRequest.KeyRole.FEE_PAYER,
+                                        "fee-v1"),
+                                configured(fixture.authority(),
+                                        SigningRequest.KeyRole.MINT_AUTHORITY,
+                                        "authority-v1"),
+                                configured(fixture.transfer(),
+                                        SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                        "transfer-v1"),
+                                configured(fixture.burn(),
+                                        SigningRequest.KeyRole.BURN_AUTHORITY,
+                                        "burn-v1"))))) {
+            SignerPort.Signed result = assertInstanceOf(
+                    SignerPort.Signed.class, signer.signSolanaMessage(command(
+                            signer, fixture.burn(),
+                            SigningRequest.KeyRole.BURN_AUTHORITY,
+                            message, "burn-provider", fixture.burn().address(),
+                            SigningRequest.Action.BURN)));
+            assertTrue(verify(fixture.burn().pair(), message, result.signature()));
+            assertInstanceOf(SignerPort.Conflict.class, signer.signSolanaMessage(command(
+                    signer, fixture.transfer(),
+                    SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                    message, "user-burn-provider", fixture.transfer().address(),
+                    SigningRequest.Action.BURN)));
+            assertInstanceOf(SignerPort.Conflict.class, signer.signSolanaMessage(command(
+                    signer, fixture.authority(),
+                    SigningRequest.KeyRole.MINT_AUTHORITY,
+                    message, "mint-burn-provider", fixture.authority().address(),
+                    SigningRequest.Action.BURN)));
         }
     }
 
@@ -162,7 +203,12 @@ class LocalSolanaConfiguredSignerTest {
                         fixture.root(), List.of(linked, configured(
                                 fixture.authority(),
                                 SigningRequest.KeyRole.MINT_AUTHORITY,
-                                "authority-v1")))));
+                                "authority-v1"), configured(
+                                fixture.transfer(),
+                                SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                "transfer-v1"), configured(
+                                fixture.burn(), SigningRequest.KeyRole.BURN_AUTHORITY,
+                                "burn-v1")))));
     }
 
     private Fixture fixture() throws Exception {
@@ -178,7 +224,10 @@ class LocalSolanaConfiguredSignerTest {
         TestKey transfer = key(
                 root.resolve("transfer-authority.json"),
                 "local-solana:transfer-authority");
-        return new Fixture(root, fee, authority, transfer);
+        TestKey burn = key(
+                root.resolve("burn-authority.json"),
+                "local-solana:burn-authority");
+        return new Fixture(root, fee, authority, transfer, burn);
     }
 
     private static TestKey key(Path path, String alias) throws Exception {
@@ -313,7 +362,7 @@ class LocalSolanaConfiguredSignerTest {
     }
 
     private record Fixture(
-            Path root, TestKey fee, TestKey authority, TestKey transfer) {
+            Path root, TestKey fee, TestKey authority, TestKey transfer, TestKey burn) {
         LocalSolanaConfiguredSigner signer() {
             return new LocalSolanaConfiguredSigner(
                     new LocalSolanaConfiguredSigner.Configuration(root, List.of(
@@ -321,7 +370,9 @@ class LocalSolanaConfiguredSignerTest {
                             configured(authority, SigningRequest.KeyRole.MINT_AUTHORITY,
                                     "authority-v1"),
                             configured(transfer, SigningRequest.KeyRole.TRANSFER_AUTHORITY,
-                                    "transfer-v1"))));
+                                    "transfer-v1"),
+                            configured(burn, SigningRequest.KeyRole.BURN_AUTHORITY,
+                                    "burn-v1"))));
         }
     }
 }

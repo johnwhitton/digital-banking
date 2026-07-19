@@ -59,7 +59,7 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
         return new PostgresOperationDeliveryQueue(dataSource, Filter.LOCAL_ETHEREUM_DEMO);
     }
 
-    /** Local Solana view limited to mint and standalone wallet transfer events. */
+    /** Local Solana view limited to mint, transfer, redemption, and burn events. */
     public static PostgresOperationDeliveryQueue localSolana(DataSource dataSource) {
         return new PostgresOperationDeliveryQueue(dataSource, Filter.LOCAL_SOLANA);
     }
@@ -121,7 +121,8 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                 AND EXISTS (
                                     SELECT 1 FROM token_operation supported_operation
                                     WHERE supported_operation.operation_id = candidate.operation_id
-                                      AND supported_operation.operation_kind = 'MINT'))))
+                                      AND supported_operation.operation_kind IN (
+                                          'MINT', 'BURN')))))
                       OR (:filter = 'LOCAL_ETHEREUM_DEMO'
                           AND (candidate.event_type IN (
                                 'WalletTransferAccepted', 'UsdzelleWorkflowAccepted',

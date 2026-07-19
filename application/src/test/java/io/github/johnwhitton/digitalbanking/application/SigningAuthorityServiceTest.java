@@ -191,7 +191,7 @@ class SigningAuthorityServiceTest {
     }
 
     @Test
-    void feePayerRoleIsAuthorizedForSolanaMintAndTransferOnly() {
+    void feePayerRoleIsAuthorizedForSolanaNativeEffectsOnly() {
         Fixture transfer = new Fixture();
         transfer.allowedRoles = Set.of(SigningRequest.KeyRole.FEE_PAYER);
         SigningAuthorityService.Request transferRequest = transfer.request(
@@ -208,11 +208,12 @@ class SigningAuthorityServiceTest {
         burn.allowedRoles = Set.of(SigningRequest.KeyRole.FEE_PAYER);
         SigningAuthorityService.Request burnRequest = burn.request(
                 25, SigningRequest.Mode.SOLANA_MESSAGE,
-                SigningRequest.Algorithm.ED25519, bytes(64, 1), List.of(),
+                SigningRequest.Algorithm.ED25519, bytes(64, 1),
+                List.of(new EvidenceRef("evidence:burn-approved")),
                 SigningRequest.Action.BURN, SigningRequest.KeyRole.FEE_PAYER);
-        assertInstanceOf(SigningAuthorityService.Denied.class,
+        assertInstanceOf(SigningAuthorityService.Signed.class,
                 burn.service.sign(burnRequest));
-        assertEquals(0, burn.signer.solanaCalls());
+        assertEquals(1, burn.signer.solanaCalls());
 
         Fixture ethereum = new Fixture();
         ethereum.allowedRoles = Set.of(SigningRequest.KeyRole.FEE_PAYER);

@@ -1,0 +1,71 @@
+# Phase 7D — Solana Redemption Custody and ADMIN Burn Parity
+
+Status: complete — verified and ready for the action commit
+
+## Outcome and authority
+
+Implement one local-only Solana redemption custody transfer of exactly `100.00 USDZELLE` (`10000` atomic units) from the configured USER_1 account to the configured ADMIN redemption associated token account, followed only after exact finalized custody evidence by one separately signed ADMIN `BurnChecked` for the same quantity. Action Request 25 is the owning specification. USER_1 is the deliberate bounded choice because the existing Phase 7B fixture mints to USER_1 and Phase 7C already proves its source-owner authority.
+
+Work proceeds sequentially on `main` from approved baseline `52f9da1fa9c468614361ec26a585ed736fc2fa78` on `git@github.com:johnwhitton/digital-banking.git`. Exactly one non-force action commit is authorized, recommended as `feat: add local Solana redemption and burn`.
+
+`AGENTS.md`, `SECURITY.md`, accepted ADRs 0001/0003–0008/0010, `docs/DESIGN.md`, `docs/IMPLEMENTATION.md`, `docs/TRANSFER_DEMO.md`, `docs/IMPLEMENTATION_STANDARDS.md`, and the completed Phase 5D/6B/7A–7C plans govern this slice. No new ADR is expected because ADR 0010 already fixes classic SPL, canonical ATA, exact checked instructions, native authority, lifetime, and finalized evidence semantics.
+
+## Preflight and reuse evidence
+
+- [x] Repository root and branch are correct; the worktree/index were clean before this plan.
+- [x] `HEAD`, local `main`, `origin/main`, freshly fetched `FETCH_HEAD`, and live remote `main` all equal the approved baseline.
+- [x] The approved SSH origin is configured. The four PDFs retain their approved `100644` modes and Git blob identities; no PDF content was opened or hashed.
+- [x] `.env.local-anvil`, `.solana-tools/`, and `.solana-runtime/` remain ignored and untracked. The inspected runtime/tool/key/result boundaries retain `0700` directories and `0600` sensitive files; no secret content was read or printed.
+- [x] The governing documents and predecessor plans were read once. No conflict with Action Request 25 or ADR 0010 exists.
+- [x] Direct source/migration inspection confirms reuse of the existing public burn acceptance, provider-neutral redemption/custody correlation, wallet-transfer aggregate/handler/repository, generic token-operation handler, local signer boundary, PostgreSQL queue, Phase 7C codec/store/submission/inquiry/observation machinery, and native validator fixture.
+- [x] No new dependency, image, module, endpoint, OpenAPI change, product-parent routing, public network, or custom program is required.
+
+## Minimal implementation design
+
+- Preserve the public contract. The caller accepts a normal exact burn operation; the local Solana profile selects USER_1, ADMIN redemption, fee payer, mint, programs, policies, and signing roles from trusted configuration.
+- Generalize only the existing custody acceptance validation that is currently hard-coded to Ethereum. Retain immutable source/destination wallet snapshots, network, mint, quantity, unit, policy, and stable burn/custody correlation.
+- Add exactly V13. Keep V1–V12 byte-identical. Extend the existing historical redemption-correlation table and shared Solana native-attempt/signature/observation tables for `BURN`, Solana network identity, exact finalized custody provenance, and one-time consumption by the stable burn identity. A proven pre-submission expiry may add only an explicitly parented replacement native attempt under that identity; the custody correlation remains consumed by its original burn attempt. Retain the historical table name to avoid a cross-module schema rename.
+- Reuse the Phase 7C `TransferChecked` path for USER_1 to ADMIN redemption custody. Destination ATA creation remains idempotent. Fee payer and USER_1 source owner sign; ADMIN does not sign custody.
+- Extend the existing Solana codec with only `BurnChecked` and exact-instruction matching. Burn uses the ADMIN redemption ATA as source, the configured mint, exact `10000`, decimals `2`, and ordered fee-payer then ADMIN-owner signatures. USER_1 and mint authority do not sign burn.
+- Extend the existing Solana attempt store/adapter for the distinct `BURN` effect. Before first burn preparation, lock and verify the correlated custody operation, attempt, effect, finalized confirmed observation, exact transaction balance deltas, unchanged supply, finality evidence, mint, quantity, ADMIN ATA/owner, policy, signature, and slot; atomically consume that evidence once when the burn attempt is inserted.
+- Preserve the current submit fence, stable signature inquiry, restart recovery, blockhash expiry/replacement lineage, independent finalized observation, and separate custody/burn lifecycle and evidence. A second consumer or conflicting burn loses at the database boundary.
+- Extend the local Solana signer/configuration/registry only for the existing ADMIN redemption owner key and `BURN_AUTHORITY`. Keep default profiles disabled and local-only.
+- Extend the local Solana queue/dispatcher only to claim and route `BURN`; no workflow or settlement parent is enabled.
+
+## Test-first execution
+
+1. Add focused failing application tests proving Solana redemption acceptance is server-resolved and cannot be substituted, then make only the network-neutral acceptance/authority changes required.
+2. Add failing codec/signer/configuration tests for exact `BurnChecked`, ordered fee-payer/ADMIN signatures, and denial of user/mint-authority burn signing; implement the smallest green changes.
+3. Add failing real-PostgreSQL V13/store tests for empty migration, upgrade/read-back, exact finalized custody prerequisite, immutable provenance, one-time/concurrent consumption, restart points, replay, response loss, expiry, and unsafe evidence rejection; implement V13 and the bounded store/adapter branch.
+4. Extend the single private-validator scenario to mint `10000` to USER_1, transfer all to ADMIN redemption, then burn all. Assert `supply 0 -> 10000 -> 10000 -> 0`, USER_1 `10000 -> 0`, ADMIN `0 -> 10000 -> 0`, one custody effect, one burn effect, replay, response-loss recovery, restart recovery, and required negative classifications.
+5. Keep focused Phase 7B mint, Phase 7C transfer, and Ethereum Phase 5D regressions green. Do not run the full reactor until executable code and reviews are stable.
+
+## Stable-diff and closeout gates
+
+- Run the consolidated PostgreSQL/Agave gate in the smallest practical execution count and stop scoped processes afterward.
+- Run one Ponytail stable-diff review and exactly one independent review focused on authority substitution, premature/double burn, custody spoofing, ATA/mint/decimals mismatch, ambiguity, expiry, observation/finality, concurrency, secrets, and overclaiming. Resolve valid in-scope Critical/Important findings with focused tests only.
+- After executable inputs stabilize, run one final `JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw -o clean verify`; rerun only if a later relevant source/build change or a gate failure requires it.
+- Run Enforcer, compiled `jdeps`, prescribed default/readiness smoke, V1–V13 migration evidence, changed structured-file and Markdown-link checks, secret/public-network/raw-key/generated-artifact/executable scans, PDF Git identity comparison, and `git diff --check` / staged checks.
+- Synchronize `README.md`, `SECURITY.md`, `docs/DESIGN.md`, `docs/IMPLEMENTATION.md`, `docs/TRANSFER_DEMO.md`, `scripts/solana/README.md`, and this plan only after executable gates establish the exact verified boundary. OpenAPI and PDFs remain unchanged.
+- Attempt one supported non-HTML Graphify refresh after the stable diff, capped at 60 seconds. On failure, record `tooling_deferred`, restore only changed tracked Graphify artifacts/remove only attempt-created transients, and do not retry or reconstruct.
+- Mark this plan complete and move it to `docs/plans/completed/`, re-fetch and fence unchanged remote `main`, stage only the authorized allowlist, create the single commit, push non-force, and verify clean local/tracking/live synchronization.
+
+## Stop conditions and deferrals
+
+Stop for baseline divergence, a new dependency/image, a governing-design conflict, public-network or credential requirement, non-deterministic duplicate native effect, inability to prove exact finalized custody before burn, or an acceptance gate that cannot be resolved in scope.
+
+Deferred: Phase 7E product-parent composition, Phase 7F reproducible Solana demonstrations, bank payout/accounting orchestration, public wallet APIs, arbitrary quantities/routes, replacement policy beyond existing expiry lineage, compensation, Token-2022, custom programs, delegates/extensions, public networks, production identity/custody, PDFs/publications, and Salus.
+
+## Evidence log
+
+- **Plan created:** preflight, authority review, and direct source/schema tracing established the minimal V13/reuse design above. No production, test, migration, configuration, API, documentation, PDF, or generated file had changed before this active plan was added.
+- **Application/authority boundary:** focused application tests prove server-resolved Solana redemption custody, immutable exact quantity/network context, and signer-purpose separation. `WalletTransferAcceptanceServiceTest` has 7 passing tests and `SigningAuthorityServiceTest` has 13 passing tests.
+- **Codec/signer/configuration boundary:** focused tests prove exact classic-SPL `BurnChecked`, ordered fee-payer/ADMIN signing, rejection of unauthorized roles, and complete local configuration. The combined focused run completed with 18 passing tests across application delivery, signer, codec, and properties coverage.
+- **Persistence and ambiguity boundary:** V13 extends the existing attempt/correlation model without modifying V1-V12. The real-PostgreSQL Sava integration proves V11-to-V13 preservation, exact finalized custody prerequisites, unsafe-evidence rejection, atomic one-time/concurrent consumption, separate attempts, forced response loss, restart recovery, replay, exact zero supply/balances, and retained observation across unrelated mint-authority configuration rotation. Its final class run completed with 7 passing tests; the added concurrency case also passed in isolation after the test-only extension.
+- **Local native gate:** one consolidated loopback PostgreSQL/Agave execution completed the exact `0 -> 10000 -> 10000 -> 0` supply path, USER_1-to-ADMIN custody, ADMIN burn, separate forced response loss for mint/custody/burn, process reconstruction, finalized evidence, and exact zero final balances. The corrected invocation completed with 1 passing test and `BUILD SUCCESS` in 49.79 seconds. An earlier invocation contained an operator typo in the configured fee-payer identity and failed before any native effect; correcting that input required no source change. A transient faucet-port collision during startup was cleared by stopping the scoped stale process and restarting once. The validator is now stopped.
+- **Focused regressions:** the compact offline application/control-plane/Ethereum/Solana regression command completed with `BUILD SUCCESS` in 13.5 seconds, including the existing Phase 5D Ethereum redemption path. No production or build input changed after the successful native gate.
+- **Stable-diff reviews and remediation:** the single Ponytail review reported `Lean already. Ship.` The sole independent review reported no Critical findings, two Important findings, and one closeout-only Minor link finding. The Important findings were resolved without a second review: V13 now reserves custody once for the stable burn identity while permitting an explicitly parented replacement native attempt after proven pre-submission expiry, and burn eligibility binds the retained custody cluster plus configured wallet-registry version. The focused PostgreSQL/fake-RPC test observed both failures before correction, then passed with two burn attempts, one correlation consumption by sequence zero, one replacement sequence, response-loss recovery, exact final zero state, and fail-closed cluster/registry mutations. No extra Agave run was required because message encoding and native submission did not change; the existing real gate remains the native transaction proof.
+- **Final verification:** the prescribed compact cross-chain regression selection passed in 13.272 seconds. The single final offline `./mvnw -o clean verify` completed successfully with Enforcer green across all eight modules; 468 tests were discovered, 467 passed, and the separately verified private-validator test was the only skip. The prescribed default/readiness smoke then passed 5 tests, JDK 25 compiled-class `jdeps` completed for every module with only the expected JDK/inward/unresolved external summaries, and Maven 3.9.16 ran on Java 25.0.2.
+- **Documentation:** README, security posture, design, implementation roadmap, transfer demo, Solana operator guidance, and this plan now describe the bounded Phase 7D behavior. OpenAPI remains unchanged because the slice adds no endpoint. No ADR is needed because ADR 0010 already governs the selected native semantics and authority model.
+- **Closeout checks:** changed-file Markdown links, local-Solana YAML parsing, shell syntax, changed-line secret/public-network patterns, executable modes, migration presence, and `git diff --check` passed. All four reference PDFs retain their approved `100644` Git modes and baseline blob identities; no PDF content was opened or hashed. No production, test, migration, configuration, or build file changed after the successful final reactor; the remaining edits were documentation and this closeout record only.
+- **Graphify:** `tooling_deferred`. The single authorized non-HTML Graphify 0.8.47 attempt ran as `graphify update <isolated-mirror> --no-cluster` under a 60-second cap and failed immediately with `[Errno 1] Operation not permitted`. The three tracked Graphify outputs remained byte-identical, the isolated transient mirror was removed, no HTML was generated, and no retry or reconstruction was attempted. Existing Graphify output remains non-authoritative navigation data.

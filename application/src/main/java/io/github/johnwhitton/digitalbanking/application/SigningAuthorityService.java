@@ -350,7 +350,9 @@ public final class SigningAuthorityService {
             case TRANSFER -> role == SigningRequest.KeyRole.TRANSFER_AUTHORITY
                     || (role == SigningRequest.KeyRole.FEE_PAYER
                         && network == SettlementNetwork.SOLANA);
-            case BURN -> role == SigningRequest.KeyRole.BURN_AUTHORITY;
+            case BURN -> role == SigningRequest.KeyRole.BURN_AUTHORITY
+                    || (role == SigningRequest.KeyRole.FEE_PAYER
+                        && network == SettlementNetwork.SOLANA);
         };
     }
 

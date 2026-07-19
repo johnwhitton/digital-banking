@@ -16,6 +16,7 @@ authority_address=$(solana_address admin-mint-authority)
 mint_address=$(solana_address usdzelle-mint)
 user_address=$(solana_address user-1)
 user_2_address=$(solana_address user-2)
+redemption_address=$(solana_address admin-redemption-owner)
 
 existing_supply=$(
     "$SOLANA_SPL_TOKEN" --url "$SOLANA_RPC_URL" --program-id "$SOLANA_TOKEN_PROGRAM" \
@@ -39,7 +40,9 @@ genesis=$(solana_rpc_request getGenesisHash | jq -er '.result')
 jq -n --arg genesis "$genesis" --arg mint "$mint_address" \
     --arg user "$user_address" --arg fee "$fee_address" \
     --arg user2 "$user_2_address" --arg authority "$authority_address" \
+    --arg redemption "$redemption_address" \
     '{clusterIdentity:$genesis,mintAddress:$mint,destinationOwner:$user,
       transferDestinationOwner:$user2,
+      redemptionOwner:$redemption,
       feePayerPublicKey:$fee,mintAuthorityPublicKey:$authority,
       initialSupplyAtomic:"0"}'

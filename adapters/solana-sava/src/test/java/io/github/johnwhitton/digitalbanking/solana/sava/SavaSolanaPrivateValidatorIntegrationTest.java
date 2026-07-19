@@ -23,11 +23,13 @@ import io.github.johnwhitton.digitalbanking.application.OperationAcceptance;
 import io.github.johnwhitton.digitalbanking.application.SigningAuthorityService;
 import io.github.johnwhitton.digitalbanking.application.TokenOperationService;
 import io.github.johnwhitton.digitalbanking.application.WalletTransferAcceptanceService;
+import io.github.johnwhitton.digitalbanking.application.command.BurnCommand;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyKey;
 import io.github.johnwhitton.digitalbanking.application.command.MintCommand;
 import io.github.johnwhitton.digitalbanking.application.command.ParticipantScope;
 import io.github.johnwhitton.digitalbanking.application.delivery.DeliveryOutcome;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDelivery;
+import io.github.johnwhitton.digitalbanking.application.delivery.RedemptionAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.WalletTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.port.IdGenerator;
@@ -109,7 +111,7 @@ class SavaSolanaPrivateValidatorIntegrationTest {
     }
 
     @Test
-    void realValidatorMintsThenTransfersWithRestartReplayAndExactFinalizedEvidence()
+    void realValidatorMintsThenRedeemsAndBurnsWithRestartReplayAndFinalizedEvidence()
             throws Exception {
         RuntimeConfiguration runtime = RuntimeConfiguration.environment();
         SolanaRpcClient submission = client(runtime.rpc());
@@ -208,24 +210,22 @@ class SavaSolanaPrivateValidatorIntegrationTest {
                 """).param("operationId", accepted.operation().operationId().value())
                 .query(Integer.class).single());
 
-        PublicKey transferDestination = PublicKey.fromBase58Encoded(
-                runtime.transferDestinationOwner());
-        PublicKey transferDestinationAta = SolanaMintTransactionCodec.associatedTokenAddress(
-                transferDestination, mint);
-        AccountInfo<byte[]> initialTransferDestination = observation.getAccountInfo(
-                Commitment.FINALIZED, transferDestinationAta).join();
-        assertTrue(initialTransferDestination == null
-                || initialTransferDestination.data() == null
+        PublicKey redemptionOwner = PublicKey.fromBase58Encoded(runtime.redemptionOwner());
+        PublicKey redemptionAta = SolanaMintTransactionCodec.associatedTokenAddress(
+                redemptionOwner, mint);
+        AccountInfo<byte[]> initialRedemption = observation.getAccountInfo(
+                Commitment.FINALIZED, redemptionAta).join();
+        assertTrue(initialRedemption == null || initialRedemption.data() == null
                 || unsigned(TokenAccount.read(
-                        transferDestinationAta,
-                        initialTransferDestination.data()).amount()).signum() == 0);
+                        redemptionAta, initialRedemption.data()).amount()).signum() == 0);
 
         PostgresWalletTransferRepository transfers =
                 new PostgresWalletTransferRepository(dataSource);
         WalletReference sourceRef = new WalletReference("synthetic-wallet:USER_1");
-        WalletReference destinationRef = new WalletReference("synthetic-wallet:USER_2");
+        WalletReference adminRef = new WalletReference(
+                "synthetic-wallet:ADMIN_REDEMPTION");
         WalletIdentityRegistry wallets = walletRegistry(
-                runtime, sourceRef, destinationRef);
+                runtime, sourceRef, adminRef);
         WalletTransferAcceptanceService acceptance =
                 new WalletTransferAcceptanceService(
                         transfers, (asset, unit, version) ->
@@ -237,76 +237,124 @@ class SavaSolanaPrivateValidatorIntegrationTest {
                         new WalletTransferAcceptanceService.Policy(
                                 runtime.mint(), "local-solana-token-v1",
                                 "local-solana-mint-v1"));
-        var transfer = acceptance.accept(
-                PARTICIPANT, new IdempotencyKey("real-solana-transfer"),
-                new WalletTransferAcceptanceService.Request(
-                        "100", UNIT.assetId(), UNIT.unitId(), UNIT.version(),
-                        sourceRef, destinationRef));
-        assertTrue(acceptance.accept(
-                PARTICIPANT, new IdempotencyKey("real-solana-transfer"),
-                new WalletTransferAcceptanceService.Request(
-                        "100", UNIT.assetId(), UNIT.unitId(), UNIT.version(),
-                        sourceRef, destinationRef)).replayed());
-        AtomicInteger transferSubmissions = new AtomicInteger();
-        AtomicBoolean loseTransferResponse = new AtomicBoolean(true);
-        OperationDelivery transferDelivery = walletDelivery(
-                transfer.operation().operationId());
-        try (LocalSolanaConfiguredSigner transferSigner = runtime.signer()) {
-            SolanaRpcClient transferSubmission = client(runtime.rpc());
-            SavaSolanaMintChainAdapter transferChain = new SavaSolanaMintChainAdapter(
-                    dataSource, transferSubmission, client(runtime.rpc()), base64 -> {
-                        transferSubmissions.incrementAndGet();
-                        String signature = transferSubmission.sendTransaction(base64, 0).join();
-                        if (loseTransferResponse.compareAndSet(true, false)) {
+        OperationAcceptance burn = service.accept(new BurnCommand(
+                1, PARTICIPANT, TokenQuantity.parse("100", UNIT),
+                "real-local-solana-redemption"),
+                IdempotencyKey.of("real-solana-redemption"));
+        OperationDelivery burnDelivery = delivery(burn.operation().operationId());
+
+        AtomicInteger custodySubmissions = new AtomicInteger();
+        AtomicBoolean loseCustodyResponse = new AtomicBoolean(true);
+        try (LocalSolanaConfiguredSigner signer = runtime.signer()) {
+            SolanaRpcClient custodySubmission = client(runtime.rpc());
+            SavaSolanaMintChainAdapter custodyLoss = new SavaSolanaMintChainAdapter(
+                    dataSource, custodySubmission, client(runtime.rpc()), base64 -> {
+                        custodySubmissions.incrementAndGet();
+                        String signature = custodySubmission.sendTransaction(base64, 0).join();
+                        if (loseCustodyResponse.compareAndSet(true, false)) {
                             throw new IllegalStateException(
-                                    "synthetic response loss after transfer acceptance");
+                                    "synthetic response loss after redemption custody");
                         }
                         return signature;
                     }, configuration, CLOCK);
-            WalletTransferAcceptedDeliveryHandler transferHandler =
-                    new WalletTransferAcceptedDeliveryHandler(
-                            transfers, transferChain, signingService(transferSigner), wallets,
-                            CLOCK::instant, Duration.ofMinutes(5));
+            RedemptionAcceptedDeliveryHandler redemption = redemption(
+                    operations, transfers, acceptance, custodyLoss,
+                    signer, wallets, sourceRef, adminRef, runtime);
+            assertEquals(DeliveryOutcome.Classification.RETRYABLE_NO_EFFECT,
+                    redemption.handle(burnDelivery).classification());
+            OperationId custodyId = new OperationId(jdbc.sql("""
+                    SELECT custody_operation_id FROM ethereum_redemption_correlation
+                    WHERE burn_operation_id = :burnOperationId
+                    """).param("burnOperationId", burn.operation().operationId().value())
+                    .query(UUID.class).single());
             assertEquals(DeliveryOutcome.Classification.AMBIGUOUS_ACKNOWLEDGEMENT,
-                    transferHandler.handle(transferDelivery).classification());
+                    redemption.handle(walletDelivery(custodyId)).classification());
         }
-        assertEquals(1, transferSubmissions.get());
-        try (LocalSolanaConfiguredSigner transferSigner = runtime.signer()) {
-            WalletTransferAcceptedDeliveryHandler transferHandler =
-                    new WalletTransferAcceptedDeliveryHandler(
-                            new PostgresWalletTransferRepository(dataSource),
-                            new SavaSolanaMintChainAdapter(
-                                    dataSource, client(runtime.rpc()), client(runtime.rpc()),
-                                    configuration, CLOCK),
-                            signingService(transferSigner), wallets,
-                            CLOCK::instant, Duration.ofMinutes(5));
-            DeliveryOutcome outcome = null;
-            long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
-            while (System.nanoTime() < deadline) {
-                outcome = transferHandler.handle(transferDelivery);
-                if (outcome.classification() == DeliveryOutcome.Classification.DELIVERED) {
-                    break;
-                }
-                Thread.sleep(100);
-            }
+        assertEquals(1, custodySubmissions.get());
+
+        OperationId custodyId = new OperationId(jdbc.sql("""
+                SELECT custody_operation_id FROM ethereum_redemption_correlation
+                WHERE burn_operation_id = :burnOperationId
+                """).param("burnOperationId", burn.operation().operationId().value())
+                .query(UUID.class).single());
+        OperationDelivery custodyDelivery = walletDelivery(custodyId);
+        try (LocalSolanaConfiguredSigner signer = runtime.signer()) {
+            RedemptionAcceptedDeliveryHandler restarted = redemption(
+                    new PostgresOperationRepository(dataSource),
+                    new PostgresWalletTransferRepository(dataSource), acceptance,
+                    new SavaSolanaMintChainAdapter(
+                            dataSource, client(runtime.rpc()), client(runtime.rpc()),
+                            configuration, CLOCK), signer, wallets,
+                    sourceRef, adminRef, runtime);
             assertEquals(DeliveryOutcome.Classification.DELIVERED,
-                    outcome == null ? null : outcome.classification());
+                    await(restarted, custodyDelivery).classification());
             assertEquals(DeliveryOutcome.Classification.DUPLICATE,
-                    transferHandler.handle(transferDelivery).classification());
+                    restarted.handle(custodyDelivery).classification());
         }
-        assertEquals(1, transferSubmissions.get());
-        AccountInfo<byte[]> afterTransferMint = observation.getAccountInfo(
+        assertEquals(1, custodySubmissions.get());
+        AccountInfo<byte[]> afterCustodyMint = observation.getAccountInfo(
                 Commitment.FINALIZED, mint).join();
-        AccountInfo<byte[]> afterTransferSource = observation.getAccountInfo(
+        AccountInfo<byte[]> afterCustodySource = observation.getAccountInfo(
                 Commitment.FINALIZED, ata).join();
-        AccountInfo<byte[]> afterTransferDestination = observation.getAccountInfo(
-                Commitment.FINALIZED, transferDestinationAta).join();
+        AccountInfo<byte[]> afterCustodyAdmin = observation.getAccountInfo(
+                Commitment.FINALIZED, redemptionAta).join();
         assertEquals(BigInteger.valueOf(10_000),
-                unsigned(Mint.read(mint, afterTransferMint.data()).supply()));
+                unsigned(Mint.read(mint, afterCustodyMint.data()).supply()));
         assertEquals(BigInteger.ZERO,
-                unsigned(TokenAccount.read(ata, afterTransferSource.data()).amount()));
+                unsigned(TokenAccount.read(ata, afterCustodySource.data()).amount()));
         assertEquals(BigInteger.valueOf(10_000), unsigned(TokenAccount.read(
-                transferDestinationAta, afterTransferDestination.data()).amount()));
+                redemptionAta, afterCustodyAdmin.data()).amount()));
+
+        AtomicInteger burnSubmissions = new AtomicInteger();
+        AtomicBoolean loseBurnResponse = new AtomicBoolean(true);
+        try (LocalSolanaConfiguredSigner signer = runtime.signer()) {
+            SolanaRpcClient burnSubmission = client(runtime.rpc());
+            SavaSolanaMintChainAdapter burnLoss = new SavaSolanaMintChainAdapter(
+                    dataSource, burnSubmission, client(runtime.rpc()), base64 -> {
+                        burnSubmissions.incrementAndGet();
+                        String signature = burnSubmission.sendTransaction(base64, 0).join();
+                        if (loseBurnResponse.compareAndSet(true, false)) {
+                            throw new IllegalStateException(
+                                    "synthetic response loss after ADMIN burn");
+                        }
+                        return signature;
+                    }, configuration, CLOCK);
+            RedemptionAcceptedDeliveryHandler redemption = redemption(
+                    operations, transfers, acceptance, burnLoss,
+                    signer, wallets, sourceRef, adminRef, runtime);
+            assertEquals(DeliveryOutcome.Classification.AMBIGUOUS_ACKNOWLEDGEMENT,
+                    redemption.handle(burnDelivery).classification());
+        }
+        assertEquals(1, burnSubmissions.get());
+        try (LocalSolanaConfiguredSigner signer = runtime.signer()) {
+            RedemptionAcceptedDeliveryHandler restarted = redemption(
+                    new PostgresOperationRepository(dataSource),
+                    new PostgresWalletTransferRepository(dataSource), acceptance,
+                    new SavaSolanaMintChainAdapter(
+                            dataSource, client(runtime.rpc()), client(runtime.rpc()),
+                            configuration, CLOCK), signer, wallets,
+                    sourceRef, adminRef, runtime);
+            assertEquals(DeliveryOutcome.Classification.DELIVERED,
+                    await(restarted, burnDelivery).classification());
+            assertEquals(DeliveryOutcome.Classification.DUPLICATE,
+                    restarted.handle(burnDelivery).classification());
+        }
+        assertEquals(1, burnSubmissions.get());
+
+        AccountInfo<byte[]> finalBurnMint = observation.getAccountInfo(
+                Commitment.FINALIZED, mint).join();
+        AccountInfo<byte[]> finalBurnSource = observation.getAccountInfo(
+                Commitment.FINALIZED, ata).join();
+        AccountInfo<byte[]> finalBurnAdmin = observation.getAccountInfo(
+                Commitment.FINALIZED, redemptionAta).join();
+        assertEquals(BigInteger.ZERO,
+                unsigned(Mint.read(mint, finalBurnMint.data()).supply()));
+        assertEquals(BigInteger.ZERO,
+                unsigned(TokenAccount.read(ata, finalBurnSource.data()).amount()));
+        assertEquals(BigInteger.ZERO, unsigned(TokenAccount.read(
+                redemptionAta, finalBurnAdmin.data()).amount()));
+        assertEquals(OperationState.COMPLETED, operations.findById(
+                burn.operation().operationId()).orElseThrow().state());
         assertEquals(1, jdbc.sql("""
                 SELECT count(*) FROM solana_mint_observation
                 WHERE operation_id = :operationId
@@ -315,9 +363,38 @@ class SavaSolanaPrivateValidatorIntegrationTest {
                   AND mint_delta = 0
                   AND source_delta = 10000
                   AND destination_delta = 10000
-                """).param("operationId", transfer.operation().operationId().value())
+                """).param("operationId", custodyId.value())
                 .query(Integer.class).single());
-
+        assertEquals(List.of("FEE_PAYER", "BURN_AUTHORITY"), jdbc.sql("""
+                SELECT key_role FROM solana_mint_signature
+                WHERE operation_id = :operationId ORDER BY signer_order
+                """).param("operationId", burn.operation().operationId().value())
+                .query(String.class).list());
+        assertEquals(1, jdbc.sql("""
+                SELECT count(*) FROM solana_mint_observation
+                WHERE operation_id = :operationId
+                  AND effect_kind = 'BURN'
+                  AND observation_status = 'CONFIRMED'
+                  AND commitment = 'finalized'
+                  AND expected_instructions
+                  AND observed_mint_supply = 0
+                  AND observed_source_balance = 0
+                  AND transaction_pre_source_balance = 10000
+                  AND transaction_post_source_balance = 0
+                  AND mint_delta = 10000
+                  AND source_delta = 10000
+                """).param("operationId", burn.operation().operationId().value())
+                .query(Integer.class).single());
+        assertEquals(1, jdbc.sql("""
+                SELECT count(*) FROM ethereum_redemption_correlation
+                WHERE burn_operation_id = :operationId
+                  AND custody_operation_id = :custodyId
+                  AND correlation_status = 'CONSUMED'
+                  AND custody_evidence_ref IS NOT NULL
+                  AND consumed_by_burn_attempt_id IS NOT NULL
+                  AND consumed_at IS NOT NULL
+                """).param("operationId", burn.operation().operationId().value())
+                .param("custodyId", custodyId.value()).query(Integer.class).single());
     }
 
     private static TokenOperationAcceptedDeliveryHandler handler(
@@ -333,7 +410,51 @@ class SavaSolanaPrivateValidatorIntegrationTest {
                         OperationKind.MINT, SigningRequest.Action.MINT,
                         SigningRequest.KeyRole.FEE_PAYER, SettlementNetwork.SOLANA,
                         SigningRequest.Mode.SOLANA_MESSAGE,
+                SigningRequest.Algorithm.ED25519));
+    }
+
+    private static RedemptionAcceptedDeliveryHandler redemption(
+            PostgresOperationRepository operations,
+            PostgresWalletTransferRepository transfers,
+            WalletTransferAcceptanceService acceptance,
+            SavaSolanaMintChainAdapter chain,
+            LocalSolanaConfiguredSigner signer,
+            WalletIdentityRegistry wallets,
+            WalletReference source,
+            WalletReference admin,
+            RuntimeConfiguration runtime) {
+        SigningAuthorityService signing = signingService(signer);
+        var burn = new TokenOperationAcceptedDeliveryHandler(
+                operations, chain, signing, CLOCK::instant, ids(),
+                new TokenOperationAcceptedDeliveryHandler.Policy(
+                        new KeyAlias("local-solana:burn-authority"),
+                        runtime.redemptionOwner(), Duration.ofMinutes(5),
+                        "local-solana-mint-v1", OperationKind.BURN,
+                        SigningRequest.Action.BURN,
+                        SigningRequest.KeyRole.BURN_AUTHORITY,
+                        SettlementNetwork.SOLANA,
+                        SigningRequest.Mode.SOLANA_MESSAGE,
                         SigningRequest.Algorithm.ED25519));
+        var custody = new WalletTransferAcceptedDeliveryHandler(
+                transfers, chain, signing, wallets,
+                CLOCK::instant, Duration.ofMinutes(5));
+        return new RedemptionAcceptedDeliveryHandler(
+                operations, transfers, acceptance, burn, custody, source, admin);
+    }
+
+    private static DeliveryOutcome await(
+            RedemptionAcceptedDeliveryHandler handler,
+            OperationDelivery delivery) throws Exception {
+        DeliveryOutcome outcome = null;
+        long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
+        while (System.nanoTime() < deadline) {
+            outcome = handler.handle(delivery);
+            if (outcome.classification() == DeliveryOutcome.Classification.DELIVERED) {
+                return outcome;
+            }
+            Thread.sleep(100);
+        }
+        return outcome;
     }
 
     private static SigningAuthorityService signingService(
@@ -403,7 +524,7 @@ class SavaSolanaPrivateValidatorIntegrationTest {
     private static WalletIdentityRegistry walletRegistry(
             RuntimeConfiguration runtime,
             WalletReference sourceRef,
-            WalletReference destinationRef) {
+            WalletReference adminRef) {
         var source = new WalletIdentityRegistry.WalletIdentity(
                 sourceRef, Set.of(), WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
                 SettlementNetwork.SOLANA, runtime.destinationOwner(),
@@ -411,22 +532,23 @@ class SavaSolanaPrivateValidatorIntegrationTest {
                 "registry-v1", "transfer-v1",
                 Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
                 WalletIdentityRegistry.Status.ENABLED);
-        var destination = new WalletIdentityRegistry.WalletIdentity(
-                destinationRef, Set.of(),
-                WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
-                SettlementNetwork.SOLANA, runtime.transferDestinationOwner(),
-                new KeyAlias("local-solana:user-2-public"),
-                "registry-v1", "user-2-v1",
-                Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
+        var admin = new WalletIdentityRegistry.WalletIdentity(
+                adminRef, Set.of(new WalletReference("synthetic-wallet:ADMIN")),
+                WalletIdentityRegistry.OwnerCategory.ADMIN,
+                SettlementNetwork.SOLANA, runtime.redemptionOwner(),
+                new KeyAlias("local-solana:burn-authority"),
+                "registry-v1", "burn-v1",
+                Set.of(WalletIdentityRegistry.Purpose.REDEMPTION_CUSTODY,
+                        WalletIdentityRegistry.Purpose.BURN_AUTHORITY),
                 WalletIdentityRegistry.Status.ENABLED);
         return new WalletIdentityRegistry() {
             @Override public WalletIdentity resolve(WalletReference reference) {
                 if (sourceRef.equals(reference)) return source;
-                if (destinationRef.equals(reference)) return destination;
+                if (adminRef.equals(reference)) return admin;
                 throw new IllegalArgumentException("unknown real-gate wallet");
             }
             @Override public List<WalletIdentity> identities() {
-                return List.of(source, destination);
+                return List.of(source, admin);
             }
         };
     }
@@ -447,11 +569,13 @@ class SavaSolanaPrivateValidatorIntegrationTest {
             String mint,
             String destinationOwner,
             String transferDestinationOwner,
+            String redemptionOwner,
             String feePayer,
             String mintAuthority,
             Path runtimeRoot,
             Path feePayerFile,
-            Path mintAuthorityFile) {
+            Path mintAuthorityFile,
+            Path burnAuthorityFile) {
 
         static RuntimeConfiguration environment() {
             Path root = Path.of(System.getenv().getOrDefault(
@@ -462,10 +586,12 @@ class SavaSolanaPrivateValidatorIntegrationTest {
                     required("LOCAL_SOLANA_MINT_ADDRESS"),
                     required("LOCAL_SOLANA_DESTINATION_OWNER"),
                     required("LOCAL_SOLANA_TRANSFER_DESTINATION_OWNER"),
+                    required("LOCAL_SOLANA_REDEMPTION_OWNER"),
                     required("LOCAL_SOLANA_FEE_PAYER_PUBLIC_KEY"),
                     required("LOCAL_SOLANA_MINT_AUTHORITY_PUBLIC_KEY"), root,
                     root.resolve("keys/fee-payer.json"),
-                    root.resolve("keys/admin-mint-authority.json"));
+                    root.resolve("keys/admin-mint-authority.json"),
+                    root.resolve("keys/admin-redemption-owner.json"));
         }
 
         LocalSolanaConfiguredSigner signer() {
@@ -483,7 +609,11 @@ class SavaSolanaPrivateValidatorIntegrationTest {
                                     new KeyAlias("local-solana:transfer-authority"),
                                     SigningRequest.KeyRole.TRANSFER_AUTHORITY,
                                     runtimeRoot.resolve("keys/user-1.json"),
-                                    destinationOwner, "transfer-v1"))));
+                                    destinationOwner, "transfer-v1"),
+                            new LocalSolanaConfiguredSigner.ConfiguredKey(
+                                    new KeyAlias("local-solana:burn-authority"),
+                                    SigningRequest.KeyRole.BURN_AUTHORITY,
+                                    burnAuthorityFile, redemptionOwner, "burn-v1"))));
         }
 
         SavaSolanaMintChainAdapter.Configuration adapterConfiguration() {
@@ -493,6 +623,8 @@ class SavaSolanaPrivateValidatorIntegrationTest {
                     mintAuthority, "local-solana:mint-authority", "authority-v1",
                     transferDestinationOwner, "local-solana:transfer-authority",
                     "transfer-v1",
+                    redemptionOwner, "local-solana:burn-authority", "burn-v1",
+                    "registry-v1",
                     UNIT.assetId(), UNIT.unitId(), UNIT.version(), UNIT.scale(),
                     "local-solana-mint-v1",
                     SavaSolanaMintChainAdapter.CommitmentLevel.CONFIRMED,

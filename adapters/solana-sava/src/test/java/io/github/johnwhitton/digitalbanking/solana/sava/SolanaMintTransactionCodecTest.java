@@ -184,6 +184,38 @@ class SolanaMintTransactionCodecTest {
                         signature(wrongPair, prepared.message()))));
     }
 
+    @Test
+    void buildsExactBurnCheckedFromTheCanonicalAdminAta() throws Exception {
+        KeyPair feePair = keyPair();
+        KeyPair adminPair = keyPair();
+        PublicKey feePayer = publicKey(feePair);
+        PublicKey adminOwner = publicKey(adminPair);
+        PublicKey mint = key("83wQsbSD89is8SVPAR325f5qXPhg5hdTuJfbwotqRsnT");
+
+        SolanaMintTransactionCodec.PreparedBurnMessage prepared = codec.prepareBurn(
+                feePayer, adminOwner, mint, BLOCKHASH,
+                BigInteger.valueOf(10_000), 2);
+
+        assertEquals(SolanaMintTransactionCodec.associatedTokenAddress(adminOwner, mint),
+                prepared.sourceAta());
+        assertEquals(List.of(feePayer, adminOwner), prepared.requiredSigners());
+        assertEquals(1, prepared.instructions().size());
+        assertArrayEquals(new byte[] {15, 16, 39, 0, 0, 0, 0, 0, 0, 2},
+                prepared.instructions().getFirst().copyData());
+        assertTrue(codec.matchesExpectedBurnInstructions(
+                prepared.unsignedTransaction(), feePayer, adminOwner, mint,
+                BigInteger.valueOf(10_000), 2));
+        assertFalse(codec.matchesExpectedBurnInstructions(
+                prepared.unsignedTransaction(), feePayer, adminOwner, mint,
+                BigInteger.valueOf(9_999), 2));
+
+        SolanaMintTransactionCodec.SignedTransaction signed = codec.assemble(
+                prepared.unsignedTransaction(), List.of(
+                        signature(feePair, prepared.message()),
+                        signature(adminPair, prepared.message())));
+        assertFalse(signed.primarySignature().isBlank());
+    }
+
     private static SolanaMintTransactionCodec.AuthorizedSignature signature(
             KeyPair pair, byte[] message) throws Exception {
         return new SolanaMintTransactionCodec.AuthorizedSignature(

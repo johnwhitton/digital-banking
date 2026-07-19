@@ -48,7 +48,8 @@ public final class LocalSolanaConfiguredSigner
     private static final Set<SigningRequest.KeyRole> SUPPORTED_ROLES = Set.of(
             SigningRequest.KeyRole.FEE_PAYER,
             SigningRequest.KeyRole.MINT_AUTHORITY,
-            SigningRequest.KeyRole.TRANSFER_AUTHORITY);
+            SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+            SigningRequest.KeyRole.BURN_AUTHORITY);
     private static final Set<SigningRequest.Algorithm> ALGORITHMS = Set.of(
             SigningRequest.Algorithm.ED25519);
     private static final Set<SettlementNetwork> NETWORKS = Set.of(
@@ -81,7 +82,7 @@ public final class LocalSolanaConfiguredSigner
             }
             if (!roles.keySet().equals(SUPPORTED_ROLES)) {
                 throw new IllegalArgumentException(
-                        "fee-payer, mint-authority, and transfer-authority keys are required");
+                        "fee-payer, mint, transfer, and burn authority keys are required");
             }
             keys = Map.copyOf(loaded);
         } catch (RuntimeException failure) {
@@ -206,10 +207,11 @@ public final class LocalSolanaConfiguredSigner
             SigningRequest.KeyRole role, SigningRequest.Action action) {
         return switch (role) {
             case FEE_PAYER -> action == SigningRequest.Action.MINT
-                    || action == SigningRequest.Action.TRANSFER;
+                    || action == SigningRequest.Action.TRANSFER
+                    || action == SigningRequest.Action.BURN;
             case MINT_AUTHORITY -> action == SigningRequest.Action.MINT;
             case TRANSFER_AUTHORITY -> action == SigningRequest.Action.TRANSFER;
-            case BURN_AUTHORITY -> false;
+            case BURN_AUTHORITY -> action == SigningRequest.Action.BURN;
         };
     }
 

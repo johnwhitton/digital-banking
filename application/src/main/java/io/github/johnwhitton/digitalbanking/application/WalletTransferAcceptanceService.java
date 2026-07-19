@@ -151,9 +151,15 @@ public final class WalletTransferAcceptanceService {
                     wallets.resolve(sourceReference);
             WalletIdentityRegistry.WalletIdentity destination =
                     wallets.resolve(adminRedemptionReference);
-            validateEthereumUserResolution(sourceReference, source);
+            validateUserTransferResolution(sourceReference, source);
             validateRedemptionDestination(
                     adminRedemptionReference, destination);
+            if (source.network() != destination.network()
+                    || !isAddressForNetwork(
+                            policy.contractAddress(), source.network())) {
+                throw new IllegalArgumentException(
+                        "redemption wallets and configured asset must use one network");
+            }
             if (source.normalizedAddress().equals(destination.normalizedAddress())) {
                 throw new IllegalArgumentException(
                         "redemption source and ADMIN destination must differ");
@@ -167,7 +173,7 @@ public final class WalletTransferAcceptanceService {
                     WalletTransferOperation.WalletSnapshot.from(source, sourceReference),
                     WalletTransferOperation.WalletSnapshot.from(
                             destination, adminRedemptionReference),
-                    SettlementNetwork.ETHEREUM, policy.contractAddress(),
+                    source.network(), policy.contractAddress(),
                     policy.contractVersion(), policy.finalityPolicyVersion(),
                     operationIds.nextAttemptId(), WalletTransferOperation.Status.ACCEPTED,
                     0, acceptedAt, acceptedAt,
@@ -208,8 +214,14 @@ public final class WalletTransferAcceptanceService {
             WalletIdentityRegistry.WalletIdentity source = wallets.resolve(request.source());
             WalletIdentityRegistry.WalletIdentity destination =
                     wallets.resolve(request.destination());
-            validateEthereumUserResolution(request.source(), source);
+            validateUserTransferResolution(request.source(), source);
             validateRedemptionDestination(request.destination(), destination);
+            if (source.network() != destination.network()
+                    || !isAddressForNetwork(
+                            policy.contractAddress(), source.network())) {
+                throw new IllegalArgumentException(
+                        "redemption wallets and configured asset must use one network");
+            }
             if (source.normalizedAddress().equals(destination.normalizedAddress())) {
                 throw new IllegalArgumentException(
                         "redemption source and ADMIN destination must differ");
@@ -223,7 +235,7 @@ public final class WalletTransferAcceptanceService {
                     WalletTransferOperation.WalletSnapshot.from(source, request.source()),
                     WalletTransferOperation.WalletSnapshot.from(
                             destination, request.destination()),
-                    SettlementNetwork.ETHEREUM, policy.contractAddress(),
+                    source.network(), policy.contractAddress(),
                     policy.contractVersion(), policy.finalityPolicyVersion(),
                     operationIds.nextAttemptId(), WalletTransferOperation.Status.ACCEPTED,
                     0, acceptedAt, acceptedAt,
@@ -253,15 +265,6 @@ public final class WalletTransferAcceptanceService {
         }
     }
 
-    private static void validateEthereumUserResolution(
-            WalletReference requested, WalletIdentityRegistry.WalletIdentity resolved) {
-        validateUserTransferResolution(requested, resolved);
-        if (resolved.network() != SettlementNetwork.ETHEREUM) {
-            throw new IllegalArgumentException(
-                    "redemption custody requires an Ethereum wallet");
-        }
-    }
-
     private static boolean isAddressForNetwork(
             String address, SettlementNetwork network) {
         return switch (network) {
@@ -276,11 +279,11 @@ public final class WalletTransferAcceptanceService {
         if ((!resolved.reference().equals(requested)
                         && !resolved.aliases().contains(requested))
                 || resolved.ownerCategory() != WalletIdentityRegistry.OwnerCategory.ADMIN
-                || resolved.network() != SettlementNetwork.ETHEREUM
                 || resolved.status() != WalletIdentityRegistry.Status.ENABLED
                 || !resolved.allowedPurposes().contains(
                         WalletIdentityRegistry.Purpose.REDEMPTION_CUSTODY)
-                || !EVM_ADDRESS.matcher(resolved.normalizedAddress()).matches()) {
+                || !isAddressForNetwork(
+                        resolved.normalizedAddress(), resolved.network())) {
             throw new IllegalArgumentException(
                     "wallet registry returned an unauthorized redemption identity");
         }

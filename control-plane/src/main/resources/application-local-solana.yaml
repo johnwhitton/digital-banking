@@ -27,6 +27,11 @@ digital-banking:
         transfer-authority-key-file: ${LOCAL_SOLANA_TRANSFER_AUTHORITY_KEY_FILE:.solana-runtime/keys/user-1.json}
         transfer-authority-key-alias: local-solana:user-1-transfer-authority
         transfer-authority-key-version: local-solana-user-1-v1
+        redemption-owner: ${LOCAL_SOLANA_REDEMPTION_OWNER:}
+        burn-authority-key-file: ${LOCAL_SOLANA_BURN_AUTHORITY_KEY_FILE:.solana-runtime/keys/admin-redemption-owner.json}
+        burn-authority-key-alias: local-solana:admin-redemption-burn-authority
+        burn-authority-key-version: local-solana-admin-redemption-v1
+        wallet-registry-version: local-solana-wallet-registry-v1
         asset-id: USD_STABLE
         unit-id: USD
         unit-version: 1

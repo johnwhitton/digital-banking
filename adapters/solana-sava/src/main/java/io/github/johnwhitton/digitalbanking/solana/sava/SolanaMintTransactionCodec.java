@@ -130,6 +130,46 @@ final class SolanaMintTransactionCodec {
                 sha256(message), sha256(instructionBytes));
     }
 
+    PreparedBurnMessage prepareBurn(
+            PublicKey feePayer,
+            PublicKey adminOwner,
+            PublicKey mint,
+            String recentBlockhash,
+            BigInteger amount,
+            int decimals) {
+        Objects.requireNonNull(feePayer, "feePayer");
+        Objects.requireNonNull(adminOwner, "adminOwner");
+        Objects.requireNonNull(mint, "mint");
+        requireAmount(amount);
+        if (decimals != 2) {
+            throw new IllegalArgumentException("local USDZELLE requires two decimals");
+        }
+        PublicKey sourceAta = associatedTokenAddress(adminOwner, mint);
+        Instruction checkedBurn = burnChecked(
+                sourceAta, mint, adminOwner, amount, decimals);
+        Transaction transaction = Transaction.createTx(feePayer, List.of(checkedBurn));
+        transaction.setRecentBlockHash(recentBlockhash);
+        if (transaction.exceedsSizeLimit()) {
+            throw new IllegalArgumentException("Solana burn transaction exceeds native limit");
+        }
+        byte[] unsigned = transaction.serialized();
+        TransactionSkeleton skeleton = TransactionSkeleton.deserializeSkeleton(unsigned);
+        if (!skeleton.isLegacy()) {
+            throw new IllegalStateException("bounded Solana burn must use a legacy message");
+        }
+        PublicKey[] signers = skeleton.parseSignerPublicKeys();
+        if (!Arrays.equals(signers, new PublicKey[] {feePayer, adminOwner})) {
+            throw new IllegalStateException("legacy message signer ordering is not canonical");
+        }
+        byte[] message = serializedMessage(unsigned);
+        byte[] instructionBytes = concat(
+                checkedBurn.programId().publicKey().toByteArray(),
+                checkedBurn.copyData());
+        return new PreparedBurnMessage(
+                unsigned, message, sourceAta, List.of(checkedBurn),
+                List.of(signers), sha256(message), sha256(instructionBytes));
+    }
+
     SignedTransaction assemble(
             byte[] unsignedTransaction,
             List<AuthorizedSignature> signatures) {
@@ -246,6 +286,34 @@ final class SolanaMintTransactionCodec {
         }
     }
 
+    boolean matchesExpectedBurnInstructions(
+            byte[] serializedTransaction,
+            PublicKey feePayer,
+            PublicKey adminOwner,
+            PublicKey mint,
+            BigInteger amount,
+            int decimals) {
+        try {
+            TransactionSkeleton skeleton = TransactionSkeleton.deserializeSkeleton(
+                    serializedTransaction);
+            Instruction[] observed = skeleton.parseLegacyInstructions();
+            PublicKey[] signers = skeleton.parseSignerPublicKeys();
+            Instruction expected = burnChecked(
+                    associatedTokenAddress(adminOwner, mint), mint,
+                    adminOwner, amount, decimals);
+            return observed.length == 1
+                    && Arrays.equals(signers, new PublicKey[] {feePayer, adminOwner})
+                    && observed[0].programId().publicKey().equals(
+                            expected.programId().publicKey())
+                    && Arrays.equals(observed[0].copyData(), expected.copyData())
+                    && observed[0].accounts().stream().map(AccountMeta::publicKey).toList()
+                            .equals(expected.accounts().stream()
+                                    .map(AccountMeta::publicKey).toList());
+        } catch (RuntimeException malformed) {
+            return false;
+        }
+    }
+
     static PublicKey associatedTokenAddress(PublicKey owner, PublicKey mint) {
         ProgramDerivedAddress derived = PublicKey.findProgramAddress(
                 List.of(owner.toByteArray(), TOKEN_PROGRAM.toByteArray(), mint.toByteArray()),
@@ -293,6 +361,21 @@ final class SolanaMintTransactionCodec {
                 AccountMeta.createWrite(source),
                 AccountMeta.createRead(mint),
                 AccountMeta.createWrite(destination),
+                AccountMeta.createReadOnlySigner(authority)), data);
+    }
+
+    private static Instruction burnChecked(
+            PublicKey source,
+            PublicKey mint,
+            PublicKey authority,
+            BigInteger amount,
+            int decimals) {
+        requireAmount(amount);
+        byte[] data = ByteBuffer.allocate(10).order(ByteOrder.LITTLE_ENDIAN)
+                .put((byte) 15).putLong(amount.longValue()).put((byte) decimals).array();
+        return Instruction.createInstruction(TOKEN_PROGRAM, List.of(
+                AccountMeta.createWrite(source),
+                AccountMeta.createWrite(mint),
                 AccountMeta.createReadOnlySigner(authority)), data);
     }
 
@@ -384,6 +467,27 @@ final class SolanaMintTransactionCodec {
             message = message.clone();
             Objects.requireNonNull(sourceAta, "sourceAta");
             Objects.requireNonNull(destinationAta, "destinationAta");
+            instructions = List.copyOf(instructions);
+            requiredSigners = List.copyOf(requiredSigners);
+        }
+
+        @Override public byte[] unsignedTransaction() { return unsignedTransaction.clone(); }
+        @Override public byte[] message() { return message.clone(); }
+    }
+
+    record PreparedBurnMessage(
+            byte[] unsignedTransaction,
+            byte[] message,
+            PublicKey sourceAta,
+            List<Instruction> instructions,
+            List<PublicKey> requiredSigners,
+            String messageSha256,
+            String instructionSha256) {
+
+        PreparedBurnMessage {
+            unsignedTransaction = unsignedTransaction.clone();
+            message = message.clone();
+            Objects.requireNonNull(sourceAta, "sourceAta");
             instructions = List.copyOf(instructions);
             requiredSigners = List.copyOf(requiredSigners);
         }

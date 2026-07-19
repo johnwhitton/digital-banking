@@ -107,12 +107,15 @@ public final class SavaSolanaMintChainAdapter
         if (!configuration.policyVersion().equals(routeVersion)) {
             throw new IllegalArgumentException("unsupported local Solana policy version");
         }
-        return new ChainCapabilities(true, false, true);
+        return new ChainCapabilities(true, true, true);
     }
 
     @Override
     public PreparedAttempt prepare(
             UUID deliveryId, TokenOperation operation, OperationAttempt attempt) {
+        if (operation.kind() == OperationKind.BURN) {
+            return prepareBurn(deliveryId, operation, attempt);
+        }
         validateMint(operation, attempt);
         Optional<SolanaMintAttemptStore.AttemptRow> existing = attempts.find(
                 operation.operationId(), attempt.attemptId());
@@ -185,6 +188,7 @@ public final class SavaSolanaMintChainAdapter
                 operation.operationId(), attempt.attemptId(), deliveryId, UUID.randomUUID(),
                 replacementParent, replacementSequence,
                 SolanaMintAttemptStore.EffectKind.MINT,
+                Optional.empty(),
                 configuration.clusterIdentity(),
                 routeSnapshot(operation), SolanaMintTransactionCodec.TOKEN_PROGRAM.toBase58(),
                 SolanaMintTransactionCodec.ATA_PROGRAM.toBase58(),
@@ -199,6 +203,91 @@ public final class SavaSolanaMintChainAdapter
                         SigningRequest.KeyRole.MINT_AUTHORITY,
                         configuration.mintAuthorityKeyVersion(),
                         configuration.mintAuthorityPublicKey()),
+                configuration.policyVersion(), configuration.maximumFeeLamports(),
+                latest.blockHash(), latest.lastValidBlockHeight(),
+                message.unsignedTransaction(), message.messageSha256(),
+                message.instructionSha256());
+        return prepared(attempts.prepare(draft, now()));
+    }
+
+    private PreparedAttempt prepareBurn(
+            UUID deliveryId, TokenOperation operation, OperationAttempt attempt) {
+        validateBurn(operation, attempt);
+        Optional<SolanaMintAttemptStore.AttemptRow> existing = attempts.find(
+                operation.operationId(), attempt.attemptId());
+        if (existing.isPresent()) {
+            SolanaMintAttemptStore.AttemptRow retained = existing.orElseThrow();
+            if (!retained.deliveryId().equals(deliveryId)
+                    || retained.effectKind() != SolanaMintAttemptStore.EffectKind.BURN
+                    || !retained.redemptionRegistryVersion().equals(
+                            Optional.of(configuration.walletRegistryVersion()))
+                    || !retained.amount().equals(operation.quantity().atomicUnits())) {
+                throw new IllegalStateException(
+                        "Solana burn attempt is bound to different acceptance context");
+            }
+            return prepared(retained);
+        }
+
+        PublicKey mintAddress = key(configuration.mintAddress(), "mintAddress");
+        PublicKey adminOwner = key(configuration.redemptionOwner(), "redemptionOwner");
+        PublicKey feePayer = key(configuration.feePayerPublicKey(), "feePayerPublicKey");
+        AccountInfo<byte[]> mintAccount = requiredAccount(observationClient.getAccountInfo(
+                Commitment.FINALIZED, mintAddress).join(), "configured mint");
+        validateMintAccountForBurn(mintAccount, mintAddress);
+        PublicKey adminAta = SolanaMintTransactionCodec.associatedTokenAddress(
+                adminOwner, mintAddress);
+        AccountInfo<byte[]> adminAccount = requiredAccount(observationClient.getAccountInfo(
+                Commitment.FINALIZED, adminAta).join(),
+                "configured ADMIN redemption associated token account");
+        validateTokenAccount(adminAccount, adminAta, adminOwner, mintAddress);
+        BigInteger preAdminBalance = unsigned(TokenAccount.read(
+                adminAta, adminAccount.data()).amount());
+        BigInteger amount = operation.quantity().atomicUnits();
+        if (preAdminBalance.compareTo(amount) < 0) {
+            throw new IllegalStateException(
+                    "local Solana ADMIN redemption account has insufficient balance");
+        }
+        BigInteger preSupply = unsigned(Mint.read(
+                mintAddress, mintAccount.data()).supply());
+        if (preSupply.compareTo(amount) < 0) {
+            throw new IllegalStateException("local Solana mint supply is insufficient");
+        }
+        requireFundedFeePayer(feePayer);
+        LatestBlockHash latest = latestUsableBlockhash();
+        SolanaMintTransactionCodec.PreparedBurnMessage message = codec.prepareBurn(
+                feePayer, adminOwner, mintAddress, latest.blockHash(), amount,
+                configuration.decimals());
+        if (!message.sourceAta().equals(adminAta)) {
+            throw new IllegalStateException(
+                    "derived ADMIN redemption associated token account changed");
+        }
+        Optional<UUID> replacementParent = attempt.predecessor().map(predecessor ->
+                attempts.find(operation.operationId(), predecessor)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Solana burn replacement predecessor was not found"))
+                        .nativeAttemptId());
+        int replacementSequence = replacementParent.isEmpty() ? 0
+                : attempts.find(operation.operationId(), attempt.predecessor().orElseThrow())
+                        .orElseThrow().replacementSequence() + 1;
+        SolanaMintAttemptStore.Draft draft = new SolanaMintAttemptStore.Draft(
+                operation.operationId(), attempt.attemptId(), deliveryId, UUID.randomUUID(),
+                replacementParent, replacementSequence,
+                SolanaMintAttemptStore.EffectKind.BURN,
+                Optional.of(configuration.walletRegistryVersion()),
+                configuration.clusterIdentity(), routeSnapshot(operation),
+                SolanaMintTransactionCodec.TOKEN_PROGRAM.toBase58(),
+                SolanaMintTransactionCodec.ATA_PROGRAM.toBase58(),
+                configuration.mintAddress(), Optional.of(adminOwner.toBase58()),
+                Optional.of(adminAta.toBase58()), Optional.of(preAdminBalance),
+                adminOwner.toBase58(), adminAta.toBase58(), true,
+                configuration.decimals(), amount, preSupply, preAdminBalance,
+                signer(configuration.feePayerKeyAlias(), SigningRequest.KeyRole.FEE_PAYER,
+                        configuration.feePayerKeyVersion(),
+                        configuration.feePayerPublicKey()),
+                signer(configuration.burnAuthorityKeyAlias(),
+                        SigningRequest.KeyRole.BURN_AUTHORITY,
+                        configuration.burnAuthorityKeyVersion(),
+                        configuration.redemptionOwner()),
                 configuration.policyVersion(), configuration.maximumFeeLamports(),
                 latest.blockHash(), latest.lastValidBlockHeight(),
                 message.unsignedTransaction(), message.messageSha256(),
@@ -282,6 +371,7 @@ public final class SavaSolanaMintChainAdapter
                 operation.operationId(), operation.attemptId(), deliveryId,
                 UUID.randomUUID(), Optional.empty(), 0,
                 SolanaMintAttemptStore.EffectKind.TRANSFER,
+                Optional.empty(),
                 configuration.clusterIdentity(), routeSnapshot(operation),
                 SolanaMintTransactionCodec.TOKEN_PROGRAM.toBase58(),
                 SolanaMintTransactionCodec.ATA_PROGRAM.toBase58(),
@@ -495,6 +585,9 @@ public final class SavaSolanaMintChainAdapter
     }
 
     private ObservationEvidence observeNative(SolanaMintAttemptStore.AttemptRow attempt) {
+        if (attempt.effectKind() == SolanaMintAttemptStore.EffectKind.BURN) {
+            return observeBurnNative(attempt);
+        }
         if (attempt.effectKind() == SolanaMintAttemptStore.EffectKind.TRANSFER) {
             return observeTransferNative(attempt);
         }
@@ -644,8 +737,7 @@ public final class SavaSolanaMintChainAdapter
         }
         boolean accountsMatch;
         try {
-            validateMintAccount(mintAccount, mint,
-                    key(configuration.mintAuthorityPublicKey(), "mintAuthority"));
+            validateMintAccountForBurn(mintAccount, mint);
             validateTokenAccount(sourceAccount, sourceAta, sourceOwner, mint);
             validateTokenAccount(
                     destinationAccount, destinationAta, destinationOwner, mint);
@@ -683,6 +775,111 @@ public final class SavaSolanaMintChainAdapter
                         Optional.of(supply), Optional.of(sourceBalance),
                         Optional.of(destinationBalance), transactionBalances,
                         "finalized-transfer-effect-mismatch");
+    }
+
+    private ObservationEvidence observeBurnNative(
+            SolanaMintAttemptStore.AttemptRow attempt) {
+        TxStatus status = observationClient.getSignatureStatuses(
+                List.of(attempt.transactionSignature()), true).join()
+                .get(attempt.transactionSignature());
+        if (status == null || status.nil()) {
+            return ObservationEvidence.pending("signature-status-absent");
+        }
+        if (status.confirmationStatus() != Commitment.FINALIZED) {
+            return ObservationEvidence.pending("signature-not-finalized");
+        }
+        if (status.error() != null) {
+            return ObservationEvidence.reverted(
+                    status.slot(), "finalized-transaction-failed",
+                    status.error().getClass().getSimpleName());
+        }
+        Tx transaction = observationClient.getTransaction(
+                Commitment.FINALIZED, attempt.transactionSignature()).join();
+        if (transaction == null || transaction.meta() == null) {
+            return ObservationEvidence.pending("finalized-transaction-unavailable");
+        }
+        if (transaction.meta().error() != null) {
+            return ObservationEvidence.reverted(
+                    transaction.slot(), "finalized-metadata-failed",
+                    transaction.meta().error().getClass().getSimpleName());
+        }
+        PublicKey feePayer = key(attempt.feePayer().publicKey(), "feePayer");
+        PublicKey adminOwner = key(
+                attempt.sourceOwner().orElseThrow(), "adminOwner");
+        PublicKey mint = key(attempt.mintAddress(), "mintAddress");
+        PublicKey adminAta = key(attempt.sourceAta().orElseThrow(), "adminAta");
+        boolean identityMatches = Base58.encode(
+                software.sava.core.tx.Transaction.getId(transaction.data()))
+                .equals(attempt.transactionSignature());
+        boolean instructionsMatch = identityMatches
+                && codec.matchesExpectedBurnInstructions(
+                        transaction.data(), feePayer, adminOwner, mint,
+                        attempt.amount(), attempt.decimals());
+        Optional<BurnTokenBalances> transactionBalances = burnTokenBalances(
+                transaction, adminOwner, mint, adminAta, attempt.decimals());
+        if (transactionBalances.isEmpty()) {
+            return ObservationEvidence.mismatchedBurn(
+                    transaction.slot(), transaction.blockTime(), instructionsMatch,
+                    Optional.empty(), Optional.empty(), Optional.empty(),
+                    "finalized-transaction-token-balances-missing");
+        }
+        AccountInfo<byte[]> mintAccount = observationClient.getAccountInfo(
+                Commitment.FINALIZED, mint).join();
+        AccountInfo<byte[]> adminAccount = observationClient.getAccountInfo(
+                Commitment.FINALIZED, adminAta).join();
+        if (mintAccount == null || mintAccount.data() == null
+                || adminAccount == null || adminAccount.data() == null) {
+            return ObservationEvidence.mismatchedBurn(
+                    transaction.slot(), transaction.blockTime(), instructionsMatch,
+                    Optional.empty(), Optional.empty(), transactionBalances,
+                    "finalized-account-missing");
+        }
+        boolean accountsMatch;
+        try {
+            validateMintAccountForBurn(mintAccount, mint);
+            validateTokenAccount(adminAccount, adminAta, adminOwner, mint);
+            accountsMatch = true;
+        } catch (RuntimeException mismatch) {
+            accountsMatch = false;
+        }
+        BigInteger supply = unsigned(Mint.read(mint, mintAccount.data()).supply());
+        BigInteger adminBalance = unsigned(TokenAccount.read(
+                adminAta, adminAccount.data()).amount());
+        BigInteger supplyDecrease = attempt.preMintSupply().subtract(supply);
+        BurnTokenBalances nativeBalances = transactionBalances.orElseThrow();
+        BigInteger adminDecrease = nativeBalances.pre().subtract(nativeBalances.post());
+        boolean exact = accountsMatch && instructionsMatch
+                && nativeBalances.pre().equals(attempt.preSourceBalance().orElseThrow())
+                && nativeBalances.post().equals(adminBalance)
+                && adminDecrease.equals(attempt.amount())
+                && supplyDecrease.equals(attempt.amount());
+        return exact
+                ? ObservationEvidence.confirmedBurn(
+                        transaction.slot(), transaction.blockTime(), supply,
+                        adminBalance, supplyDecrease, adminDecrease, nativeBalances)
+                : ObservationEvidence.mismatchedBurn(
+                        transaction.slot(), transaction.blockTime(), instructionsMatch,
+                        Optional.of(supply), Optional.of(adminBalance),
+                        transactionBalances, "finalized-burn-effect-mismatch");
+    }
+
+    private static Optional<BurnTokenBalances> burnTokenBalances(
+            Tx transaction, PublicKey owner, PublicKey mint,
+            PublicKey ata, int decimals) {
+        try {
+            int index = accountIndex(transaction.skeleton().parseAccounts(), ata);
+            if (index < 0) return Optional.empty();
+            Optional<BigInteger> pre = tokenBalance(
+                    transaction.meta().preTokenBalances(), index, mint, owner, decimals);
+            Optional<BigInteger> post = tokenBalance(
+                    transaction.meta().postTokenBalances(), index, mint, owner, decimals);
+            return pre.isPresent() && post.isPresent()
+                    ? Optional.of(new BurnTokenBalances(
+                            pre.orElseThrow(), post.orElseThrow()))
+                    : Optional.empty();
+        } catch (RuntimeException invalidMetadata) {
+            return Optional.empty();
+        }
     }
 
     private static Optional<TransactionTokenBalances> transferTokenBalances(
@@ -805,6 +1002,12 @@ public final class SavaSolanaMintChainAdapter
             SolanaMintAttemptStore.AttemptRow attempt) {
         NativeIdentity identity = attempt.transactionSignature() == null
                 ? null : new NativeIdentity(attempt.transactionSignature());
+        if (attempt.status() == SolanaMintAttemptStore.AttemptStatus.EXPIRED
+                && attempt.effectKind() == SolanaMintAttemptStore.EffectKind.BURN) {
+            return new SubmissionResult(
+                    SubmissionClassification.RETRYABLE_NO_EFFECT, identity,
+                    evidence(attempt, "submission-expired-replacement-safe"));
+        }
         return switch (attempt.status()) {
             case ACCEPTED, CONFIRMED -> new SubmissionResult(
                     SubmissionClassification.ACCEPTED, identity,
@@ -858,8 +1061,11 @@ public final class SavaSolanaMintChainAdapter
 
     private void validateTransfer(WalletTransferOperation operation) {
         var unit = operation.quantity().unit();
-        if (operation.purpose() != WalletTransferOperation.Purpose.USER_TRANSFER
-                || operation.network() != SettlementNetwork.SOLANA
+        String expectedDestination = operation.purpose()
+                == WalletTransferOperation.Purpose.REDEMPTION_CUSTODY
+                ? configuration.redemptionOwner()
+                : configuration.transferDestinationOwner();
+        if (operation.network() != SettlementNetwork.SOLANA
                 || !configuration.assetId().equals(unit.assetId())
                 || !configuration.unitId().equals(unit.unitId())
                 || configuration.unitVersion() != unit.version()
@@ -870,7 +1076,7 @@ public final class SavaSolanaMintChainAdapter
                         operation.finalityPolicyVersion())
                 || !configuration.destinationOwner().equals(
                         operation.source().normalizedAddress())
-                || !configuration.transferDestinationOwner().equals(
+                || !expectedDestination.equals(
                         operation.destination().normalizedAddress())
                 || !new KeyAlias(configuration.transferAuthorityKeyAlias()).equals(
                         operation.source().keyReference())
@@ -919,6 +1125,23 @@ public final class SavaSolanaMintChainAdapter
         }
     }
 
+    private void validateBurn(TokenOperation operation, OperationAttempt attempt) {
+        if (operation.kind() != OperationKind.BURN
+                || !operation.attemptIds().contains(attempt.attemptId())) {
+            throw new IllegalArgumentException(
+                    "only an authorized retained Solana burn attempt is supported");
+        }
+        var unit = operation.quantity().unit();
+        if (!configuration.assetId().equals(unit.assetId())
+                || !configuration.unitId().equals(unit.unitId())
+                || configuration.unitVersion() != unit.version()
+                || configuration.decimals() != unit.scale()
+                || !operation.quantity().atomicUnits().equals(BigInteger.valueOf(10_000))) {
+            throw new IllegalArgumentException(
+                    "burn asset/unit does not match local Solana redemption policy");
+        }
+    }
+
     private void validateMintAccount(
             AccountInfo<byte[]> account, PublicKey mint, PublicKey authority) {
         Mint data = Mint.read(mint, account.data());
@@ -931,6 +1154,20 @@ public final class SavaSolanaMintChainAdapter
                     && !PublicKey.NONE.equals(data.freezeAuthority()))) {
             throw new IllegalStateException(
                     "configured Solana mint account does not match policy");
+        }
+    }
+
+    private void validateMintAccountForBurn(
+            AccountInfo<byte[]> account, PublicKey mint) {
+        Mint data = Mint.read(mint, account.data());
+        if (!account.pubKey().equals(mint)
+                || !account.owner().equals(SolanaMintTransactionCodec.TOKEN_PROGRAM)
+                || data == null || !data.address().equals(mint)
+                || data.decimals() != configuration.decimals() || !data.initialized()
+                || (data.freezeAuthority() != null
+                    && !PublicKey.NONE.equals(data.freezeAuthority()))) {
+            throw new IllegalStateException(
+                    "configured Solana burn mint account does not match policy");
         }
     }
 
@@ -1069,6 +1306,10 @@ public final class SavaSolanaMintChainAdapter
             String transferDestinationOwner,
             String transferAuthorityKeyAlias,
             String transferAuthorityKeyVersion,
+            String redemptionOwner,
+            String burnAuthorityKeyAlias,
+            String burnAuthorityKeyVersion,
+            String walletRegistryVersion,
             String assetId,
             String unitId,
             int unitVersion,
@@ -1108,6 +1349,10 @@ public final class SavaSolanaMintChainAdapter
                     "86Cud6zB3MZRYcCBgYftqoZRZw1jVqQfDkobchgk9vir",
                     "local-solana:transfer-authority",
                     "local-solana-transfer-authority-v1",
+                    "9xQeWvG816bUx9EPfEZvT9YcDT4VQ5cMfbX6LEK2q4H",
+                    "local-solana:burn-authority",
+                    "local-solana-burn-authority-v1",
+                    "local-solana-wallet-registry-v1",
                     assetId, unitId, unitVersion, decimals, policyVersion,
                     preparationCommitment, observationCommitment,
                     minimumFeePayerLamports, maximumFeeLamports, requestTimeout);
@@ -1129,6 +1374,7 @@ public final class SavaSolanaMintChainAdapter
             key(mintAddress, "mintAddress");
             key(destinationOwner, "destinationOwner");
             key(transferDestinationOwner, "transferDestinationOwner");
+            key(redemptionOwner, "redemptionOwner");
             key(feePayerPublicKey, "feePayerPublicKey");
             key(mintAuthorityPublicKey, "mintAuthorityPublicKey");
             requireText(feePayerKeyAlias, "feePayerKeyAlias", 128);
@@ -1137,9 +1383,17 @@ public final class SavaSolanaMintChainAdapter
             requireText(mintAuthorityKeyVersion, "mintAuthorityKeyVersion", 256);
             requireText(transferAuthorityKeyAlias, "transferAuthorityKeyAlias", 128);
             requireText(transferAuthorityKeyVersion, "transferAuthorityKeyVersion", 256);
+            requireText(burnAuthorityKeyAlias, "burnAuthorityKeyAlias", 128);
+            requireText(burnAuthorityKeyVersion, "burnAuthorityKeyVersion", 256);
+            requireText(walletRegistryVersion, "walletRegistryVersion", 128);
             if (destinationOwner.equals(transferDestinationOwner)) {
                 throw new IllegalArgumentException(
                         "local Solana transfer owners must differ");
+            }
+            if (redemptionOwner.equals(destinationOwner)
+                    || redemptionOwner.equals(transferDestinationOwner)) {
+                throw new IllegalArgumentException(
+                        "local Solana ADMIN redemption owner must be distinct");
             }
             requireText(assetId, "assetId", 64);
             requireText(unitId, "unitId", 64);
@@ -1198,6 +1452,9 @@ public final class SavaSolanaMintChainAdapter
             BigInteger postSource,
             BigInteger preDestination,
             BigInteger postDestination) {
+    }
+
+    private record BurnTokenBalances(BigInteger pre, BigInteger post) {
     }
 
     private record ObservationEvidence(
@@ -1301,6 +1558,38 @@ public final class SavaSolanaMintChainAdapter
                     transactionBalances.map(TransactionTokenBalances::postSource),
                     transactionBalances.map(TransactionTokenBalances::preDestination),
                     transactionBalances.map(TransactionTokenBalances::postDestination),
+                    Optional.empty(), Optional.empty(), Optional.empty(), kind);
+        }
+
+        static ObservationEvidence confirmedBurn(
+                long slot, java.util.OptionalLong blockTime,
+                BigInteger supply, BigInteger adminBalance,
+                BigInteger supplyDecrease, BigInteger adminDecrease,
+                BurnTokenBalances transactionBalances) {
+            return new ObservationEvidence(
+                    ObservationClassification.CONFIRMED,
+                    SolanaMintAttemptStore.ObservationStatus.CONFIRMED,
+                    Optional.of(slot), boxed(blockTime), Optional.empty(), true,
+                    Optional.of(supply), Optional.empty(), Optional.of(adminBalance),
+                    Optional.of(transactionBalances.pre()),
+                    Optional.of(transactionBalances.post()),
+                    Optional.empty(), Optional.empty(),
+                    Optional.of(supplyDecrease), Optional.empty(),
+                    Optional.of(adminDecrease), "burn-confirmed");
+        }
+
+        static ObservationEvidence mismatchedBurn(
+                long slot, java.util.OptionalLong blockTime, boolean instructions,
+                Optional<BigInteger> supply, Optional<BigInteger> adminBalance,
+                Optional<BurnTokenBalances> transactionBalances, String kind) {
+            return new ObservationEvidence(
+                    ObservationClassification.MISMATCHED,
+                    SolanaMintAttemptStore.ObservationStatus.MISMATCHED,
+                    Optional.of(slot), boxed(blockTime), Optional.empty(), instructions,
+                    supply, Optional.empty(), adminBalance,
+                    transactionBalances.map(BurnTokenBalances::pre),
+                    transactionBalances.map(BurnTokenBalances::post),
+                    Optional.empty(), Optional.empty(),
                     Optional.empty(), Optional.empty(), Optional.empty(), kind);
         }
 

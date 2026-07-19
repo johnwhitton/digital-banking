@@ -24,6 +24,7 @@ import io.github.johnwhitton.digitalbanking.domain.operation.FinalityType;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationAttempt;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationKind;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationState;
+import io.github.johnwhitton.digitalbanking.domain.operation.RetryAuthorization;
 import io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation;
 import io.github.johnwhitton.digitalbanking.domain.signing.KeyAlias;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningRequest;
@@ -82,7 +83,10 @@ public final class TokenOperationAcceptedDeliveryHandler
         ChainPort.AttemptIdentity identity = new ChainPort.AttemptIdentity(
                 operation.operationId(), attemptId, Optional.empty());
 
-        if (operation.state() == OperationState.SIGNING) {
+        boolean replacementNeedsSigning = operation.kind() == OperationKind.BURN
+                && operation.state() == OperationState.SUBMISSION_PENDING
+                && chain.findSignedAttempt(identity).isEmpty();
+        if (operation.state() == OperationState.SIGNING || replacementNeedsSigning) {
             OperationAttempt attempt = operation.attempts().getLast();
             ChainPort.PreparedAttempt prepared = chain.prepare(
                     delivery.deliveryId(), operation, attempt);
@@ -141,10 +145,12 @@ public final class TokenOperationAcceptedDeliveryHandler
                         evidence(operation, "required-signatures-incomplete"));
                 return DeliveryOutcome.terminalFailure("required-signatures-incomplete");
             }
-            operation = transition(
-                    operation, OperationState.SUBMISSION_PENDING,
-                    "authorized-signature-attached",
-                    retained.orElseThrow().evidenceReference());
+            if (operation.state() == OperationState.SIGNING) {
+                operation = transition(
+                        operation, OperationState.SUBMISSION_PENDING,
+                        "authorized-signature-attached",
+                        retained.orElseThrow().evidenceReference());
+            }
         }
 
         ChainPort.SignedAttempt signedAttempt = chain.findSignedAttempt(identity)
@@ -168,6 +174,16 @@ public final class TokenOperationAcceptedDeliveryHandler
                     return DeliveryOutcome.terminalFailure(action() + "-submission-rejected");
                 }
                 case RETRYABLE_NO_EFFECT -> {
+                    if (operation.kind() == OperationKind.BURN
+                            && submission.nativeIdentity() != null) {
+                        RetryAuthorization retry = new RetryAuthorization(
+                                attemptId, RetryAuthorization.Basis.NATIVE_SAFE_REPLACEMENT,
+                                policy.finalityPolicyVersion(),
+                                submission.evidenceReference());
+                        TokenOperation replacement = operation.addFollowUpAttempt(
+                                operation.version(), ids.nextAttemptId(), retry, now());
+                        operations.save(replacement, operation.version());
+                    }
                     return DeliveryOutcome.retryableFailure(action() + "-submission-unavailable");
                 }
                 case AMBIGUOUS -> {
@@ -323,12 +339,24 @@ public final class TokenOperationAcceptedDeliveryHandler
                         "native signer requirements do not match server policy");
             }
         }
-        ChainPort.SigningRequirement first = requirements.getFirst();
-        if (!prepared.sourceReference().equals(first.signerReference())
-                || !policy.keyAlias().equals(first.keyAlias())
-                || policy.keyRole() != first.keyRole()
-                || !policy.expectedSignerReference().equals(first.signerReference())) {
+        ChainPort.SigningRequirement authority = policy.network() == SettlementNetwork.SOLANA
+                && policy.operationKind() == OperationKind.BURN
+                ? requirements.getLast() : requirements.getFirst();
+        if (!prepared.sourceReference().equals(authority.signerReference())
+                || !policy.keyAlias().equals(authority.keyAlias())
+                || policy.keyRole() != authority.keyRole()
+                || !policy.expectedSignerReference().equals(
+                        authority.signerReference())) {
             throw new IllegalStateException("prepared signer does not match server policy");
+        }
+        if (policy.network() == SettlementNetwork.SOLANA
+                && (requirements.size() != 2
+                    || requirements.getFirst().keyRole()
+                            != SigningRequest.KeyRole.FEE_PAYER
+                    || requirements.getLast().keyRole()
+                            == SigningRequest.KeyRole.FEE_PAYER)) {
+            throw new IllegalStateException(
+                    "Solana token operation requires fee payer then effect authority");
         }
         Set<Integer> attached = chain.retainedSignatureOrders(identity);
         if (!orders.containsAll(attached)) {

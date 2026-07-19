@@ -28,6 +28,11 @@ public record LocalSolanaProperties(
         Path transferAuthorityKeyFile,
         String transferAuthorityKeyAlias,
         String transferAuthorityKeyVersion,
+        String redemptionOwner,
+        Path burnAuthorityKeyFile,
+        String burnAuthorityKeyAlias,
+        String burnAuthorityKeyVersion,
+        String walletRegistryVersion,
         String assetId,
         String unitId,
         int unitVersion,
@@ -45,6 +50,7 @@ public record LocalSolanaProperties(
         Objects.requireNonNull(feePayerKeyFile, "feePayerKeyFile");
         Objects.requireNonNull(mintAuthorityKeyFile, "mintAuthorityKeyFile");
         Objects.requireNonNull(transferAuthorityKeyFile, "transferAuthorityKeyFile");
+        Objects.requireNonNull(burnAuthorityKeyFile, "burnAuthorityKeyFile");
         if (maxAtomicUnits == null || maxAtomicUnits.signum() <= 0) {
             throw new IllegalArgumentException(
                     "local Solana maximum atomic units must be positive");
@@ -55,6 +61,8 @@ public record LocalSolanaProperties(
                 mintAuthorityPublicKey, mintAuthorityKeyAlias, mintAuthorityKeyVersion,
                 transferDestinationOwner, transferAuthorityKeyAlias,
                 transferAuthorityKeyVersion,
+                redemptionOwner, burnAuthorityKeyAlias, burnAuthorityKeyVersion,
+                walletRegistryVersion,
                 assetId, unitId, unitVersion, decimals, policyVersion,
                 preparationCommitment, observationCommitment,
                 minimumFeePayerLamports, maximumFeeLamports, requestTimeout);

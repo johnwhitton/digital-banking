@@ -42,11 +42,23 @@ final class SolanaMintAttemptStore {
     AttemptRow prepare(Draft draft, Instant now) {
         Objects.requireNonNull(draft, "draft");
         return Objects.requireNonNull(transaction.execute(status -> {
+            Optional<AttemptRow> existing = find(draft.operationId(), draft.attemptId());
+            if (existing.isPresent()) {
+                AttemptRow retained = existing.orElseThrow();
+                if (!retained.matches(draft)) {
+                    throw new IllegalStateException(
+                            "operation attempt is already bound to different Solana context");
+                }
+                return retained;
+            }
+            CustodyEvidence custody = draft.effectKind() == EffectKind.BURN
+                    ? lockConfirmedCustody(draft) : null;
             jdbc.sql("""
                     INSERT INTO solana_mint_attempt (
                         operation_id, operation_attempt_id, delivery_id,
                         native_attempt_id, replacement_parent_id, replacement_sequence,
                         effect_kind, token_operation_id, wallet_transfer_operation_id,
+                        redemption_correlation_id, redemption_registry_version,
                         network, cluster_identity, route_snapshot_ref,
                         token_program_id, ata_program_id, mint_address,
                         source_owner, source_ata, pre_source_balance,
@@ -64,6 +76,7 @@ final class SolanaMintAttemptStore {
                         :operationId, :attemptId, :deliveryId,
                         :nativeAttemptId, :replacementParentId, :replacementSequence,
                         :effectKind, :tokenOperationId, :walletTransferOperationId,
+                        :redemptionCorrelationId, :redemptionRegistryVersion,
                         'LOCAL_SOLANA', :clusterIdentity, :routeSnapshotRef,
                         :tokenProgramId, :ataProgramId, :mintAddress,
                         :sourceOwner, :sourceAta, :preSourceBalance,
@@ -84,11 +97,15 @@ final class SolanaMintAttemptStore {
                     .param("replacementParentId", draft.replacementParentId().orElse(null))
                     .param("replacementSequence", draft.replacementSequence())
                     .param("effectKind", draft.effectKind().name())
-                    .param("tokenOperationId", draft.effectKind() == EffectKind.MINT
+                    .param("tokenOperationId", draft.effectKind() != EffectKind.TRANSFER
                             ? draft.operationId().value() : null)
                     .param("walletTransferOperationId",
                             draft.effectKind() == EffectKind.TRANSFER
                                     ? draft.operationId().value() : null)
+                    .param("redemptionCorrelationId", custody == null
+                            ? null : custody.correlationId())
+                    .param("redemptionRegistryVersion",
+                            draft.redemptionRegistryVersion().orElse(null))
                     .param("clusterIdentity", draft.clusterIdentity())
                     .param("routeSnapshotRef", draft.routeSnapshotRef())
                     .param("tokenProgramId", draft.tokenProgramId())
@@ -124,6 +141,28 @@ final class SolanaMintAttemptStore {
                 throw new IllegalStateException(
                         "operation attempt is already bound to different Solana context");
             }
+            if (custody != null && custody.consume()) {
+                int consumed = jdbc.sql("""
+                        UPDATE ethereum_redemption_correlation
+                        SET correlation_status = 'CONSUMED',
+                            custody_evidence_ref = :evidence,
+                            consumed_by_burn_attempt_id = :attemptId,
+                            consumed_at = :now, updated_at = :now
+                        WHERE correlation_id = :correlationId
+                          AND correlation_status IN (
+                              'AWAITING_CUSTODY', 'CUSTODY_CONFIRMED')
+                          AND consumed_by_burn_attempt_id IS NULL
+                        """)
+                        .param("evidence", custody.evidenceRef())
+                        .param("attemptId", draft.attemptId().value())
+                        .param("now", utc(now))
+                        .param("correlationId", custody.correlationId())
+                        .update();
+                if (consumed != 1) {
+                    throw new IllegalStateException(
+                            "redemption custody evidence was already consumed");
+                }
+            }
             return retained;
         }));
     }
@@ -132,7 +171,8 @@ final class SolanaMintAttemptStore {
         return jdbc.sql("""
                 SELECT operation_id, operation_attempt_id, delivery_id,
                        native_attempt_id, replacement_parent_id, replacement_sequence,
-                       effect_kind,
+                       effect_kind, redemption_correlation_id,
+                       redemption_registry_version,
                        cluster_identity, route_snapshot_ref, token_program_id,
                        ata_program_id, mint_address, source_owner, source_ata,
                        pre_source_balance, destination_owner, destination_ata,
@@ -419,6 +459,146 @@ final class SolanaMintAttemptStore {
                 .query(UUID.class).single();
     }
 
+    private CustodyEvidence lockConfirmedCustody(Draft burn) {
+        CustodyEvidence evidence = jdbc.sql("""
+                SELECT correlation.correlation_id,
+                       transfer.destination_address AS admin_owner,
+                       transfer.destination_key_alias AS admin_key_alias,
+                       transfer.destination_registry_version AS admin_registry_version,
+                       transfer.destination_key_version AS admin_key_version,
+                       transfer.contract_address AS mint_address,
+                       transfer.quantity_atomic, transfer.finality_policy_version,
+                       observed.transaction_signature, observed.slot,
+                       observed.evidence_ref
+                FROM ethereum_redemption_correlation correlation
+                JOIN token_operation burn
+                  ON burn.operation_id = correlation.burn_operation_id
+                JOIN wallet_transfer_operation transfer
+                  ON transfer.operation_id = correlation.custody_operation_id
+                JOIN solana_mint_attempt attempt
+                  ON attempt.operation_id = transfer.operation_id
+                 AND attempt.operation_attempt_id = correlation.custody_attempt_id
+                 AND attempt.effect_kind = 'TRANSFER'
+                JOIN LATERAL (
+                    SELECT observation_status, transaction_signature, commitment,
+                           slot, expected_instructions, observed_mint_supply,
+                           observed_destination_balance, observed_source_balance,
+                           transaction_pre_source_balance,
+                           transaction_post_source_balance,
+                           transaction_pre_destination_balance,
+                           transaction_post_destination_balance,
+                           mint_delta, destination_delta, source_delta, evidence_ref
+                    FROM solana_mint_observation observation
+                    WHERE observation.operation_id = attempt.operation_id
+                      AND observation.operation_attempt_id = attempt.operation_attempt_id
+                      AND observation.effect_kind = 'TRANSFER'
+                    ORDER BY observation.observation_sequence DESC
+                    LIMIT 1) observed ON TRUE
+                JOIN LATERAL (
+                    SELECT finality_status, policy_version, evidence_ref
+                    FROM wallet_transfer_finality finality
+                    WHERE finality.operation_id = transfer.operation_id
+                      AND finality.finality_type = 'BLOCKCHAIN'
+                    ORDER BY finality.history_order DESC
+                    LIMIT 1) finality ON TRUE
+                WHERE correlation.burn_operation_id = :burnOperationId
+                  AND ((CAST(:replacementParentId AS UUID) IS NULL
+                        AND correlation.correlation_status IN (
+                            'AWAITING_CUSTODY', 'CUSTODY_CONFIRMED')
+                        AND correlation.consumed_by_burn_attempt_id IS NULL)
+                    OR (CAST(:replacementParentId AS UUID) IS NOT NULL
+                        AND correlation.correlation_status = 'CONSUMED'
+                        AND correlation.consumed_by_burn_attempt_id IS NOT NULL
+                        AND EXISTS (
+                            SELECT 1 FROM solana_mint_attempt predecessor
+                            WHERE predecessor.operation_id = burn.operation_id
+                              AND predecessor.native_attempt_id = :replacementParentId
+                              AND predecessor.effect_kind = 'BURN'
+                              AND predecessor.redemption_correlation_id =
+                                  correlation.correlation_id
+                              AND predecessor.attempt_status = 'EXPIRED'
+                              AND predecessor.replacement_sequence + 1 =
+                                  :replacementSequence)))
+                  AND burn.operation_kind = 'BURN'
+                  AND burn.tenant_id = transfer.tenant_id
+                  AND burn.participant_id = transfer.participant_id
+                  AND burn.asset_id = transfer.asset_id
+                  AND burn.unit_id = transfer.unit_id
+                  AND burn.unit_version = transfer.unit_version
+                  AND burn.unit_scale = transfer.unit_scale
+                  AND burn.quantity_atomic = transfer.quantity_atomic
+                  AND transfer.transfer_purpose = 'REDEMPTION_CUSTODY'
+                  AND transfer.network = 'SOLANA'
+                  AND transfer.operation_status = 'COMPLETED'
+                  AND transfer.effect_id = correlation.custody_effect_id
+                  AND transfer.attempt_id = correlation.custody_attempt_id
+                  AND attempt.attempt_status = 'CONFIRMED'
+                  AND attempt.source_owner = transfer.source_address
+                  AND attempt.destination_owner = transfer.destination_address
+                  AND attempt.mint_address = transfer.contract_address
+                  AND attempt.amount_atomic = transfer.quantity_atomic
+                  AND attempt.policy_version = transfer.finality_policy_version
+                  AND attempt.cluster_identity = :clusterIdentity
+                  AND attempt.token_program_id = :tokenProgramId
+                  AND attempt.ata_program_id = :ataProgramId
+                  AND attempt.decimals = :decimals
+                  AND transfer.destination_registry_version = :walletRegistryVersion
+                  AND observed.observation_status = 'CONFIRMED'
+                  AND observed.transaction_signature = attempt.transaction_signature
+                  AND observed.commitment = 'finalized'
+                  AND observed.slot IS NOT NULL
+                  AND observed.expected_instructions
+                  AND observed.observed_mint_supply = attempt.pre_mint_supply
+                  AND observed.observed_source_balance =
+                      attempt.pre_source_balance - attempt.amount_atomic
+                  AND observed.observed_destination_balance =
+                      attempt.pre_destination_balance + attempt.amount_atomic
+                  AND observed.transaction_pre_source_balance =
+                      attempt.pre_source_balance
+                  AND observed.transaction_post_source_balance =
+                      attempt.pre_source_balance - attempt.amount_atomic
+                  AND observed.transaction_pre_destination_balance =
+                      attempt.pre_destination_balance
+                  AND observed.transaction_post_destination_balance =
+                      attempt.pre_destination_balance + attempt.amount_atomic
+                  AND observed.mint_delta = 0
+                  AND observed.source_delta = attempt.amount_atomic
+                  AND observed.destination_delta = attempt.amount_atomic
+                  AND finality.finality_status = 'REACHED'
+                  AND finality.policy_version = transfer.finality_policy_version
+                  AND finality.evidence_ref = observed.evidence_ref
+                FOR UPDATE OF correlation
+                """)
+                .param("burnOperationId", burn.operationId().value())
+                .param("replacementParentId", burn.replacementParentId().orElse(null))
+                .param("replacementSequence", burn.replacementSequence())
+                .param("clusterIdentity", burn.clusterIdentity())
+                .param("tokenProgramId", burn.tokenProgramId())
+                .param("ataProgramId", burn.ataProgramId())
+                .param("decimals", burn.decimals())
+                .param("walletRegistryVersion",
+                        burn.redemptionRegistryVersion().orElseThrow())
+                .query((row, number) -> new CustodyEvidence(
+                        row.getObject("correlation_id", UUID.class),
+                        row.getString("admin_owner"),
+                        row.getString("admin_key_alias"),
+                        row.getString("admin_registry_version"),
+                        row.getString("admin_key_version"),
+                        row.getString("mint_address"),
+                        integer(row, "quantity_atomic"),
+                        row.getString("finality_policy_version"),
+                        row.getString("transaction_signature"),
+                        row.getLong("slot"), row.getString("evidence_ref"),
+                        burn.replacementParentId().isEmpty()))
+                .optional().orElseThrow(() -> new IllegalStateException(
+                        "confirmed Solana redemption custody evidence is unavailable"));
+        if (!evidence.matches(burn)) {
+            throw new IllegalStateException(
+                    "confirmed Solana redemption custody differs from burn context");
+        }
+        return evidence;
+    }
+
     private AttemptRow mapAttempt(ResultSet row, int rowNumber) throws SQLException {
         EffectKind effectKind = EffectKind.valueOf(row.getString("effect_kind"));
         return new AttemptRow(
@@ -429,6 +609,9 @@ final class SolanaMintAttemptStore {
                 Optional.ofNullable(row.getObject("replacement_parent_id", UUID.class)),
                 row.getInt("replacement_sequence"),
                 effectKind,
+                Optional.ofNullable(row.getObject(
+                        "redemption_correlation_id", UUID.class)),
+                Optional.ofNullable(row.getString("redemption_registry_version")),
                 row.getString("cluster_identity"),
                 row.getString("route_snapshot_ref"), row.getString("token_program_id"),
                 row.getString("ata_program_id"), row.getString("mint_address"),
@@ -446,9 +629,11 @@ final class SolanaMintAttemptStore {
                         row.getString("fee_payer_public_key")),
                 new SignerContext(
                         new KeyAlias(row.getString("mint_authority_key_alias")),
-                        effectKind == EffectKind.MINT
-                                ? SigningRequest.KeyRole.MINT_AUTHORITY
-                                : SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                        switch (effectKind) {
+                            case MINT -> SigningRequest.KeyRole.MINT_AUTHORITY;
+                            case TRANSFER -> SigningRequest.KeyRole.TRANSFER_AUTHORITY;
+                            case BURN -> SigningRequest.KeyRole.BURN_AUTHORITY;
+                        },
                         row.getString("mint_authority_key_version"),
                         row.getString("mint_authority_public_key")),
                 row.getString("policy_version"), integer(row, "maximum_fee_lamports"),
@@ -493,6 +678,7 @@ final class SolanaMintAttemptStore {
             Optional<UUID> replacementParentId,
             int replacementSequence,
             EffectKind effectKind,
+            Optional<String> redemptionRegistryVersion,
             String clusterIdentity,
             String routeSnapshotRef,
             String tokenProgramId,
@@ -533,6 +719,7 @@ final class SolanaMintAttemptStore {
                 String messageSha256, String instructionSha256) {
             this(operationId, attemptId, deliveryId, nativeAttemptId,
                     replacementParentId, replacementSequence, EffectKind.MINT,
+                    Optional.empty(),
                     clusterIdentity, routeSnapshotRef, tokenProgramId, ataProgramId,
                     mintAddress, Optional.empty(), Optional.empty(), Optional.empty(),
                     destinationOwner, destinationAta, ataExisted, decimals, amount,
@@ -546,6 +733,8 @@ final class SolanaMintAttemptStore {
             replacementParentId = Objects.requireNonNull(
                     replacementParentId, "replacementParentId");
             Objects.requireNonNull(effectKind, "effectKind");
+            redemptionRegistryVersion = Objects.requireNonNull(
+                    redemptionRegistryVersion, "redemptionRegistryVersion");
             sourceOwner = Objects.requireNonNull(sourceOwner, "sourceOwner");
             sourceAta = Objects.requireNonNull(sourceAta, "sourceAta");
             preSourceBalance = Objects.requireNonNull(
@@ -565,6 +754,8 @@ final class SolanaMintAttemptStore {
             Optional<UUID> replacementParentId,
             int replacementSequence,
             EffectKind effectKind,
+            Optional<UUID> redemptionCorrelationId,
+            Optional<String> redemptionRegistryVersion,
             String clusterIdentity,
             String routeSnapshotRef,
             String tokenProgramId,
@@ -596,6 +787,10 @@ final class SolanaMintAttemptStore {
             long version) {
 
         AttemptRow {
+            redemptionCorrelationId = Objects.requireNonNull(
+                    redemptionCorrelationId, "redemptionCorrelationId");
+            redemptionRegistryVersion = Objects.requireNonNull(
+                    redemptionRegistryVersion, "redemptionRegistryVersion");
             unsignedTransaction = unsignedTransaction.clone();
         }
 
@@ -607,6 +802,12 @@ final class SolanaMintAttemptStore {
                     && replacementParentId.equals(draft.replacementParentId())
                     && replacementSequence == draft.replacementSequence()
                     && effectKind == draft.effectKind()
+                    && (effectKind == EffectKind.BURN
+                        ? redemptionCorrelationId.isPresent()
+                            && redemptionRegistryVersion.equals(
+                                    draft.redemptionRegistryVersion())
+                        : redemptionCorrelationId.isEmpty()
+                            && redemptionRegistryVersion.isEmpty())
                     && clusterIdentity.equals(draft.clusterIdentity())
                     && routeSnapshotRef.equals(draft.routeSnapshotRef())
                     && tokenProgramId.equals(draft.tokenProgramId())
@@ -739,9 +940,41 @@ final class SolanaMintAttemptStore {
         }
     }
 
+    record CustodyEvidence(
+            UUID correlationId,
+            String adminOwner,
+            String adminKeyAlias,
+            String adminRegistryVersion,
+            String adminKeyVersion,
+            String mintAddress,
+            BigInteger quantity,
+            String policyVersion,
+            String transactionSignature,
+            long finalizedSlot,
+            String evidenceRef,
+            boolean consume) {
+
+        boolean matches(Draft burn) {
+            return burn.effectKind() == EffectKind.BURN
+                    && adminOwner.equals(burn.sourceOwner().orElseThrow())
+                    && adminOwner.equals(burn.destinationOwner())
+                    && adminKeyAlias.equals(burn.mintAuthority().keyAlias().value())
+                    && adminKeyVersion.equals(burn.mintAuthority().keyVersion())
+                    && burn.redemptionRegistryVersion().equals(
+                            Optional.of(adminRegistryVersion))
+                    && mintAddress.equals(burn.mintAddress())
+                    && quantity.equals(burn.amount())
+                    && policyVersion.equals(burn.policyVersion())
+                    && burn.sourceAta().equals(Optional.of(burn.destinationAta()))
+                    && burn.preSourceBalance().equals(
+                            Optional.of(burn.preDestinationBalance()));
+        }
+    }
+
     enum EffectKind {
         MINT,
-        TRANSFER
+        TRANSFER,
+        BURN
     }
 
     enum AttemptStatus {

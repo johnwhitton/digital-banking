@@ -13,6 +13,7 @@ import io.github.johnwhitton.digitalbanking.application.SigningAuthorityService;
 import io.github.johnwhitton.digitalbanking.application.WalletTransferAcceptanceService;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryQueue;
+import io.github.johnwhitton.digitalbanking.application.delivery.RedemptionAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.WalletTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.port.AssetUnitCatalog;
@@ -54,6 +55,10 @@ public class LocalSolanaConfiguration {
             new WalletReference("synthetic-wallet:USER_1");
     static final WalletReference USER_2 =
             new WalletReference("synthetic-wallet:USER_2");
+    static final WalletReference ADMIN =
+            new WalletReference("synthetic-wallet:ADMIN");
+    static final WalletReference ADMIN_REDEMPTION =
+            new WalletReference("synthetic-wallet:ADMIN_REDEMPTION");
 
     @Bean(destroyMethod = "close")
     LocalSolanaConfiguredSigner localSolanaConfiguredSigner(
@@ -79,7 +84,13 @@ public class LocalSolanaConfiguration {
                                         SigningRequest.KeyRole.TRANSFER_AUTHORITY,
                                         properties.transferAuthorityKeyFile(),
                                         properties.destinationOwner(),
-                                        properties.transferAuthorityKeyVersion()))));
+                                        properties.transferAuthorityKeyVersion()),
+                                new LocalSolanaConfiguredSigner.ConfiguredKey(
+                                        new KeyAlias(properties.burnAuthorityKeyAlias()),
+                                        SigningRequest.KeyRole.BURN_AUTHORITY,
+                                        properties.burnAuthorityKeyFile(),
+                                        properties.redemptionOwner(),
+                                        properties.burnAuthorityKeyVersion()))));
     }
 
     @Bean
@@ -131,7 +142,11 @@ public class LocalSolanaConfiguration {
                         properties.mintAuthorityKeyVersion(),
                         properties.transferDestinationOwner(),
                         properties.transferAuthorityKeyAlias(),
-                        properties.transferAuthorityKeyVersion(), properties.assetId(),
+                        properties.transferAuthorityKeyVersion(),
+                        properties.redemptionOwner(),
+                        properties.burnAuthorityKeyAlias(),
+                        properties.burnAuthorityKeyVersion(),
+                        properties.walletRegistryVersion(), properties.assetId(),
                         properties.unitId(), properties.unitVersion(), properties.decimals(),
                         properties.policyVersion(), properties.preparationCommitment(),
                         properties.observationCommitment(),
@@ -161,6 +176,27 @@ public class LocalSolanaConfiguration {
     }
 
     @Bean
+    TokenOperationAcceptedDeliveryHandler localSolanaBurnDeliveryHandler(
+            OperationRepository operations,
+            SavaSolanaMintChainAdapter chain,
+            SigningAuthorityService signing,
+            ClockPort clock,
+            IdGenerator ids,
+            LocalSolanaProperties properties) {
+        return new TokenOperationAcceptedDeliveryHandler(
+                operations, chain, signing, clock, ids,
+                new TokenOperationAcceptedDeliveryHandler.Policy(
+                        new KeyAlias(properties.burnAuthorityKeyAlias()),
+                        properties.redemptionOwner(), Duration.ofMinutes(5),
+                        properties.policyVersion(), OperationKind.BURN,
+                        SigningRequest.Action.BURN,
+                        SigningRequest.KeyRole.BURN_AUTHORITY,
+                        SettlementNetwork.SOLANA,
+                        SigningRequest.Mode.SOLANA_MESSAGE,
+                        SigningRequest.Algorithm.ED25519));
+    }
+
+    @Bean
     WalletTransferRepository localSolanaWalletTransferRepository(DataSource dataSource) {
         return new PostgresWalletTransferRepository(dataSource);
     }
@@ -172,11 +208,23 @@ public class LocalSolanaConfiguration {
                 USER_1, userIdentity(
                         USER_1, properties.destinationOwner(),
                         new KeyAlias(properties.transferAuthorityKeyAlias()),
-                        properties.transferAuthorityKeyVersion()),
+                        properties.transferAuthorityKeyVersion(),
+                        properties.walletRegistryVersion()),
                 USER_2, userIdentity(
                         USER_2, properties.transferDestinationOwner(),
                         new KeyAlias("local-solana:user-2-public"),
-                        "local-solana-user-2-v1"));
+                        "local-solana-user-2-v1",
+                        properties.walletRegistryVersion()),
+                ADMIN, new WalletIdentityRegistry.WalletIdentity(
+                        ADMIN, Set.of(ADMIN_REDEMPTION),
+                        WalletIdentityRegistry.OwnerCategory.ADMIN,
+                        SettlementNetwork.SOLANA, properties.redemptionOwner(),
+                        new KeyAlias(properties.burnAuthorityKeyAlias()),
+                        properties.walletRegistryVersion(),
+                        properties.burnAuthorityKeyVersion(),
+                        Set.of(WalletIdentityRegistry.Purpose.REDEMPTION_CUSTODY,
+                                WalletIdentityRegistry.Purpose.BURN_AUTHORITY),
+                        WalletIdentityRegistry.Status.ENABLED));
         return new WalletIdentityRegistry() {
             @Override public WalletIdentity resolve(WalletReference reference) {
                 WalletIdentity identity = identities.get(reference);
@@ -220,13 +268,34 @@ public class LocalSolanaConfiguration {
     }
 
     @Bean
+    RedemptionAcceptedDeliveryHandler localSolanaRedemptionDeliveryHandler(
+            OperationRepository operations,
+            WalletTransferRepository transfers,
+            WalletTransferAcceptanceService acceptance,
+            TokenOperationAcceptedDeliveryHandler localSolanaBurnDeliveryHandler,
+            WalletTransferAcceptedDeliveryHandler custody) {
+        return new RedemptionAcceptedDeliveryHandler(
+                operations, transfers, acceptance,
+                localSolanaBurnDeliveryHandler, custody, USER_1, ADMIN_REDEMPTION);
+    }
+
+    @Bean
     @Primary
     OperationDeliveryHandler localSolanaDeliveryHandler(
-            TokenOperationAcceptedDeliveryHandler mint,
-            WalletTransferAcceptedDeliveryHandler transfer) {
-        return delivery -> WalletTransferAcceptedDeliveryHandler.EVENT_TYPE.equals(
-                delivery.eventType())
-                ? transfer.handle(delivery) : mint.handle(delivery);
+            TokenOperationAcceptedDeliveryHandler localSolanaMintDeliveryHandler,
+            RedemptionAcceptedDeliveryHandler redemption,
+            OperationRepository operations) {
+        return delivery -> {
+            if (WalletTransferAcceptedDeliveryHandler.EVENT_TYPE.equals(
+                    delivery.eventType())) {
+                return redemption.handle(delivery);
+            }
+            return operations.findById(delivery.operationId())
+                    .filter(operation -> operation.kind() == OperationKind.BURN)
+                    .isPresent()
+                    ? redemption.handle(delivery)
+                    : localSolanaMintDeliveryHandler.handle(delivery);
+        };
     }
 
     @Bean
@@ -248,11 +317,11 @@ public class LocalSolanaConfiguration {
 
     private static WalletIdentityRegistry.WalletIdentity userIdentity(
             WalletReference reference, String address, KeyAlias keyAlias,
-            String keyVersion) {
+            String keyVersion, String registryVersion) {
         return new WalletIdentityRegistry.WalletIdentity(
                 reference, Set.of(), WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
                 SettlementNetwork.SOLANA, address, keyAlias,
-                "local-solana-wallet-registry-v1", keyVersion,
+                registryVersion, keyVersion,
                 Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
                 WalletIdentityRegistry.Status.ENABLED);
     }
