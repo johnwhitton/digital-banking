@@ -8,6 +8,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import javax.sql.DataSource;
@@ -105,7 +106,8 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                           AND candidate.event_type = 'WalletTransferAccepted')
                       OR (:filter = 'LOCAL_ETHEREUM_DEMO'
                           AND (candidate.event_type IN (
-                                'WalletTransferAccepted', 'UsdzelleWorkflowAccepted')
+                                'WalletTransferAccepted', 'UsdzelleWorkflowAccepted',
+                                'SettlementTransferAccepted')
                             OR (candidate.event_type = 'TokenOperationAccepted'
                                 AND EXISTS (
                                     SELECT 1 FROM token_operation supported_operation
@@ -360,6 +362,10 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                 synchronizeWorkflowManualReview(
                         delivery, recordedAt);
             }
+            if (reviewReason != null
+                    && "SettlementTransferAccepted".equals(delivery.eventType())) {
+                synchronizeSettlementManualReview(delivery, recordedAt);
+            }
             return LeaseUpdateResult.UPDATED;
         }));
     }
@@ -448,6 +454,83 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                 .param("evidence", evidence).update();
     }
 
+    private void synchronizeSettlementManualReview(
+            OperationDelivery delivery, Instant recordedAt) {
+        Optional<SettlementReview> retained = jdbc.sql("""
+                        SELECT transfer.transfer_id, transfer.aggregate_version,
+                               transfer.parent_status, boundary.boundary_id
+                        FROM operation_outbox outbox
+                        JOIN settlement_transfer transfer
+                          ON transfer.transfer_id = outbox.transfer_id
+                        JOIN LATERAL (
+                            SELECT candidate.boundary_id
+                            FROM settlement_transfer_boundary candidate
+                            WHERE candidate.transfer_id = transfer.transfer_id
+                              AND candidate.boundary_status <> 'COMPLETED'
+                            ORDER BY candidate.boundary_sequence
+                            LIMIT 1) boundary ON true
+                        WHERE outbox.event_id = :eventId
+                          AND transfer.parent_status NOT IN (
+                              'COMPLETED', 'MANUAL_REVIEW', 'FAILED_NO_EFFECT')
+                        FOR UPDATE OF transfer
+                        """)
+                .param("eventId", delivery.deliveryId())
+                .query((row, number) -> new SettlementReview(
+                        row.getObject("transfer_id", UUID.class),
+                        row.getLong("aggregate_version"),
+                        row.getString("parent_status"),
+                        row.getObject("boundary_id", UUID.class)))
+                .optional();
+        if (retained.isEmpty()) {
+            return;
+        }
+        SettlementReview review = retained.orElseThrow();
+        long nextVersion = review.version() + 1;
+        String evidence = "internal:settlement-transfer:delivery-manual-review:"
+                + delivery.deliveryId();
+        requireOne(jdbc.sql("""
+                        UPDATE settlement_transfer
+                        SET parent_status = 'MANUAL_REVIEW',
+                            aggregate_version = :nextVersion,
+                            updated_at = :recordedAt
+                        WHERE transfer_id = :transferId
+                          AND aggregate_version = :expectedVersion
+                        """)
+                .param("nextVersion", nextVersion)
+                .param("recordedAt", utc(recordedAt))
+                .param("transferId", review.transferId())
+                .param("expectedVersion", review.version()).update(),
+                "settlement transfer manual-review update");
+        requireOne(jdbc.sql("""
+                        UPDATE settlement_transfer_boundary
+                        SET boundary_status = 'MANUAL_REVIEW',
+                            evidence_reference = :evidence
+                        WHERE transfer_id = :transferId
+                          AND boundary_id = :boundaryId
+                        """)
+                .param("evidence", evidence)
+                .param("transferId", review.transferId())
+                .param("boundaryId", review.boundaryId()).update(),
+                "settlement boundary manual-review update");
+        jdbc.sql("""
+                        INSERT INTO settlement_transfer_transition (
+                            transfer_id, aggregate_version, transition_id,
+                            from_status, to_status, boundary_id,
+                            evidence_reference, recorded_at)
+                        VALUES (
+                            :transferId, :version, :transitionId,
+                            :fromStatus, 'MANUAL_REVIEW', :boundaryId,
+                            :evidence, :recordedAt)
+                        """)
+                .param("transferId", review.transferId())
+                .param("version", nextVersion)
+                .param("transitionId", delivery.deliveryId())
+                .param("fromStatus", review.status())
+                .param("boundaryId", review.boundaryId())
+                .param("evidence", evidence)
+                .param("recordedAt", utc(recordedAt)).update();
+    }
+
     @Override
     public QueueMeasurements measurements(Instant now) {
         Instant measuredAt = canonical(now);
@@ -476,7 +559,8 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                               OR (:filter = 'LOCAL_ETHEREUM_DEMO'
                                   AND (candidate.event_type IN (
                                         'WalletTransferAccepted',
-                                        'UsdzelleWorkflowAccepted')
+                                        'UsdzelleWorkflowAccepted',
+                                        'SettlementTransferAccepted')
                                     OR (candidate.event_type = 'TokenOperationAccepted'
                                         AND EXISTS (
                                             SELECT 1 FROM token_operation supported_operation
@@ -525,7 +609,8 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                           OR (:filter = 'LOCAL_ETHEREUM_DEMO'
                               AND (candidate.event_type IN (
                                     'WalletTransferAccepted',
-                                    'UsdzelleWorkflowAccepted')
+                                    'UsdzelleWorkflowAccepted',
+                                    'SettlementTransferAccepted')
                                 OR (candidate.event_type = 'TokenOperationAccepted'
                                     AND EXISTS (
                                         SELECT 1 FROM token_operation supported_operation
@@ -589,6 +674,9 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
 
     private record WorkflowReview(
             UUID workflowId, long version, String status, UUID stepId) { }
+
+    private record SettlementReview(
+            UUID transferId, long version, String status, UUID boundaryId) { }
 
     private enum Filter {
         ALL,

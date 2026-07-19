@@ -43,7 +43,8 @@ class TransferApiFailureBoundaryTest {
     void invariantFailureIsRedactedButRetainsServerDiagnostics(CapturedOutput output)
             throws Exception {
         String marker = "internal-transfer-sensitive-marker";
-        given(transfers.find(any(TransferId.class), any(ParticipantScope.class)))
+        given(transfers.findAcceptance(
+                any(TransferId.class), any(ParticipantScope.class)))
                 .willThrow(new IllegalStateException(marker));
 
         MvcResult result = mvc.perform(get("/v1/transfers/{transferId}",

@@ -45,7 +45,8 @@ public final class TransferController {
         TransferAcceptance accepted = transfers.accept(
                 requireParticipant(participant).scope(), request.toApplicationRequest(),
                 parseIdempotencyKey(idempotencyKey));
-        TransferResponse response = TransferResponse.from(accepted.transfer());
+        TransferResponse response = TransferResponse.from(
+                accepted.transfer(), accepted.settlement());
         return ResponseEntity.accepted()
                 .location(URI.create("/v1/transfers/" + response.transferId()))
                 .body(response);
@@ -55,8 +56,11 @@ public final class TransferController {
     public TransferResponse find(
             @AuthenticationPrincipal ParticipantPrincipal participant,
             @PathVariable String transferId) {
-        return TransferResponse.from(transfers.find(
-                parseTransferId(transferId), requireParticipant(participant).scope()));
+        io.github.johnwhitton.digitalbanking.application.TransferAcceptance accepted =
+                transfers.findAcceptance(
+                        parseTransferId(transferId),
+                        requireParticipant(participant).scope());
+        return TransferResponse.from(accepted.transfer(), accepted.settlement());
     }
 
     private static ParticipantPrincipal requireParticipant(ParticipantPrincipal principal) {

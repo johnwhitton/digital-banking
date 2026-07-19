@@ -16,13 +16,18 @@ import io.github.johnwhitton.digitalbanking.application.port.TransferIdentityGen
 import io.github.johnwhitton.digitalbanking.application.port.TransferRepository;
 import io.github.johnwhitton.digitalbanking.application.port.TransferRouteCatalog;
 import io.github.johnwhitton.digitalbanking.application.port.WalletRoleResolver;
+import io.github.johnwhitton.digitalbanking.application.port.SettlementInstructionResolver;
+import io.github.johnwhitton.digitalbanking.application.port.SettlementTransferIdentityGenerator;
+import io.github.johnwhitton.digitalbanking.domain.accounting.SyntheticBankAccount;
 import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
+import io.github.johnwhitton.digitalbanking.domain.transfer.BankAccountReference;
 import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
 import io.github.johnwhitton.digitalbanking.domain.transfer.Transfer;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferEffect;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferId;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferTransition;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
+import io.github.johnwhitton.digitalbanking.domain.workflow.SettlementTransfer;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -143,17 +148,109 @@ class TransferApplicationServiceTest {
         assertEquals("trusted-wallet-policy-defect", failure.getMessage());
     }
 
+    @Test
+    void snapshotsRegisteredCrossParticipantInstructionsAndReplaysThemExactly() {
+        InMemoryRepository repository = new InMemoryRepository();
+        AtomicInteger resolutionCalls = new AtomicInteger();
+        SettlementInstructionResolver instructions = new SettlementInstructionResolver() {
+            @Override
+            public Optional<Resolution> resolve(
+                    ParticipantScope sender, BankAccountReference source,
+                    BankAccountReference destination, String currency,
+                    SettlementNetwork network, Instant acceptedAt) {
+                resolutionCalls.incrementAndGet();
+                return Optional.of(new Resolution(
+                        settlementRoute(
+                                "sender", "USER_1", "BANK_1",
+                                "USER_1_BANK_ACCOUNT", "USER_WALLET_1",
+                                SettlementTransfer.InstructionMode.ACQUISITION),
+                        settlementRoute(
+                                "recipient", "USER_2", "BANK_2",
+                                "USER_2_BANK_ACCOUNT", "USER_WALLET_2",
+                                SettlementTransfer.InstructionMode.AUTO_REDEEM),
+                        new WalletReference("synthetic-wallet:ADMIN_REDEMPTION"),
+                        "admin-v1", "phase-6c-v1", "local-token-v1",
+                        "payout-before-burn-v1", "conversion-v1",
+                        "accounting-v1", "fee-v1", "finality-v1",
+                        "reconciliation-v1"));
+            }
+
+            @Override
+            public boolean required() {
+                return true;
+            }
+        };
+        AtomicInteger settlementIds = new AtomicInteger(100);
+        SettlementTransferIdentityGenerator settlementIdentity =
+                new SettlementTransferIdentityGenerator() {
+                    @Override
+                    public SettlementTransfer.BoundaryId nextBoundaryId() {
+                        return new SettlementTransfer.BoundaryId(
+                                new UUID(10, settlementIds.incrementAndGet()));
+                    }
+
+                    @Override
+                    public SettlementTransfer.TransitionId nextTransitionId() {
+                        return new SettlementTransfer.TransitionId(
+                                new UUID(11, settlementIds.incrementAndGet()));
+                    }
+                };
+        TransferApplicationService service = new TransferApplicationService(
+                repository,
+                (currency, requested) -> Optional.of(new TransferRouteCatalog.Route(
+                        "USD", SettlementNetwork.ETHEREUM,
+                        new AssetUnit("USD_STABLE", "USD", 1, 2,
+                                new BigInteger("1000000000000")), "route-v1")),
+                (participant, route) -> { throw new AssertionError(
+                        "legacy wallet roles must not resolve settlement instructions"); },
+                () -> Instant.parse("2026-07-18T20:00:00Z"), new SequentialIds(),
+                instructions, settlementIdentity);
+        var request = new TransferApplicationService.AcceptanceRequest(
+                "100", "USD", "synthetic-bank:USER_1_BANK_ACCOUNT",
+                "synthetic-bank:USER_2_BANK_ACCOUNT", "ETHEREUM");
+        ParticipantScope sender = new ParticipantScope("local-demo", "USER_1");
+
+        TransferAcceptance accepted = service.accept(
+                sender, request, IdempotencyKey.of("settlement-acceptance"));
+        TransferAcceptance replay = service.accept(
+                sender, request, IdempotencyKey.of("settlement-acceptance"));
+
+        SettlementTransfer settlement = accepted.settlement().orElseThrow();
+        assertEquals(new BigInteger("10000"),
+                settlement.context().usdAmount().value());
+        assertEquals("USER_2",
+                settlement.context().recipient().participant().participantId());
+        assertEquals(SettlementTransfer.InstructionMode.AUTO_REDEEM,
+                settlement.context().recipient().mode());
+        assertEquals(accepted.settlement(), replay.settlement());
+        assertEquals(1, resolutionCalls.get());
+    }
+
+    private static SettlementTransfer.RouteSnapshot settlementRoute(
+            String instruction, String participant, String bank,
+            String account, String wallet, SettlementTransfer.InstructionMode mode) {
+        return new SettlementTransfer.RouteSnapshot(
+                instruction + "-instruction", "instruction-v1",
+                new SettlementTransfer.Participant("local-demo", participant),
+                new SyntheticBankAccount.BankId(bank),
+                new SyntheticBankAccount.AccountId(account),
+                new BankAccountReference("synthetic-bank:" + account),
+                new WalletReference("synthetic-wallet:" + wallet),
+                wallet.toLowerCase() + "-v1", mode);
+    }
+
     private static final class InMemoryRepository implements TransferRepository {
         private String keyDigest;
         private CanonicalCommandMetadata request;
         private Transfer transfer;
+        private SettlementTransfer settlement;
 
         @Override
         public TransferAcceptance accept(
                 ParticipantScope participant,
                 IdempotencyKey key,
                 CanonicalCommandMetadata requestCommand,
-                Supplier<Transfer> factory) {
+                Supplier<TransferAcceptancePlan> factory) {
             if (transfer != null) {
                 if (!key.sha256().equals(keyDigest)
                         || request.canonicalizationVersion()
@@ -161,17 +258,27 @@ class TransferApplicationServiceTest {
                         || !request.digest().equals(requestCommand.digest())) {
                     throw new IdempotencyConflictException();
                 }
-                return new TransferAcceptance(transfer, true);
+                return new TransferAcceptance(
+                        transfer, Optional.ofNullable(settlement), true);
             }
             keyDigest = key.sha256();
             request = requestCommand;
-            transfer = factory.get();
-            return new TransferAcceptance(transfer, false);
+            TransferAcceptancePlan plan = factory.get();
+            transfer = plan.transfer();
+            settlement = plan.settlement().orElse(null);
+            return new TransferAcceptance(transfer, plan.settlement(), false);
         }
 
         @Override
         public Optional<Transfer> findById(TransferId transferId, ParticipantScope participant) {
             return Optional.ofNullable(transfer)
+                    .filter(value -> value.transferId().equals(transferId));
+        }
+
+        @Override
+        public Optional<SettlementTransfer> findSettlementById(
+                TransferId transferId, ParticipantScope participant) {
+            return Optional.ofNullable(settlement)
                     .filter(value -> value.transferId().equals(transferId));
         }
 

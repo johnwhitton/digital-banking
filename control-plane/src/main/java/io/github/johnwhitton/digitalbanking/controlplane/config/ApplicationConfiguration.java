@@ -17,6 +17,8 @@ import io.github.johnwhitton.digitalbanking.application.port.EvidenceReferencePo
 import io.github.johnwhitton.digitalbanking.application.port.IdGenerator;
 import io.github.johnwhitton.digitalbanking.application.port.OperationRepository;
 import io.github.johnwhitton.digitalbanking.application.port.TransferIdentityGenerator;
+import io.github.johnwhitton.digitalbanking.application.port.SettlementInstructionResolver;
+import io.github.johnwhitton.digitalbanking.application.port.SettlementTransferIdentityGenerator;
 import io.github.johnwhitton.digitalbanking.application.port.TransferRepository;
 import io.github.johnwhitton.digitalbanking.application.port.TransferRouteCatalog;
 import io.github.johnwhitton.digitalbanking.application.port.WalletRoleResolver;
@@ -29,6 +31,7 @@ import io.github.johnwhitton.digitalbanking.domain.transfer.TransferEffect;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferId;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferTransition;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
+import io.github.johnwhitton.digitalbanking.domain.workflow.SettlementTransfer;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationRepository;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresTransferRepository;
@@ -52,6 +55,27 @@ public class ApplicationConfiguration {
     @Bean
     TransferRepository transferRepository(DataSource dataSource) {
         return new PostgresTransferRepository(dataSource);
+    }
+
+    @Bean
+    SettlementInstructionResolver settlementInstructionResolver() {
+        return (sender, source, destination, currency, network, acceptedAt) ->
+                Optional.empty();
+    }
+
+    @Bean
+    SettlementTransferIdentityGenerator settlementTransferIdentityGenerator() {
+        return new SettlementTransferIdentityGenerator() {
+            @Override
+            public SettlementTransfer.BoundaryId nextBoundaryId() {
+                return new SettlementTransfer.BoundaryId(UUID.randomUUID());
+            }
+
+            @Override
+            public SettlementTransfer.TransitionId nextTransitionId() {
+                return new SettlementTransfer.TransitionId(UUID.randomUUID());
+            }
+        };
     }
 
     @Bean
@@ -152,7 +176,11 @@ public class ApplicationConfiguration {
             TransferRouteCatalog routes,
             WalletRoleResolver wallets,
             ClockPort clock,
-            TransferIdentityGenerator ids) {
-        return new TransferApplicationService(transfers, routes, wallets, clock, ids);
+            TransferIdentityGenerator ids,
+            SettlementInstructionResolver settlementInstructions,
+            SettlementTransferIdentityGenerator settlementIds) {
+        return new TransferApplicationService(
+                transfers, routes, wallets, clock, ids,
+                settlementInstructions, settlementIds);
     }
 }

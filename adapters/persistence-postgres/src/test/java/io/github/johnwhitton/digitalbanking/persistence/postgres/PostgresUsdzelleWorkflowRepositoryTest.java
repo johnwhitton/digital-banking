@@ -94,7 +94,7 @@ class PostgresUsdzelleWorkflowRepositoryTest {
 
     @Test
     void v9MigratesNormalizedWorkflowStateAndExtendsTheExistingOutbox() {
-        assertEquals(6, jdbc.sql(
+        assertEquals(7, jdbc.sql(
                 "SELECT count(*) FROM flyway_schema_history WHERE success")
                 .query(Integer.class).single());
         assertEquals(1, jdbc.sql("""

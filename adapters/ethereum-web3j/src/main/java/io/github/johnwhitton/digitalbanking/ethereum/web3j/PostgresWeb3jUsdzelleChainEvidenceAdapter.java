@@ -136,7 +136,8 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
                     workflow, custodyOperationId, burnOperationId, custody, observedAt);
             EthereumRedemptionBalanceStore.Context retained = balances
                     .findByBurn(burnOperationId).orElseThrow();
-            if (!retained.sourceAddress().equals(configuration.userAddress())
+            UserConfiguration user = configuration.user(workflow);
+            if (!retained.sourceAddress().equals(user.address())
                     || !retained.adminAddress().equals(configuration.adminAddress())
                     || !retained.contractAddress().equals(configuration.contractAddress())
                     || !retained.quantity().equals(quantity)) {
@@ -338,18 +339,18 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
     private EthereumRedemptionBalanceStore.Context stateContext(
             UsdzelleWorkflow workflow) {
         return new EthereumRedemptionBalanceStore.Context(
-                workflow.id().value(), configuration.userAddress(),
+                workflow.id().value(), configuration.user(workflow).address(),
                 configuration.adminAddress(), configuration.contractAddress(),
                 workflow.context().tokenQuantity().atomicUnits());
     }
 
     private void validateAcceptedContext(UsdzelleWorkflow workflow) {
         UsdzelleWorkflow.AcceptedContext accepted = workflow.context();
+        UserConfiguration user = configuration.user(workflow);
         if (!accepted.contractReference().equals(configuration.contractAddress())
-                || !accepted.userWallet().value().equals(
-                        configuration.userWalletReference())
+                || !accepted.userWallet().value().equals(user.walletReference())
                 || !accepted.userWalletMetadataVersion().equals(
-                        configuration.userWalletMetadataVersion())
+                        user.walletMetadataVersion())
                 || !accepted.adminWallet().value().equals(
                         configuration.adminWalletReference())
                 || !accepted.adminWalletMetadataVersion().equals(
@@ -490,7 +491,7 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
                 .param("unitVersion", workflow.context().tokenQuantity().unit().version())
                 .param("unitScale", workflow.context().tokenQuantity().unit().scale())
                 .param("quantity", workflow.context().tokenQuantity().atomicUnits())
-                .param("userAddress", configuration.userAddress())
+                .param("userAddress", configuration.user(workflow).address())
                 .param("adminAddress", configuration.adminAddress())
                 .param("contractAddress", configuration.contractAddress())
                 .query(PostgresWeb3jUsdzelleChainEvidenceAdapter::mapNative)
@@ -537,26 +538,65 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
 
     public record Configuration(
             String contractAddress,
-            String userAddress,
+            java.util.Map<String, UserConfiguration> users,
             String adminAddress,
-            String userWalletReference,
-            String userWalletMetadataVersion,
             String adminWalletReference,
             String adminWalletMetadataVersion) {
         public Configuration {
             contractAddress = address(contractAddress, "contractAddress");
-            userAddress = address(userAddress, "userAddress");
-            adminAddress = address(adminAddress, "adminAddress");
-            userWalletReference = value(userWalletReference, "userWalletReference");
-            userWalletMetadataVersion = value(
-                    userWalletMetadataVersion, "userWalletMetadataVersion");
+            String normalizedAdminAddress = address(adminAddress, "adminAddress");
+            java.util.Map<String, UserConfiguration> normalized =
+                    new java.util.LinkedHashMap<>();
+            Objects.requireNonNull(users, "users").forEach((reference, user) -> {
+                String normalizedReference = value(reference, "userWalletReference");
+                UserConfiguration normalizedUser = new UserConfiguration(
+                        address(user.address(), "userAddress"),
+                        value(user.walletReference(), "userWalletReference"),
+                        value(user.walletMetadataVersion(),
+                                "userWalletMetadataVersion"));
+                if (!normalizedReference.equals(normalizedUser.walletReference())
+                        || normalized.put(normalizedReference, normalizedUser) != null) {
+                    throw new IllegalArgumentException(
+                            "workflow user configuration is inconsistent");
+                }
+            });
+            users = java.util.Map.copyOf(normalized);
             adminWalletReference = value(adminWalletReference, "adminWalletReference");
             adminWalletMetadataVersion = value(
                     adminWalletMetadataVersion, "adminWalletMetadataVersion");
-            if (userAddress.equals(adminAddress)) {
+            if (users.isEmpty()
+                    || users.values().stream().map(UserConfiguration::address)
+                        .distinct().count() != users.size()
+                    || users.values().stream()
+                        .anyMatch(user -> user.address().equals(normalizedAdminAddress))) {
                 throw new IllegalArgumentException(
-                        "workflow user and ADMIN addresses must differ");
+                        "workflow user and ADMIN addresses must be distinct");
             }
+            adminAddress = normalizedAdminAddress;
+        }
+
+        public Configuration(
+                String contractAddress,
+                String userAddress,
+                String adminAddress,
+                String userWalletReference,
+                String userWalletMetadataVersion,
+                String adminWalletReference,
+                String adminWalletMetadataVersion) {
+            this(contractAddress,
+                    java.util.Map.of(userWalletReference,
+                            new UserConfiguration(
+                                    userAddress, userWalletReference,
+                                    userWalletMetadataVersion)),
+                    adminAddress, adminWalletReference,
+                    adminWalletMetadataVersion);
+        }
+
+        UserConfiguration user(UsdzelleWorkflow workflow) {
+            return Optional.ofNullable(users.get(
+                            workflow.context().userWallet().value()))
+                    .orElseThrow(() -> new IllegalStateException(
+                            "workflow user wallet is not configured"));
         }
 
         private static String address(String value, String name) {
@@ -574,6 +614,17 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
                 throw new IllegalArgumentException(name + " is invalid");
             }
             return value;
+        }
+    }
+
+    public record UserConfiguration(
+            String address,
+            String walletReference,
+            String walletMetadataVersion) {
+        public UserConfiguration {
+            Objects.requireNonNull(address, "address");
+            Objects.requireNonNull(walletReference, "walletReference");
+            Objects.requireNonNull(walletMetadataVersion, "walletMetadataVersion");
         }
     }
 

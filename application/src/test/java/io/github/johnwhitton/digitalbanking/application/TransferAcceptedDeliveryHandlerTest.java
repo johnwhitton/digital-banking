@@ -83,7 +83,8 @@ class TransferAcceptedDeliveryHandlerTest {
         @Override
         public TransferAcceptance accept(
                 ParticipantScope participant, IdempotencyKey key,
-                CanonicalCommandMetadata requestCommand, Supplier<Transfer> factory) {
+                CanonicalCommandMetadata requestCommand,
+                Supplier<TransferAcceptancePlan> factory) {
             throw new UnsupportedOperationException();
         }
 

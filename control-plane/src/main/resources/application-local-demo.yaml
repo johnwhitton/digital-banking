@@ -19,6 +19,12 @@ digital-banking:
               bank-account-id: USER_1_BANK_ACCOUNT
               bank-account-reference: synthetic-bank:USER_1_BANK_ACCOUNT
               user-wallet-reference: synthetic-wallet:USER_WALLET_1
+            - tenant-id: local-demo
+              participant-id: USER_2
+              bank-id: BANK_2
+              bank-account-id: USER_2_BANK_ACCOUNT
+              bank-account-reference: synthetic-bank:USER_2_BANK_ACCOUNT
+              user-wallet-reference: synthetic-wallet:USER_WALLET_2
     local-finance:
         enabled: true
         fixture-version: phase-6a-v1

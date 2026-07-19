@@ -143,6 +143,8 @@ class OpenApiContractTest {
                 TransferResponse.FinalityHistories.class);
         assertSchemaMatchesRecord(schemas, "TransferFinality",
                 TransferResponse.FinalityView.class);
+        assertSchemaMatchesRecord(schemas, "SettlementOrchestration",
+                TransferResponse.SettlementOrchestration.class);
         assertEquals(Set.of(
                         "urn:digital-banking:problem:invalid-request",
                         "urn:digital-banking:problem:unauthenticated",

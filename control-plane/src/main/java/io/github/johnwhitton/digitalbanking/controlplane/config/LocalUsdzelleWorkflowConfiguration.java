@@ -8,15 +8,23 @@ import javax.sql.DataSource;
 
 import io.github.johnwhitton.digitalbanking.application.AccountingApplicationService;
 import io.github.johnwhitton.digitalbanking.application.LocalUsdzelleWorkflowStepExecutor;
+import io.github.johnwhitton.digitalbanking.application.LocalSettlementTransferStepExecutor;
 import io.github.johnwhitton.digitalbanking.application.MockBankApplicationService;
+import io.github.johnwhitton.digitalbanking.application.RegisteredSettlementInstructionResolver;
 import io.github.johnwhitton.digitalbanking.application.SigningAuthorityService;
 import io.github.johnwhitton.digitalbanking.application.TokenOperationApplicationService;
 import io.github.johnwhitton.digitalbanking.application.UsdzelleWorkflowApplicationService;
 import io.github.johnwhitton.digitalbanking.application.WalletTransferAcceptanceService;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryHandler;
+import io.github.johnwhitton.digitalbanking.application.delivery.SettlementTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.UsdzelleWorkflowAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.port.ClockPort;
+import io.github.johnwhitton.digitalbanking.application.port.SettlementInstructionRegistry;
+import io.github.johnwhitton.digitalbanking.application.port.SettlementInstructionResolver;
+import io.github.johnwhitton.digitalbanking.application.port.SettlementTransferIdentityGenerator;
+import io.github.johnwhitton.digitalbanking.application.port.SettlementTransferRepository;
+import io.github.johnwhitton.digitalbanking.application.port.SettlementTransferStepExecutor;
 import io.github.johnwhitton.digitalbanking.application.port.IdGenerator;
 import io.github.johnwhitton.digitalbanking.application.port.OperationRepository;
 import io.github.johnwhitton.digitalbanking.application.port.UsdzelleChainEvidencePort;
@@ -35,12 +43,15 @@ import io.github.johnwhitton.digitalbanking.domain.workflow.UsdzelleWorkflow;
 import io.github.johnwhitton.digitalbanking.ethereum.web3j.PostgresWeb3jUsdzelleChainEvidenceAdapter;
 import io.github.johnwhitton.digitalbanking.ethereum.web3j.Web3jEthereumMintChainAdapter;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresUsdzelleWorkflowRepository;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresSettlementInstructionRegistry;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresSettlementTransferRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Profile;
+import org.springframework.context.annotation.Primary;
 
 /** Explicit local-only composition for Phase 6B user-held workflows. */
 @Configuration(proxyBeanMethods = false)
@@ -63,6 +74,49 @@ public class LocalUsdzelleWorkflowConfiguration {
     @DependsOn("flywayInitializer")
     UsdzelleWorkflowRepository usdzelleWorkflowRepository(DataSource dataSource) {
         return new PostgresUsdzelleWorkflowRepository(dataSource);
+    }
+
+    @Bean
+    SettlementInstructionRegistry settlementInstructionRegistry(DataSource dataSource) {
+        return new PostgresSettlementInstructionRegistry(dataSource);
+    }
+
+    @Bean
+    @Primary
+    SettlementInstructionResolver localSettlementInstructionResolver(
+            SettlementInstructionRegistry instructions,
+            WalletIdentityRegistry wallets,
+            MockBankApplicationService banks,
+            UsdzelleWorkflowProperties workflowProperties,
+            LocalEthereumProperties ethereum,
+            LocalFinancialProperties finance,
+            ClockPort clock) {
+        return new RegisteredSettlementInstructionResolver(
+                instructions, wallets, banks,
+                new RegisteredSettlementInstructionResolver.Policy(
+                        ADMIN, "phase-6c-v1", ethereum.contractAddress(),
+                        versions(workflowProperties.payoutPolicyVersion(),
+                                finance.bankPolicyVersion()),
+                        workflowProperties.conversionPolicyVersion(),
+                        versions(finance.accountingPolicyVersion(),
+                                finance.mintEvidencePolicyVersion(),
+                                finance.custodyEvidencePolicyVersion(),
+                                finance.burnEvidencePolicyVersion()),
+                        versions(workflowProperties.feePolicyVersion(),
+                                ethereum.policyVersion()),
+                        versions(workflowProperties.finalityPolicyVersion(),
+                                ethereum.policyVersion(),
+                                LocalEthereumWalletTransferConfiguration.POLICY_VERSION,
+                                LocalEthereumWalletTransferConfiguration
+                                        .REDEMPTION_POLICY_VERSION),
+                        versions(workflowProperties.reconciliationPolicyVersion(),
+                                finance.accountingPolicyVersion())),
+                clock);
+    }
+
+    @Bean
+    SettlementTransferRepository settlementTransferRepository(DataSource dataSource) {
+        return new PostgresSettlementTransferRepository(dataSource);
     }
 
     @Bean
@@ -169,15 +223,28 @@ public class LocalUsdzelleWorkflowConfiguration {
             LocalEthereumProperties ethereum,
             UsdzelleWorkflowProperties workflows,
             WalletIdentityRegistry wallets) {
-        WalletIdentityRegistry.WalletIdentity user = wallets.resolve(new WalletReference(
-                workflows.participants().getFirst().userWalletReference()));
         WalletIdentityRegistry.WalletIdentity admin = wallets.resolve(ADMIN);
+        java.util.Map<String,
+                PostgresWeb3jUsdzelleChainEvidenceAdapter.UserConfiguration> users =
+                workflows.participants().stream().collect(
+                        java.util.stream.Collectors.toUnmodifiableMap(
+                                UsdzelleWorkflowProperties.ParticipantMapping
+                                        ::userWalletReference,
+                                mapping -> {
+                                    WalletIdentityRegistry.WalletIdentity user =
+                                            wallets.resolve(new WalletReference(
+                                                    mapping.userWalletReference()));
+                                    return new PostgresWeb3jUsdzelleChainEvidenceAdapter
+                                            .UserConfiguration(
+                                                    user.normalizedAddress(),
+                                                    user.reference().value(),
+                                                    user.registryVersion() + ':'
+                                                            + user.keyVersion());
+                                }));
         return new PostgresWeb3jUsdzelleChainEvidenceAdapter(
                 dataSource, ethereum.rpcUrl(),
                 new PostgresWeb3jUsdzelleChainEvidenceAdapter.Configuration(
-                        ethereum.contractAddress(), user.normalizedAddress(),
-                        admin.normalizedAddress(), user.reference().value(),
-                        user.registryVersion() + ':' + user.keyVersion(),
+                        ethereum.contractAddress(), users, admin.normalizedAddress(),
                         ADMIN.value(),
                         admin.registryVersion() + ':' + admin.keyVersion()),
                 Clock.systemUTC());
@@ -250,6 +317,31 @@ public class LocalUsdzelleWorkflowConfiguration {
             UsdzelleWorkflowIdentityGenerator ids) {
         return new UsdzelleWorkflowAcceptedDeliveryHandler(
                 workflows, steps, clock, ids);
+    }
+
+    @Bean
+    SettlementTransferStepExecutor settlementTransferStepExecutor(
+            UsdzelleWorkflowApplicationService workflowAcceptance,
+            UsdzelleWorkflowRepository workflows,
+            WalletTransferAcceptanceService transferAcceptance,
+            WalletTransferRepository walletTransfers,
+            AccountingApplicationService accounting,
+            SettlementInstructionResolver instructions,
+            UsdzelleWorkflowMetrics metrics,
+            ClockPort clock) {
+        return metrics.metered(new LocalSettlementTransferStepExecutor(
+                workflowAcceptance, workflows, transferAcceptance,
+                walletTransfers, accounting, instructions), clock);
+    }
+
+    @Bean
+    SettlementTransferAcceptedDeliveryHandler settlementTransferAcceptedDeliveryHandler(
+            SettlementTransferRepository settlements,
+            SettlementTransferStepExecutor steps,
+            ClockPort clock,
+            SettlementTransferIdentityGenerator ids) {
+        return new SettlementTransferAcceptedDeliveryHandler(
+                settlements, steps, clock, ids);
     }
 
     private static String versions(String... values) {

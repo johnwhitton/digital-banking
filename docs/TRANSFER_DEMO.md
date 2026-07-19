@@ -4,7 +4,7 @@
 
 This document is the authoritative detailed specification for two local-only, non-production USDZELLE demonstrations. It is subordinate to accepted [ADRs](adr/README.md), the canonical [design](DESIGN.md), and executable tests; [the implementation roadmap](IMPLEMENTATION.md) owns phase status and dependencies.
 
-**Status:** `partially implemented`. Phase 3C verifies durable acceptance of one five-effect transfer parent and first-withdrawal preparation. Phases 4A-4B verify durable signing authority plus a session-ephemeral local signer. Phases 5A-5D verify separate local-Anvil mint, configured custody, user transfer, redemption custody, and ADMIN burn primitives. Phase 6A adds exact-USD synthetic bank and reserve/liability accounting primitives. Phase 6B verifies separate local acquisition and redemption parents for the configured participant, with server-owned custody, payout-before-burn, and reconciliation, through the consolidated PostgreSQL+Anvil proof and full offline repository gate. Settlement-only orchestration, a reproducible demonstration environment, Solana, and a public wallet-transfer API remain absent.
+**Status:** `partially implemented`. Phase 3C verifies durable acceptance of one five-effect transfer parent and first-withdrawal preparation. Phases 4A-4B verify durable signing authority plus a session-ephemeral local signer. Phases 5A-5D verify separate local-Anvil mint, configured custody, user transfer, redemption custody, and ADMIN burn primitives. Phase 6A adds exact-USD synthetic bank and reserve/liability accounting primitives. Phase 6B verifies separate local acquisition and redemption parents for the configured participant, with server-owned custody, payout-before-burn, and reconciliation. Phase 6C verifies one registered settlement-only route by composing those authoritative children behind the existing transfer API. A reproducible demonstration environment, arbitrary institutional routing, Solana, and a public wallet-transfer API remain absent.
 
 Zelle is a public case study only. `USDZELLE` is a reference asset name and does not assert that Early Warning Services issues a stablecoin, accepts deposits, owns reserves, operates wallets, shares reserve income, or selected this architecture.
 
@@ -25,6 +25,8 @@ GET  /v1/transfers/{transferId}
 ```
 
 It accepts opaque source/destination synthetic bank references, exact amount/currency, an optional allowlisted logical network, and a scoped idempotency key. The server resolves participant scope, asset/unit, route, and institution-controlled wallet context. HTTP 202 means only durable parent/effect/outbox acceptance.
+
+Under `local-demo,local-ethereum`, Phase 6C recognizes only the versioned `USER_1` sender-acquisition instruction and the distinct `USER_2` recipient `AUTO_REDEEM` instruction. The caller still supplies no participant, wallet, ADMIN, signer, policy, step, child, evidence, state, or outcome field. The existing response may include minimized sender-acquisition, user-transfer, recipient-redemption, bank, blockchain, accounting, and reconciliation statuses; it does not expose recipient identity, wallet aliases, child identities, native evidence, or internal policy.
 
 Under the combined `local-demo,local-ethereum` profiles, Phase 6B separately exposes:
 
@@ -50,7 +52,7 @@ User 1 sends `$100.00`; User 2 receives `$100.00`. Neither customer needs a bloc
 6. ADMIN burns the redeemed 100.00 USDZELLE
 ```
 
-The current Phase 3C five-effect parent does not already implement this future six-effect sequence. Phase 6C must add an explicit redemption-transfer child and ADMIN burn rather than hiding both behind the existing burn effect.
+Phase 3C's five-effect parent remains unchanged and does not itself implement this six-effect sequence. Phase 6C adds a V10 companion rather than relabeling the V3 effects. Its bounded local proof uses the already governed segregated custody aliases: sender acquisition mints to `USER_WALLET_1`, an exact Phase 5C transfer moves the full quantity to `USER_WALLET_2`, the registered recipient instruction immediately invokes the Phase 6B `AUTO_REDEEM` path to `ADMIN_REDEMPTION`, and final reconciliation closes the parent. This proves the settlement-only customer outcome—sender fiat decreases, recipient fiat increases, no recipient token retention—without claiming arbitrary bank-settlement-wallet routing.
 
 ### Expected synthetic before/after example
 
@@ -80,7 +82,7 @@ An exact duplicate command or delivery returns the original durable parent/effec
 
 ### Current gaps
 
-Bank-settlement ERC-20 transfers, six-effect orchestration, compensation execution, parent-level correlation/reconciliation, and a runnable environment are all planned. Phase 6A can execute the two synthetic bank effects and accounting postings independently, but it does not execute the Phase 3C parent, either institutional transfer in Demo A, or any bank-credit ordering gate.
+Phase 6C now provides durable parent/child correlation, ordered execution, ambiguity/manual-review projection, and final reconciliation for one hard-bounded local route. It does not provide arbitrary registered-route administration, the broader institutional bank-settlement-wallet realization, automatic compensation/refund/reversal, operator commands, or a reproducible environment. The synthetic proof is not real bank integration, an audited reserve, legal/accounting/customer finality, or production settlement.
 
 ## Demo B — user-held USDZELLE lifecycle
 
@@ -160,11 +162,11 @@ Neither demo is globally atomic. Individual PostgreSQL and blockchain transactio
 - explicit compensation or manual review rather than destructive rollback; and
 - separate blockchain, accounting, legal, and customer-visible finality.
 
-The eventual local evidence summary conceptually includes parent/child operation IDs, bank-ledger entries, wallet aliases and derived local addresses, native transaction hashes/signatures, confirmed contract/program events or instructions, reserve/supply reconciliation, and all four finality statuses. It must redact private keys, raw credentials, personal data, internal policy facts, and raw signed material.
+The eventual operator evidence summary conceptually includes parent/child operation IDs, bank-ledger entries, wallet aliases and derived local addresses, native transaction hashes/signatures, confirmed contract/program events or instructions, reserve/supply reconciliation, and all four finality statuses. Phase 6C stores these correlations internally but its participant response deliberately exposes only minimized dimension statuses. Any future operator summary must redact private keys, raw credentials, personal data, internal policy facts, and raw signed material.
 
 ## Ethereum-first and Solana-second realization
 
-Ethereum completes orchestration phases first. Foundry/Anvil own native EVM execution and Web3j remains inside `adapters/ethereum-web3j/`. Phases 5A-6A supply bounded chain/custody/bank/accounting effects, and Phase 6B composes the user-held workflow core. Phase 6C settlement-only orchestration and Phase 6D's reproducible environment remain before both demonstrations are operator-executable.
+Ethereum completes orchestration phases first. Foundry/Anvil own native EVM execution and Web3j remains inside `adapters/ethereum-web3j/`. Phases 5A-6A supply bounded chain/custody/bank/accounting effects, Phase 6B composes the user-held workflow core, and Phase 6C composes one settlement-only route. Phase 6D's reproducible environment remains before either demonstration is operator-executable from a clean checkout.
 
 Solana follows through the same provider-neutral business contracts after the Ethereum demonstrations. Its adapter must preserve native fee payer/authority, accounts, instructions, recent blockhash or durable nonce, signature, slot, commitment, expiry, and SPL Token evidence. ADR 0003 requires a bounded Java-client gate, classic SPL Token first, no Neon baseline, and Rust/Anchor only if existing programs cannot express required behavior.
 

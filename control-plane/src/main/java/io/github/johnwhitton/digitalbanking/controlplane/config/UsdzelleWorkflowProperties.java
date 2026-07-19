@@ -25,9 +25,13 @@ public record UsdzelleWorkflowProperties(
         require(reconciliationPolicyVersion, "reconciliationPolicyVersion");
         participants = participants == null ? List.of() : List.copyOf(participants);
         if (!enabled || !"payout-before-burn-v1".equals(payoutPolicyVersion)
-                || participants.size() != 1
+                || participants.isEmpty()
                 || participants.stream().map(mapping ->
                         mapping.tenantId() + ':' + mapping.participantId())
+                    .distinct().count() != participants.size()
+                || participants.stream().map(ParticipantMapping::bankAccountReference)
+                    .distinct().count() != participants.size()
+                || participants.stream().map(ParticipantMapping::userWalletReference)
                     .distinct().count() != participants.size()) {
             throw new IllegalArgumentException(
                     "local USDZELLE workflow policy and unique mappings are required");

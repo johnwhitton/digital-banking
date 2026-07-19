@@ -94,7 +94,7 @@ class PostgresSigningRequestRepositoryTest {
     void v4MigratesEmptyDatabaseAndPersistsOnlyRedactedSigningEvidence() {
         SigningRequest accepted = repository.accept(request(1, A, B, Optional.empty())).request();
 
-        assertEquals(6, jdbc.sql(
+        assertEquals(7, jdbc.sql(
                 "SELECT count(*) FROM flyway_schema_history WHERE success")
                 .query(Integer.class).single());
         assertEquals(5, jdbc.sql("""

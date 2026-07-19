@@ -19,15 +19,19 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.github.johnwhitton.digitalbanking.application.IdempotencyConflictException;
 import io.github.johnwhitton.digitalbanking.application.TransferAcceptance;
+import io.github.johnwhitton.digitalbanking.application.TransferAcceptancePlan;
 import io.github.johnwhitton.digitalbanking.application.command.CanonicalCommandMetadata;
 import io.github.johnwhitton.digitalbanking.application.command.CommandDigest;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyKey;
 import io.github.johnwhitton.digitalbanking.application.command.ParticipantScope;
+import io.github.johnwhitton.digitalbanking.application.delivery.DeliveryOutcome;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDelivery;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.application.port.TransferRepository;
 import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
 import io.github.johnwhitton.digitalbanking.domain.asset.TokenQuantity;
+import io.github.johnwhitton.digitalbanking.domain.accounting.SyntheticBankAccount;
+import io.github.johnwhitton.digitalbanking.domain.accounting.UsdCents;
 import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
 import io.github.johnwhitton.digitalbanking.domain.operation.FinalityStatus;
 import io.github.johnwhitton.digitalbanking.domain.operation.FinalityType;
@@ -41,12 +45,14 @@ import io.github.johnwhitton.digitalbanking.domain.transfer.TransferParticipant;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferStatus;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferTransition;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
+import io.github.johnwhitton.digitalbanking.domain.workflow.SettlementTransfer;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -103,6 +109,10 @@ class PostgresTransferRepositoryTest {
 
     @BeforeEach
     void clearData() {
+        jdbc.sql("DELETE FROM settlement_transfer_conclusion").update();
+        jdbc.sql("DELETE FROM settlement_transfer_transition").update();
+        jdbc.sql("DELETE FROM settlement_transfer_boundary").update();
+        jdbc.sql("DELETE FROM settlement_transfer").update();
         jdbc.sql("DELETE FROM operation_delivery_attempt").update();
         jdbc.sql("DELETE FROM transfer_handler_inbox").update();
         jdbc.sql("DELETE FROM operation_outbox").update();
@@ -123,7 +133,7 @@ class PostgresTransferRepositoryTest {
                 () -> transfer(1, PARTICIPANT, "transfer-key", metadata('a')));
 
         assertFalse(accepted.replayed());
-        assertEquals(6, jdbc.sql("SELECT count(*) FROM flyway_schema_history WHERE success")
+        assertEquals(7, jdbc.sql("SELECT count(*) FROM flyway_schema_history WHERE success")
                 .query(Integer.class).single());
         assertEquals(1L, count("banking_transfer"));
         assertEquals(1L, count("transfer_idempotency"));
@@ -138,6 +148,107 @@ class PostgresTransferRepositoryTest {
                 "SELECT status FROM operation_outbox").query(String.class).single());
         assertFalse(jdbc.sql("SELECT payload::text FROM operation_outbox")
                 .query(String.class).single().contains("transfer-key"));
+    }
+
+    @Test
+    void v10CompanionCommitsWithTransferAndRehydratesWithoutRecipientLeakage() {
+        ParticipantScope sender = new ParticipantScope("local-demo", "USER_1");
+        Transfer transfer = settlementBaseTransfer(70, sender, "settlement-v10");
+        SettlementTransfer settlement = settlement(transfer);
+
+        TransferAcceptance accepted = repository.accept(
+                sender, IdempotencyKey.of("settlement-v10"), metadata('a'),
+                () -> new TransferAcceptancePlan(
+                        transfer, Optional.of(settlement)));
+
+        assertEquals(Optional.of(settlement), accepted.settlement());
+        assertEquals(1L, count("settlement_transfer"));
+        assertEquals(4L, count("settlement_transfer_boundary"));
+        assertEquals(1L, count("settlement_transfer_transition"));
+        assertEquals("SettlementTransferAccepted", jdbc.sql(
+                "SELECT event_type FROM operation_outbox")
+                .query(String.class).single());
+        assertEquals(Optional.of(settlement),
+                repository.findSettlementById(transfer.transferId(), sender));
+        assertEquals(Optional.empty(), repository.findSettlementById(
+                transfer.transferId(), new ParticipantScope("local-demo", "USER_2")));
+        assertThrows(DataAccessException.class, () -> jdbc.sql("""
+                UPDATE settlement_instruction
+                SET wallet_reference = 'synthetic-wallet:CALLER_OVERRIDE'
+                WHERE instruction_id = 'local-user-2-auto-redeem'
+                  AND instruction_version = 'phase-6c-v1'
+                """).update());
+        assertEquals(1, jdbc.sql("""
+                UPDATE settlement_instruction SET enabled = FALSE
+                WHERE instruction_id = 'local-user-2-auto-redeem'
+                  AND instruction_version = 'phase-6c-v1'
+                """).update());
+        assertEquals(1, jdbc.sql("""
+                UPDATE settlement_instruction SET enabled = TRUE
+                WHERE instruction_id = 'local-user-2-auto-redeem'
+                  AND instruction_version = 'phase-6c-v1'
+                """).update());
+        try (HikariDataSource restarted = newDataSource()) {
+            assertEquals(Optional.of(settlement),
+                    new PostgresTransferRepository(restarted).findSettlementById(
+                            transfer.transferId(), sender));
+        }
+        jdbc.sql("""
+                INSERT INTO settlement_instruction (
+                    instruction_id, instruction_version, tenant_id, participant_id,
+                    bank_id, bank_account_id, bank_account_reference,
+                    wallet_reference, instruction_mode, currency,
+                    settlement_network, enabled, effective_at, expires_at)
+                VALUES (
+                    'ambiguous-recipient', 'phase-6c-v2',
+                    'local-demo', 'USER_2', 'BANK_2', 'USER_2_BANK_ACCOUNT',
+                    'synthetic-bank:USER_2_BANK_ACCOUNT',
+                    'synthetic-wallet:USER_WALLET_2', 'AUTO_REDEEM', 'USD',
+                    'ETHEREUM', TRUE, TIMESTAMPTZ '2026-01-02 00:00:00+00', NULL)
+                """).update();
+        assertThrows(IllegalStateException.class, () ->
+                new PostgresSettlementInstructionRegistry(dataSource).findRecipient(
+                        new BankAccountReference(
+                                "synthetic-bank:USER_2_BANK_ACCOUNT"),
+                        "USD", SettlementNetwork.ETHEREUM, NOW));
+        jdbc.sql("""
+                UPDATE settlement_instruction SET enabled = FALSE
+                WHERE instruction_id = 'ambiguous-recipient'
+                  AND instruction_version = 'phase-6c-v2'
+                """).update();
+    }
+
+    @Test
+    void exhaustedSettlementDeliveryAtomicallyProjectsManualReview() {
+        ParticipantScope sender = new ParticipantScope("local-demo", "USER_1");
+        Transfer transfer = settlementBaseTransfer(71, sender, "settlement-exhausted");
+        repository.accept(
+                sender, IdempotencyKey.of("settlement-exhausted"), metadata('a'),
+                () -> new TransferAcceptancePlan(
+                        transfer, Optional.of(settlement(transfer))));
+        PostgresOperationDeliveryQueue queue =
+                PostgresOperationDeliveryQueue.localEthereumDemo(dataSource);
+        OperationDelivery delivery = queue.claim(
+                        "settlement-worker", NOW.plusSeconds(1),
+                        Duration.ofSeconds(10), 1)
+                .deliveries().getFirst();
+
+        assertEquals(OperationDeliveryQueue.LeaseUpdateResult.UPDATED,
+                queue.moveToManualReview(
+                        delivery,
+                        OperationDeliveryQueue.ManualReviewReason.ATTEMPTS_EXHAUSTED,
+                        DeliveryOutcome.retryableFailure("settlement-child-pending"),
+                        NOW.plusSeconds(2)));
+
+        SettlementTransfer retained = repository.findSettlementById(
+                transfer.transferId(), sender).orElseThrow();
+        assertEquals(SettlementTransfer.Status.MANUAL_REVIEW, retained.status());
+        assertEquals(SettlementTransfer.BoundaryStatus.MANUAL_REVIEW,
+                retained.currentBoundary().status());
+        assertEquals(2, retained.transitions().size());
+        assertEquals("MANUAL_REVIEW", jdbc.sql(
+                "SELECT status FROM operation_outbox")
+                .query(String.class).single());
     }
 
     @Test
@@ -438,7 +549,79 @@ class PostgresTransferRepositoryTest {
             String key,
             CanonicalCommandMetadata metadata,
             java.util.function.Supplier<Transfer> factory) {
-        return target.accept(participant, IdempotencyKey.of(key), metadata, factory);
+        return target.accept(
+                participant, IdempotencyKey.of(key), metadata,
+                () -> new TransferAcceptancePlan(
+                        factory.get(), Optional.empty()));
+    }
+
+    private static Transfer settlementBaseTransfer(
+            long seed, ParticipantScope sender, String key) {
+        CanonicalCommandMetadata request = metadata('a');
+        List<TransferEffect.Id> effects = java.util.stream.LongStream.range(1, 6)
+                .mapToObj(index -> effectId(seed * 10 + index)).toList();
+        return Transfer.accepted(
+                transferId(seed),
+                new TransferParticipant(sender.tenantId(), sender.participantId()),
+                new TransferAcceptanceContext(
+                        new BankAccountReference(
+                                "synthetic-bank:USER_1_BANK_ACCOUNT"),
+                        new BankAccountReference(
+                                "synthetic-bank:USER_2_BANK_ACCOUNT"),
+                        new WalletReference("synthetic-wallet:USER_WALLET_1"),
+                        new WalletReference("synthetic-wallet:USER_WALLET_2"),
+                        SettlementNetwork.ETHEREUM, "USD", "route-v10",
+                        "phase-6c-v1", request.canonicalizationVersion(),
+                        request.digest().value(), 1, "f".repeat(64),
+                        IdempotencyKey.of(key).sha256()),
+                TokenQuantity.parse("12.34", UNIT), effects,
+                transitionId(seed), NOW,
+                new EvidenceRef("participant:transfer:accepted:" + seed));
+    }
+
+    private static SettlementTransfer settlement(Transfer transfer) {
+        var sender = new SettlementTransfer.RouteSnapshot(
+                "local-user-1-acquisition", "phase-6c-v1",
+                new SettlementTransfer.Participant("local-demo", "USER_1"),
+                new SyntheticBankAccount.BankId("BANK_1"),
+                new SyntheticBankAccount.AccountId("USER_1_BANK_ACCOUNT"),
+                transfer.acceptanceContext().sourceBankAccount(),
+                transfer.acceptanceContext().senderWallet(),
+                "sender-wallet-v1", SettlementTransfer.InstructionMode.ACQUISITION);
+        var recipient = new SettlementTransfer.RouteSnapshot(
+                "local-user-2-auto-redeem", "phase-6c-v1",
+                new SettlementTransfer.Participant("local-demo", "USER_2"),
+                new SyntheticBankAccount.BankId("BANK_2"),
+                new SyntheticBankAccount.AccountId("USER_2_BANK_ACCOUNT"),
+                transfer.acceptanceContext().destinationBankAccount(),
+                transfer.acceptanceContext().recipientWallet(),
+                "recipient-wallet-v1", SettlementTransfer.InstructionMode.AUTO_REDEEM);
+        SettlementTransfer.AcceptedContext context =
+                new SettlementTransfer.AcceptedContext(
+                        "phase-6c-v1",
+                        UsdCents.positive(transfer.quantity().atomicUnits()),
+                        transfer.quantity(), sender, recipient,
+                        new WalletReference("synthetic-wallet:ADMIN_REDEMPTION"),
+                        "admin-wallet-v1",
+                        SettlementNetwork.ETHEREUM,
+                        "0x0000000000000000000000000000000000000001",
+                        "payout-before-burn-v1", "usd-usdzelle-cent-v1",
+                        "reserve-accounting-v1", "no-fee-local-v1",
+                        "local-ethereum-finality-v1",
+                        "reserve-chain-reconciliation-v1",
+                        transfer.acceptanceContext().idempotencyKeyDigest(),
+                        "b".repeat(64), NOW);
+        return SettlementTransfer.accepted(
+                transfer.transferId(), context,
+                List.of(
+                        new SettlementTransfer.BoundaryId(new UUID(70, 1)),
+                        new SettlementTransfer.BoundaryId(new UUID(70, 2)),
+                        new SettlementTransfer.BoundaryId(new UUID(70, 3)),
+                        new SettlementTransfer.BoundaryId(new UUID(70, 4))),
+                new SettlementTransfer.TransitionId(new UUID(70, 5)),
+                new EvidenceRef(
+                        "participant:settlement-transfer:accepted:"
+                                + transfer.transferId()));
     }
 
     private static Transfer transfer(

@@ -10,6 +10,7 @@ import io.github.johnwhitton.digitalbanking.application.WalletTransferAcceptance
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.application.delivery.RedemptionAcceptedDeliveryHandler;
+import io.github.johnwhitton.digitalbanking.application.delivery.SettlementTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.WalletTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.UsdzelleWorkflowAcceptedDeliveryHandler;
@@ -108,7 +109,8 @@ public class LocalEthereumWalletTransferConfiguration {
             UsdzelleWorkflowRepository workflows,
             UsdzelleWorkflowContextResolver workflowContexts,
             @Qualifier("localUsdzelleMintHandler") OperationDeliveryHandler mintHandler,
-            UsdzelleWorkflowAcceptedDeliveryHandler workflowHandler) {
+            UsdzelleWorkflowAcceptedDeliveryHandler workflowHandler,
+            SettlementTransferAcceptedDeliveryHandler settlementHandler) {
         WalletIdentityRegistry.WalletIdentity admin = wallets.resolve(ADMIN_REDEMPTION);
         var custodyHandler = new WalletTransferAcceptedDeliveryHandler(
                 transfers, transferChain, signing, wallets, clock, Duration.ofMinutes(5));
@@ -125,6 +127,10 @@ public class LocalEthereumWalletTransferConfiguration {
                         + properties.redemptionSourceWallet()),
                 ADMIN_REDEMPTION);
         return delivery -> {
+            if (SettlementTransferAcceptedDeliveryHandler.EVENT_TYPE.equals(
+                    delivery.eventType())) {
+                return settlementHandler.handle(delivery);
+            }
             if (UsdzelleWorkflowAcceptedDeliveryHandler.EVENT_TYPE.equals(
                     delivery.eventType())) {
                 return workflowHandler.handle(delivery);

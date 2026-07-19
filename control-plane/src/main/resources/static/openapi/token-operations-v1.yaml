@@ -358,6 +358,7 @@ components:
                   evidenceReferences: []
             evidenceReferences:
               - participant:transfer:acceptance:00000000-0000-0000-0000-000000000100
+            settlementOrchestration: null
     BadRequest:
       description: Malformed request or invalid bounded input
       content:
@@ -746,6 +747,82 @@ components:
           description: Participant-safe opaque references only
           items:
             type: string
+        settlementOrchestration:
+          oneOf:
+            - $ref: '#/components/schemas/SettlementOrchestration'
+            - type: 'null'
+          description: >-
+            Present only for the configured local settlement-only workflow;
+            contains minimized progress and no route, wallet, or child identities.
+    SettlementOrchestration:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - version
+        - senderAcquisitionStatus
+        - userTransferStatus
+        - recipientRedemptionStatus
+        - bankStatus
+        - blockchainStatus
+        - accountingStatus
+        - reconciliationStatus
+        - manualReviewRequired
+      properties:
+        status:
+          type: string
+          enum:
+            - ACCEPTED
+            - SENDER_ACQUISITION_PENDING
+            - SENDER_ACQUISITION_UNKNOWN
+            - SENDER_ACQUISITION_COMPLETED
+            - USER_TRANSFER_PENDING
+            - USER_TRANSFER_SUBMISSION_UNKNOWN
+            - USER_TRANSFER_COMPLETED
+            - RECIPIENT_REDEMPTION_PENDING
+            - RECIPIENT_REDEMPTION_UNKNOWN
+            - RECIPIENT_REDEMPTION_COMPLETED
+            - FINAL_RECONCILIATION_PENDING
+            - COMPLETED
+            - FAILED_NO_EFFECT
+            - MANUAL_REVIEW
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        senderAcquisitionStatus:
+          $ref: '#/components/schemas/SettlementBoundaryStatus'
+        userTransferStatus:
+          $ref: '#/components/schemas/SettlementBoundaryStatus'
+        recipientRedemptionStatus:
+          $ref: '#/components/schemas/SettlementBoundaryStatus'
+        bankStatus:
+          $ref: '#/components/schemas/SettlementDimensionStatus'
+        blockchainStatus:
+          $ref: '#/components/schemas/SettlementDimensionStatus'
+        accountingStatus:
+          $ref: '#/components/schemas/SettlementDimensionStatus'
+        reconciliationStatus:
+          type: string
+          enum:
+            - PENDING
+            - ELIGIBLE
+            - ACTIVE
+            - COMPLETED
+            - MANUAL_REVIEW
+            - RECONCILED
+            - RESERVE_LEDGER_MISMATCH
+            - CHAIN_SUPPLY_MISMATCH
+            - EVIDENCE_INCOMPLETE
+            - UNSUPPORTED_OR_STALE_OBSERVATION
+        manualReviewRequired:
+          type: boolean
+    SettlementBoundaryStatus:
+      type: string
+      enum: [PENDING, ELIGIBLE, ACTIVE, UNKNOWN, COMPLETED, FAILED_NO_EFFECT, MANUAL_REVIEW]
+    SettlementDimensionStatus:
+      type: string
+      enum: [PENDING, COMPLETED, FAILED_NO_EFFECT, MANUAL_REVIEW]
     TransferEffect:
       type: object
       additionalProperties: false

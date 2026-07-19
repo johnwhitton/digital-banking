@@ -31,7 +31,7 @@ Zelle is only a public case study in the publications. This repository is organi
 
 ### Current implementation boundary
 
-The current repository contains documentation, plain-Java exact operation, transfer, signing, synthetic-bank, accounting, and user-held workflow invariants, framework-free application use cases/ports, PostgreSQL, local-signer, and Ethereum-Web3j adapters, a minimal local reference token, and a Spring Boot control plane. Phases 3A-3C provide durable token-operation/transfer acceptance, delivery/recovery, and only the first internal transfer preparation. Phases 4A-4B provide durable signing authority and session-only local signing. Phases 5A-5D provide bounded local-Anvil mint, configured custody, user-wallet transfer, redemption custody, and ADMIN burn primitives. Phase 6A adds exact durable synthetic withdrawals/deposits/inquiry plus a closed append-only reserve/liability ledger and supply/custody reconciliation under `local-demo`. Phase 6B composes those existing primitives under `local-demo,local-ethereum` into separate participant-scoped acquisition and redemption parents with immutable server-resolved context, payout-before-burn, and reconciliation. There is still no settlement-only parent execution, production accounting/reserve, public wallet-transfer API, production custody/network, Solana adapter, Compose environment, or complete reproducible demonstration environment. The default configuration still has no identity/signer provider, bank/accounting/workflow bean, or enabled worker. The [two local demonstrations](TRANSFER_DEMO.md) record this boundary and the remaining work.
+The current repository contains documentation, plain-Java exact operation, transfer, signing, synthetic-bank, accounting, user-held workflow, and settlement-orchestration invariants, framework-free application use cases/ports, PostgreSQL, local-signer, and Ethereum-Web3j adapters, a minimal local reference token, and a Spring Boot control plane. Phases 3A-3C provide durable token-operation/transfer acceptance, delivery/recovery, and the historical first internal transfer preparation. Phases 4A-4B provide durable signing authority and session-only local signing. Phases 5A-5D provide bounded local-Anvil mint, configured custody, user-wallet transfer, redemption custody, and ADMIN burn primitives. Phase 6A adds exact durable synthetic withdrawals/deposits/inquiry plus a closed append-only reserve/liability ledger and supply/custody reconciliation under `local-demo`. Phase 6B composes those primitives under `local-demo,local-ethereum` into separate participant-scoped acquisition and redemption parents with immutable server-resolved context, payout-before-burn, and reconciliation. Phase 6C adds a V10 companion to the existing transfer resource for one registered sender-acquisition, exact custody-transfer, recipient-`AUTO_REDEEM`, and reconciliation route. There is still no arbitrary institutional route, automatic compensation, production accounting/reserve, public wallet-transfer API, production custody/network, Solana adapter, Compose environment, or complete reproducible demonstration environment. The default configuration still has no identity/signer provider, bank/accounting/workflow bean, or enabled worker. The [two local demonstrations](TRANSFER_DEMO.md) record this boundary and the remaining work.
 
 ## 3. Terminology
 
@@ -84,7 +84,7 @@ Trust does not flow transitively. The API authenticates a caller but does not gr
 
 Personal, sanctions, fraud, case, and policy data remain inside controlled systems. If a chain reference is required, it is an opaque correlation value with no direct personal meaning.
 
-### Planned transfer context
+### Durable transfer context
 
 ```mermaid
 flowchart LR
@@ -99,7 +99,7 @@ flowchart LR
     process --> recon["Finality, reconciliation, and cases"]
 ```
 
-The planned transfer is an asynchronous saga/workflow. Each local state transition, outbox/inbox handoff, bank effect, signing decision, chain attempt, observation, and compensation has its own transaction and durable identity. No diagram edge implies a shared atomic transaction or transitive authority.
+The transfer is an asynchronous saga/workflow. Phase 6C implements one bounded local composition while retaining child authority and evidence. Each local state transition, outbox/inbox handoff, bank effect, signing decision, chain attempt, and observation has its own transaction and durable identity. A future compensation would be a separately authorized effect. No diagram edge implies a shared atomic transaction or transitive authority.
 
 ## 4A. USDZELLE product paths, ownership, custody, and reserves
 
@@ -107,7 +107,7 @@ The planned transfer is an asynchronous saga/workflow. Each local state transiti
 
 ### Settlement-only path (Demo A)
 
-The customer holds dollars before and after the payment. USDZELLE exists only as an institutional settlement asset inside this future six-effect saga:
+The customer holds dollars before and after the payment. ADR 0008's target institutional realization is this six-effect saga:
 
 ```text
 1. Mock Bank 1 debits User 1's bank account by $100.00
@@ -118,7 +118,7 @@ The customer holds dollars before and after the payment. USDZELLE exists only as
 6. ADMIN burns the redeemed 100.00 USDZELLE
 ```
 
-User 1 and User 2 need no blockchain wallets or blockchain signatures. Institution- or custody-controlled settlement wallets sign the native transactions. The current Phase 3C aggregate still records its verified five-effect acceptance model; future Phase 6C must explicitly add the redemption transfer and ADMIN burn boundary rather than relabeling the existing model as this completed six-step flow.
+User 1 and User 2 need no blockchain wallets or blockchain signatures. Institution- or custody-controlled settlement wallets sign the native transactions. Phase 3C retains its verified five-effect acceptance model. Phase 6C does not mutate it: a V10 companion proves the same settlement-only economic outcome for one local route by composing sender acquisition to `USER_WALLET_1`, an exact transfer to `USER_WALLET_2`, forced recipient `AUTO_REDEEM`, and final reconciliation. These aliases are server-owned segregated custody in the POC; they do not create a user-held product because the recipient cannot retain the transfer. Arbitrary institutional settlement-wallet routing remains future work.
 
 ### User-held path (Demo B)
 
@@ -270,11 +270,11 @@ The implemented Phase 3C `Transfer` is a parent business aggregate, not a wrappe
 - ordered child bank-effect and token-operation identities, each with separate attempt lineage;
 - current parent state/version, four distinct finality histories, reconciliation/case posture, and append-only transition/evidence history.
 
-Phase 3C's verified aggregate contains five planned effects: source-bank withdrawal, mint to a sender settlement wallet, wallet-to-wallet token transfer, burn, and destination-bank deposit. It currently executes none of them and prepares only the withdrawal internally. The accepted settlement-only target in ADR 0008 is a future six-effect saga that adds a distinct transfer from `BANK_2_SETTLEMENT` to `ADMIN_REDEMPTION` before bank credit and ADMIN burn. Demo B instead composes separate on-ramp, optional user-wallet transfer, and redemption parents. Future implementation must evolve explicit effect/parent contracts; documentation does not mutate the existing five-effect aggregate into either completed demonstration.
+Phase 3C's verified aggregate contains five planned effects: source-bank withdrawal, mint to a sender settlement wallet, wallet-to-wallet token transfer, burn, and destination-bank deposit. It prepares only the withdrawal internally and remains unchanged. Phase 6C adds a separately persisted V10 companion keyed by the same `TransferId`: four ordered boundaries reference one sender-acquisition child, one exact user-custody transfer child, one recipient-redemption child, and final reconciliation. The recipient route is a server-owned versioned `AUTO_REDEEM` instruction; no request can override either participant's wallet, ADMIN, child identity, policy, or outcome. Demo B keeps acquisition, optional wallet transfer, and later redemption as independently accepted operations, so the two product meanings remain distinct.
 
 Mint and burn reuse the existing privileged token-operation lifecycle; Phase 5A proves the chain-attempt seam for a separately accepted mint but does not connect it to a parent. Wallet transfer uses a separately identified token-transfer operation with the same exactness, signing, ambiguity, observation, and reconciliation rules. Bank effects add provider-neutral `SourceBankPort` and `DestinationBankPort` contracts with idempotent request/inquiry semantics; they do not expose bank-provider types to the domain.
 
-The parent advances only after configured evidence gates pass. A child timeout remains ambiguous and is inquired by stable identity. Confirmed effects are never removed from history; compensation is a new authorized child operation/effect. The complete proposed contract and per-step evidence matrix are in [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md).
+The Phase 6C companion advances at most one durable boundary per delivery and re-reads each authoritative child. A child timeout remains ambiguous and is inquired by stable identity. A conflicting retained child, changed server authority, exhausted delivery, no-effect result after partial progression, or reconciliation break enters explicit no-effect/manual review; no automatic rollback or compensating value effect exists. Confirmed effects are never removed from history, and any future compensation would be a new authorized child. The detailed contract and evidence matrix are in [`TRANSFER_DEMO.md`](TRANSFER_DEMO.md).
 
 ## 8. Asynchronous lifecycle
 
@@ -316,7 +316,7 @@ An authorized attempt identity and evidence must exist before `SIGNING` or `SUBM
 
 `SUBMISSION_AMBIGUOUS` is not failure and never authorizes blind resubmission. The system inquires by stable attempt/native identity, gathers independent evidence, waits for route-specific expiry/canonicality conditions, and creates a case when proof remains insufficient. A new attempt is allowed only after policy establishes that the prior attempt cannot create the effect or defines a native-safe replacement relationship.
 
-The transfer aggregate composes child lifecycles rather than replacing them. Phase 3C defines `ACCEPTED`, `IN_PROGRESS`, `MANUAL_REVIEW`, `COMPENSATION_REQUIRED`, and `EFFECTS_APPLIED`; the last means only that all planned effects have evidence-backed applied outcomes and is not settlement or any finality judgment. Effect states explicitly distinguish planned, prepared, active attempt, applied, ambiguous, retryable no-effect, terminal no-effect, manual review, and compensation required. No parent status converts an ambiguous child into failure or collapses the four finalities.
+Transfer parents compose child lifecycles rather than replacing them. Phase 3C defines `ACCEPTED`, `IN_PROGRESS`, `MANUAL_REVIEW`, `COMPENSATION_REQUIRED`, and `EFFECTS_APPLIED`; the last means only that its planned effects have evidence-backed applied outcomes and is not settlement or any finality judgment. The Phase 6C companion separately distinguishes eligible, active, unknown, completed, failed-no-effect, and manual-review boundaries plus a final reconciliation conclusion. No parent status converts an ambiguous child into failure or collapses blockchain, accounting, legal, and customer-visible finality.
 
 ## 9. Identity and idempotency contracts
 
@@ -333,7 +333,7 @@ Canonicalization version 1 rejects malformed UTF-16, normalizes the opaque busin
 
 The same scope/key/hash returns the original operation and never creates a new effect. The same scope/key with a different hash returns an idempotency conflict. Changing canonicalization requires versioning and compatibility tests.
 
-The transfer applies the same rule at the parent resource scope. Its caller-command identity binds participant, source/destination opaque account references, exact amount/currency, and logical settlement-network choice. The accepted aggregate separately binds the resolved versioned asset/unit, route, network, sender/recipient wallet identities, and wallet policy so replay returns the original durable context without consulting later configuration. RPC, signer, wallet, contract/program, and finality configuration remain server-controlled.
+The transfer applies the same rule at the parent resource scope. Its caller-command identity binds participant, source/destination opaque account references, exact amount/currency, and logical settlement-network choice. The accepted V3 aggregate and optional V10 companion separately bind the resolved versioned asset/unit, both server-owned settlement instructions, both participants/accounts/wallet identities, ADMIN, route/network/contract, and policies. Replay returns that durable context without re-resolving the command; later delivery fails closed if trusted authority no longer matches rather than substituting new context. RPC, signer, wallet, contract/program, child identity, finality, and outcome configuration remain server-controlled.
 
 ### Operation and attempt IDs
 
@@ -351,7 +351,7 @@ Operation IDs are generated before any external interaction and are never reused
 
 Phase 3A persists atomic units as positive bounded PostgreSQL `NUMERIC(512,0)` and verifies exact boundary round-trip behavior against PostgreSQL 17. The API continues to serialize only the canonical quantity string.
 
-The implemented transfer-acceptance API likewise accepts `amount` as a canonical decimal string plus a configured currency identifier. The route resolves currency scale and stablecoin asset/unit; each future child persists and signs an exact bounded atomic quantity. No implicit FX, rounding, fee deduction, or unit conversion is part of the first demonstration.
+The implemented transfer-acceptance API likewise accepts `amount` as a canonical decimal string plus a configured currency identifier. The route resolves currency scale and stablecoin asset/unit. Phase 6C requires exact equality between USD cents and the local two-decimal USDZELLE atomic quantity, and every child retains that quantity. No implicit FX, rounding, fee deduction, or unit conversion is part of the demonstration.
 
 ## 11. Chain adapter capability contract
 
@@ -365,7 +365,7 @@ The common port coordinates a lifecycle, not a generic transaction:
 
 The common result includes operation/attempt correlation, an opaque native identity, observed effect, evidence schema/version, source, observed time, and policy-relevant confidence. It does not make native semantics disappear. Adapter-owned native evidence remains queryable and reconcilable in a versioned schema.
 
-The planned transfer adds a token-transfer child operation without changing this lifecycle seam. `capabilities(routeVersion)` must declare mint, transfer, and burn support before the route is eligible. Each child uses its own stable operation/attempt identity and preserves exact wallet, authority, amount, and native evidence. The parent `TransferId` is additional correlation, not a substitute for child or native identities.
+Phase 6C reuses token-operation and wallet-transfer children without changing this lifecycle seam. Each child uses its own stable operation/attempt identity and preserves exact wallet, authority, amount, ambiguity, observation, and native evidence. The parent `TransferId` is additional correlation, not a substitute for child or native identities.
 
 ### Ethereum semantics preserved
 

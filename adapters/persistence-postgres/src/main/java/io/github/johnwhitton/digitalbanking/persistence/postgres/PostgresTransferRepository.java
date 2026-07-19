@@ -19,6 +19,7 @@ import javax.sql.DataSource;
 
 import io.github.johnwhitton.digitalbanking.application.IdempotencyConflictException;
 import io.github.johnwhitton.digitalbanking.application.TransferAcceptance;
+import io.github.johnwhitton.digitalbanking.application.TransferAcceptancePlan;
 import io.github.johnwhitton.digitalbanking.application.command.CanonicalCommandMetadata;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyKey;
 import io.github.johnwhitton.digitalbanking.application.command.ParticipantScope;
@@ -39,6 +40,7 @@ import io.github.johnwhitton.digitalbanking.domain.transfer.TransferParticipant;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferStatus;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferTransition;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
+import io.github.johnwhitton.digitalbanking.domain.workflow.SettlementTransfer;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -49,10 +51,12 @@ public final class PostgresTransferRepository implements TransferRepository {
 
     private final JdbcClient jdbc;
     private final TransactionTemplate transactions;
+    private final PostgresSettlementTransferRepository settlements;
 
     public PostgresTransferRepository(DataSource dataSource) {
         Objects.requireNonNull(dataSource, "dataSource");
         this.jdbc = JdbcClient.create(dataSource);
+        this.settlements = new PostgresSettlementTransferRepository(dataSource);
         this.transactions = new TransactionTemplate(
                 new DataSourceTransactionManager(dataSource));
         this.transactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
@@ -63,7 +67,7 @@ public final class PostgresTransferRepository implements TransferRepository {
             ParticipantScope participant,
             IdempotencyKey key,
             CanonicalCommandMetadata requestCommand,
-            Supplier<Transfer> transferFactory) {
+            Supplier<TransferAcceptancePlan> transferFactory) {
         Objects.requireNonNull(participant, "participant");
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(requestCommand, "requestCommand");
@@ -101,6 +105,12 @@ public final class PostgresTransferRepository implements TransferRepository {
                 .query(this::mapSeed)
                 .optional()
                 .map(this::hydrate)));
+    }
+
+    @Override
+    public Optional<SettlementTransfer> findSettlementById(
+            TransferId transferId, ParticipantScope participant) {
+        return settlements.findById(transferId, participant);
     }
 
     @Override
@@ -217,14 +227,15 @@ public final class PostgresTransferRepository implements TransferRepository {
             ParticipantScope participant,
             IdempotencyKey key,
             CanonicalCommandMetadata requestCommand,
-            Supplier<Transfer> transferFactory) {
+            Supplier<TransferAcceptancePlan> transferFactory) {
         String keyDigest = key.sha256();
         Optional<Binding> committed = findBinding(participant, keyDigest);
         if (committed.isPresent()) {
             return replay(committed.orElseThrow(), requestCommand, participant);
         }
-        Transfer proposed = Objects.requireNonNull(
+        TransferAcceptancePlan proposedPlan = Objects.requireNonNull(
                 transferFactory.get(), "transferFactory result");
+        Transfer proposed = proposedPlan.transfer();
         verifyProposed(proposed, participant, keyDigest, requestCommand);
         int claimed = jdbc.sql("""
                         INSERT INTO transfer_idempotency (
@@ -259,8 +270,10 @@ public final class PostgresTransferRepository implements TransferRepository {
         insertEffects(proposed);
         insertTransition(proposed.transitions().getFirst(), proposed.transferId(), 0);
         insertFinalities(proposed);
-        insertOutbox(proposed);
-        return new TransferAcceptance(proposed, false);
+        proposedPlan.settlement().ifPresent(
+                settlements::insertAcceptedInCurrentTransaction);
+        insertOutbox(proposed, proposedPlan.settlement().isPresent());
+        return new TransferAcceptance(proposed, proposedPlan.settlement(), false);
     }
 
     private Optional<Binding> findBinding(
@@ -296,7 +309,11 @@ public final class PostgresTransferRepository implements TransferRepository {
         Transfer transfer = findById(binding.transferId(), participant)
                 .orElseThrow(() -> new IllegalStateException(
                         "transfer idempotency binding has no aggregate"));
-        return new TransferAcceptance(transfer, true);
+        return new TransferAcceptance(
+                transfer,
+                settlements.findInCurrentTransaction(
+                        binding.transferId(), Optional.of(participant)),
+                true);
     }
 
     private static void verifyProposed(
@@ -455,14 +472,16 @@ public final class PostgresTransferRepository implements TransferRepository {
         }
     }
 
-    private void insertOutbox(Transfer transfer) {
+    private void insertOutbox(Transfer transfer, boolean settlement) {
+        String eventType = settlement
+                ? "SettlementTransferAccepted" : "TransferAccepted";
         jdbc.sql("""
                         INSERT INTO operation_outbox (
                             event_id, operation_id, transfer_id, event_type,
                             event_version, payload_schema_version, payload,
                             status, created_at, available_at, updated_at)
                         VALUES (
-                            :eventId, NULL, :transferId, 'TransferAccepted',
+                            :eventId, NULL, :transferId, :eventType,
                             1, 1, jsonb_build_object(
                                 'transferId', CAST(:transferId AS text),
                                 'aggregateVersion', 0),
@@ -470,6 +489,7 @@ public final class PostgresTransferRepository implements TransferRepository {
                         """)
                 .param("eventId", UUID.randomUUID())
                 .param("transferId", transfer.transferId().value())
+                .param("eventType", eventType)
                 .param("createdAt", utc(transfer.createdAt())).update();
     }
 

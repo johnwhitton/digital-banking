@@ -289,7 +289,7 @@ class EthereumMintVerticalSliceIntegrationTest {
 
     @Test
     void migrationsCreateNonceAttemptAndObservationTables() {
-        assertEquals(9, jdbc.sql("""
+        assertEquals(10, jdbc.sql("""
                 SELECT count(*) FROM flyway_schema_history WHERE success
                 """).query(Integer.class).single());
         assertEquals(3, jdbc.sql("""

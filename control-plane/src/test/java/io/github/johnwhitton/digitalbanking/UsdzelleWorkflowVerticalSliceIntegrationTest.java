@@ -75,6 +75,8 @@ class UsdzelleWorkflowVerticalSliceIntegrationTest {
 
     private static final Pattern WORKFLOW_ID = Pattern.compile(
             "\\\"workflowId\\\":\\\"([0-9a-f-]{36})\\\"");
+    private static final Pattern TRANSFER_ID = Pattern.compile(
+            "\\\"transferId\\\":\\\"([0-9a-f-]{36})\\\"");
     private static final List<Fixture> WALLETS = List.of(
             fixture("CONTRACT_OWNER"), fixture("ADMIN"),
             fixture("BANK_1"), fixture("BANK_2"),
@@ -100,8 +102,11 @@ class UsdzelleWorkflowVerticalSliceIntegrationTest {
                 CONTRACT = deploy(client, deployer);
                 Fixture admin = wallet("ADMIN");
                 Fixture user = wallet("USER_WALLET_1");
+                Fixture recipient = wallet("USER_WALLET_2");
                 ANVIL.setBalance(admin.address(), new BigInteger("100000000000000000000"));
                 ANVIL.setBalance(user.address(), new BigInteger("100000000000000000000"));
+                ANVIL.setBalance(
+                        recipient.address(), new BigInteger("100000000000000000000"));
                 grant(client, deployer, CONTRACT, "MINTER_ROLE", admin.address());
                 grant(client, deployer, CONTRACT, "BURNER_ROLE", admin.address());
             }
@@ -157,7 +162,7 @@ class UsdzelleWorkflowVerticalSliceIntegrationTest {
     }
 
     @Test
-    void completesAcquisitionThenPayoutBeforeBurnRedemptionWithoutDoublePayout()
+    void provesPhase6bChildrenAndTheConsolidatedSettlementOnlyTransfer()
             throws Exception {
         String acquisition = accept("acquisitions", "usdzelle:acquire", "phase-6b-acquire");
         driveUntilStep(acquisition, "MINT_ACCOUNTING_POST");
@@ -208,6 +213,106 @@ class UsdzelleWorkflowVerticalSliceIntegrationTest {
                         .value("RECONCILED"))
                 .andExpect(jsonPath("$.userWallet").doesNotExist())
                 .andExpect(jsonPath("$.adminWallet").doesNotExist());
+
+        long bankEffectsBefore = count("synthetic_bank_operation");
+        long tokenOperationsBefore = count("token_operation");
+        long walletTransfersBefore = count("wallet_transfer_operation");
+        long mintObservationsBefore = count("ethereum_mint_observation");
+        long transferObservationsBefore = count("ethereum_wallet_transfer_observation");
+        long burnObservationsBefore = count("ethereum_burn_observation");
+
+        String transfer = acceptSettlement();
+        driveSettlementToCompletion(transfer);
+
+        assertEquals(BigInteger.ZERO, bankBalance("BANK_1", "USER_1_BANK_ACCOUNT"));
+        assertEquals(new BigInteger("10000"),
+                bankBalance("BANK_2", "USER_2_BANK_ACCOUNT"));
+        assertEquals(BigInteger.ZERO, balanceOf(wallet("USER_WALLET_1").address()));
+        assertEquals(BigInteger.ZERO, balanceOf(wallet("USER_WALLET_2").address()));
+        assertEquals(BigInteger.ZERO, balanceOf(wallet("ADMIN").address()));
+        assertEquals(BigInteger.ZERO, totalSupply());
+        assertEquals(0L, jdbc.sql("""
+                SELECT count(*) FROM accounting_ledger_account
+                WHERE balance_cents <> 0
+                """).query(Long.class).single());
+        assertEquals(0L, jdbc.sql("""
+                SELECT count(*) FROM accounting_operational_position
+                WHERE quantity_cents <> 0
+                """).query(Long.class).single());
+        assertEquals(bankEffectsBefore + 2, count("synthetic_bank_operation"));
+        assertEquals(tokenOperationsBefore + 2, count("token_operation"));
+        assertEquals(walletTransfersBefore + 2, count("wallet_transfer_operation"));
+        assertEquals(mintObservationsBefore + 1, count("ethereum_mint_observation"));
+        assertEquals(transferObservationsBefore + 2,
+                count("ethereum_wallet_transfer_observation"));
+        assertEquals(burnObservationsBefore + 1, count("ethereum_burn_observation"));
+        assertEquals(3L, jdbc.sql("""
+                SELECT count(*) FROM settlement_transfer_boundary
+                WHERE transfer_id = :transferId AND child_reference IS NOT NULL
+                """).param("transferId", UUID.fromString(transfer))
+                .query(Long.class).single());
+        assertEquals("RECONCILED", jdbc.sql("""
+                SELECT reconciliation_status FROM settlement_transfer_conclusion
+                WHERE transfer_id = :transferId
+                """).param("transferId", UUID.fromString(transfer))
+                .query(String.class).single());
+
+        mvc.perform(get("/v1/transfers/{transferId}", transfer)
+                        .with(participant("transfer:read")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.settlementOrchestration.status")
+                        .value("COMPLETED"))
+                .andExpect(jsonPath("$.settlementOrchestration.bankStatus")
+                        .value("COMPLETED"))
+                .andExpect(jsonPath("$.settlementOrchestration.blockchainStatus")
+                        .value("COMPLETED"))
+                .andExpect(jsonPath("$.settlementOrchestration.accountingStatus")
+                        .value("COMPLETED"))
+                .andExpect(jsonPath("$.settlementOrchestration.reconciliationStatus")
+                        .value("RECONCILED"))
+                .andExpect(jsonPath("$.settlementOrchestration.manualReviewRequired")
+                        .value(false))
+                .andExpect(jsonPath("$.settlementOrchestration.senderWallet")
+                        .doesNotExist())
+                .andExpect(jsonPath("$.settlementOrchestration.recipientParticipant")
+                        .doesNotExist());
+    }
+
+    private String acceptSettlement() throws Exception {
+        MvcResult result = mvc.perform(post("/v1/transfers")
+                        .with(participant("transfer:create"))
+                        .header("Idempotency-Key", "phase-6c-settlement")
+                        .contentType("application/json").content(transferRequest()))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.settlementOrchestration.status")
+                        .value("ACCEPTED"))
+                .andReturn();
+        return transferId(result);
+    }
+
+    private void driveSettlementToCompletion(String transferId) throws Exception {
+        AtomicReference<Exception> failure = new AtomicReference<>();
+        OperationDeliveryWorker worker = worker(failure);
+        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+        while (System.nanoTime() < deadline) {
+            worker.poll();
+            assertNull(failure.get(), () -> "delivery failure: " + failure.get());
+            String status = jdbc.sql("""
+                    SELECT parent_status FROM settlement_transfer
+                    WHERE transfer_id = :transferId
+                    """).param("transferId", UUID.fromString(transferId))
+                    .query(String.class).single();
+            if ("COMPLETED".equals(status)) {
+                return;
+            }
+            if ("MANUAL_REVIEW".equals(status) || "FAILED_NO_EFFECT".equals(status)) {
+                throw new AssertionError("settlement transfer stopped in " + status);
+            }
+            Thread.sleep(2);
+        }
+        throw new AssertionError(
+                "settlement transfer did not complete before the bounded deadline");
     }
 
     private String accept(String resource, String authority, String key) throws Exception {
@@ -313,6 +418,18 @@ class UsdzelleWorkflowVerticalSliceIntegrationTest {
                 """;
     }
 
+    private static String transferRequest() {
+        return """
+                {
+                  "amount": "100",
+                  "currency": "USD",
+                  "sourceBankAccountReference": "synthetic-bank:USER_1_BANK_ACCOUNT",
+                  "destinationBankAccountReference": "synthetic-bank:USER_2_BANK_ACCOUNT",
+                  "settlementNetwork": "ETHEREUM"
+                }
+                """;
+    }
+
     private static RequestPostProcessor participant(String authority) {
         ParticipantPrincipal principal = new ParticipantPrincipal("local-demo", "USER_1");
         return authentication(new UsernamePasswordAuthenticationToken(
@@ -325,11 +442,33 @@ class UsdzelleWorkflowVerticalSliceIntegrationTest {
         return matcher.group(1);
     }
 
+    private static String transferId(MvcResult result) throws Exception {
+        Matcher matcher = TRANSFER_ID.matcher(result.getResponse().getContentAsString());
+        assertTrue(matcher.find());
+        return matcher.group(1);
+    }
+
     private BigInteger bankBalance() {
+        return bankBalance("BANK_1", "USER_1_BANK_ACCOUNT");
+    }
+
+    private BigInteger bankBalance(String bankId, String accountId) {
         return jdbc.sql("""
                 SELECT balance_cents FROM synthetic_bank_account
-                WHERE bank_id = 'BANK_1' AND account_id = 'USER_1_BANK_ACCOUNT'
-                """).query(BigInteger.class).single();
+                WHERE bank_id = :bankId AND account_id = :accountId
+                """).param("bankId", bankId).param("accountId", accountId)
+                .query(BigInteger.class).single();
+    }
+
+    private long count(String table) {
+        if (!List.of(
+                "synthetic_bank_operation", "token_operation",
+                "wallet_transfer_operation", "ethereum_mint_observation",
+                "ethereum_wallet_transfer_observation", "ethereum_burn_observation")
+                .contains(table)) {
+            throw new IllegalArgumentException("unsupported count table");
+        }
+        return jdbc.sql("SELECT count(*) FROM " + table).query(Long.class).single();
     }
 
     private long transitionVersion(String workflowId, String status) {
