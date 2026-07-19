@@ -16,6 +16,12 @@ contracts/evm/broadcast/
 .env
 .env.*
 !.env.example
+!.env.demo.example
+
+.demo-runtime/
+compose.override.yaml
+compose.override.yml
+*.demo-dump
 
 tmp/
 graphify-out/*

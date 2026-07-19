@@ -53,13 +53,14 @@ Status vocabulary:
 | Phase 6A synthetic finance primitives   | `verified` | The `local-demo` profile adds durable exact-USD synthetic withdrawals, deposits, inquiry, participant isolation, and distinct debit/credit/read authorities. A closed four-account double-entry ledger consumes trusted bank/chain evidence once and durably reports reserve-ledger, chain-supply, incomplete-evidence, and stale-observation breaks. No effect is automatically orchestrated. |
 | Phase 6B user-held workflows            | `verified` | The combined `local-demo,local-ethereum` profile adds participant-scoped acquisition and redemption parents with exact amounts, immutable server-resolved bank/wallet/policy context, V9 persistence, one-step durable recovery, payout-before-burn, and final reconciliation. The consolidated PostgreSQL+Anvil proof and full offline repository gate are green. |
 | Phase 6C settlement-only orchestration  | `verified` | The existing transfer API can now accept one configured local route from `USER_1`'s synthetic bank account to `USER_2`'s account. A V10 companion durably orders sender acquisition, exact `USER_WALLET_1` to `USER_WALLET_2` transfer, recipient `AUTO_REDEEM`, and final reconciliation while callers remain unable to select wallets, ADMIN, child identities, policies, or outcomes. The consolidated PostgreSQL/Anvil proof, stable-diff reviews, and full offline repository gate are green. |
+| Phase 6D reproducible Ethereum demos    | `verified` | One digest-pinned, loopback-only Compose environment starts PostgreSQL, Anvil, deterministic contract deployment, and the packaged non-root control plane. API-driven user-held and settlement-only commands assert exact cents/atomic units, six bounded effects, payout-before-burn, reconciliation, replay, durable restart recovery, and scoped teardown. The stable-diff reviews, runtime gates, and 503-test offline reactor are green. |
 
-The latest completed full offline reactor result is **498 passing Maven tests across seven modules** for Phase 6C. The current Foundry contract suite remains at **nine tests** from Phase 5D and was not rerun because Phase 6C changes no Solidity behavior. The default business API remains `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Under the combined local profiles, the existing transfer POST/GET gains the bounded Phase 6C route and participant-safe orchestration status; the same profiles also expose the separate Phase 6B acquisition/redemption resources under `/v1/usdzelle`. These are synthetic local workflows, not production banking endpoints.
+The latest completed full offline reactor result is **503 passing Maven tests across seven modules** for Phase 6D. The current Foundry contract suite remains at **nine tests** from Phase 5D; Phase 6D rebuilt its unchanged contract artifact offline but did not repeat the already-green Solidity suite because no Solidity file changed. The default business API remains `POST /v1/token-operations/mints`, `POST /v1/token-operations/burns`, participant-scoped `GET /v1/token-operations/{operationId}`, `POST /v1/transfers`, and participant-scoped `GET /v1/transfers/{transferId}`. Under the combined local profiles, the existing transfer POST/GET gains the bounded Phase 6C route and participant-safe orchestration status; the same profiles also expose the separate Phase 6B acquisition/redemption resources under `/v1/usdzelle`. These are synthetic local workflows, not production banking endpoints.
 
 ## Designed, Not Executable
 
 - Phase 5C transfer and Phase 5D redemption-custody/burn remain separately authoritative internal local-Anvil primitives. Phase 6B composes the configured user-held acquisition/redemption path; Phase 6C reuses those children only for one server-registered settlement-only route. Neither is a production balance product, bank integration, reserve, or custody system.
-- Phase 6C does not rewrite Phase 3C's historical five-effect aggregate or implement arbitrary institutional routing. Its V10 companion proves the settlement-only economic outcome with segregated local custody aliases and forced recipient `AUTO_REDEEM`; broader bank-settlement-wallet routing, compensation execution, and an operator-ready environment remain absent.
+- Phase 6C does not rewrite Phase 3C's historical five-effect aggregate or implement arbitrary institutional routing. Its V10 companion and the Phase 6D environment prove the settlement-only economic outcome with segregated local custody aliases and forced recipient `AUTO_REDEEM`; broader bank-settlement-wallet routing and compensation execution remain absent.
 - Default business endpoints have no runtime identity provider and therefore deny access.
 - The durable provider-neutral signing boundary, session-ephemeral signer, and configured local-custody signer are limited to their explicit local profiles; no production HSM, MPC, secret-manager, or custody signer exists.
 - No public network, hosted RPC provider, API key, dynamic wallet-management service, or production deployment exists. Solana remains planned.
@@ -71,13 +72,13 @@ The reference architecture supports two distinct USDZELLE outcomes without confl
 
 | Path | Customer outcome | On-chain holders/signers | Current state | Target |
 | --- | --- | --- | --- | --- |
-| Settlement-only | User sends and receives fiat; USDZELLE is transient inside the saga | The bounded local proof uses `ADMIN` plus two server-owned segregated custody aliases; the target model also permits institutional settlement wallets | Phase 6C durably composes sender acquisition, exact custody transfer, recipient `AUTO_REDEEM`, and reconciliation for one registered local route | Reproducible Demo A environment, then Solana |
-| User-held USDZELLE | User can acquire, hold, optionally transfer, and later redeem USDZELLE | `ADMIN` plus segregated custodial user wallets in the local POC | Phase 6B locally orchestrates exact acquisition and later redemption for the configured user, including payout-before-burn and reconciliation; optional transfer remains a separate internal Phase 5C primitive | Demo B local environment, then Solana |
+| Settlement-only | User sends and receives fiat; USDZELLE is transient inside the saga | The bounded local proof uses `ADMIN` plus two server-owned segregated custody aliases; the target model also permits institutional settlement wallets | Phase 6D Demo B runs Phase 6C's sender acquisition, exact custody transfer, recipient `AUTO_REDEEM`, and reconciliation for one registered local route | Native Solana parity |
+| User-held USDZELLE | User can acquire, hold, optionally transfer, and later redeem USDZELLE | `ADMIN` plus segregated custodial user wallets in the local POC | Phase 6D Demo A runs Phase 6B's exact acquisition, visible held-token checkpoint, later payout-before-burn redemption, replay, and reconciliation; optional transfer remains a separate internal Phase 5C primitive | Native Solana parity |
 
 ```text
-Implemented now: domain + durable API/worker + transfer parents + signing + local Ethereum effects + configured local custody + synthetic finance + user-held and settlement-only workflows
-Next: reproducible local environment for both Ethereum demos (Phase 6D)
-After Ethereum: native Solana parity -> both Solana demos
+Implemented now: domain + durable API/worker + transfer parents + signing + local Ethereum effects + configured local custody + synthetic finance + user-held and settlement-only workflows + reproducible local Ethereum demos
+Next: native Solana tooling and semantic gate (Phase 7A)
+Then: native Solana mint/transfer/burn parity -> both Solana demos
 Finally: code/security/share-readiness review
 ```
 
@@ -107,10 +108,13 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 │   └── ethereum-web3j/        # Isolated local-Anvil mint construction, submission, and observation
 ├── contracts/evm/             # Foundry project and minimal role-gated local reference token
 ├── control-plane/             # Spring APIs plus explicit worker/signer/local-Ethereum composition
+├── docker/demo/               # Fixed local genesis and aggregate demo-only runtime configuration
+├── scripts/demo/              # Start, readiness, status, demos, recovery, stop, and scoped reset
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
 │   ├── IMPLEMENTATION.md      # Living delivery plan and current state
 │   ├── TRANSFER_DEMO.md       # Implemented acceptance mapping and remaining flow contract
+│   ├── runbooks/              # Reproducible local operator procedures
 │   ├── adr/                   # Accepted architectural decisions
 │   ├── plans/
 │   │   ├── README.md          # Authoritative active/completed/blocked lifecycle
@@ -120,12 +124,14 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ├── .codex/                    # Project config, prompt templates, and skill sources
 ├── .agents/skills/            # Codex repository-skill discovery compatibility
 ├── graphify-out/              # Reviewed portable graph report, JSON, and manifest
+├── compose.yaml               # Digest-pinned loopback-only Phase 6D environment
+├── Dockerfile                 # Minimal packaged non-root control-plane runtime
 ├── AGENTS.md                  # Repository operating rules
 ├── AUTONOMOUS_EXECUTION_POLICY.md
 └── SECURITY.md
 ```
 
-Future executable slices may add the reproducible demo environment, accepted conditional Solana paths, and later production-oriented integrations only under separate authorization. They remain planned and will not be created empty.
+Future executable slices may add accepted conditional Solana paths and later production-oriented integrations only under separate authorization. They remain planned and will not be created empty.
 
 ## Build and Inspect the Current Implementation
 
@@ -135,6 +141,19 @@ Prerequisites: JDK 25, Docker, Foundry 1.5.1, and local Solidity 0.8.25; the fir
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw --version
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw clean verify
 ```
+
+For the bounded local demonstrations, prepare the ignored mode-`0600` `.env.local-anvil` from [`.env.example`](.env.example), ensure the three approved digest-pinned images are cached, then use the safe commands below. Demo A is the user-held acquisition/hold/redemption lifecycle; reset is explicit before Demo B, the settlement-only six-effect transfer. `reset.sh --yes` irreversibly removes only the named Phase 6D database/chain volumes and ignored runtime evidence.
+
+```bash
+scripts/demo/start.sh
+scripts/demo/demo-user-held.sh
+scripts/demo/reset.sh --yes
+scripts/demo/start.sh
+scripts/demo/demo-settlement-only.sh
+scripts/demo/stop.sh
+```
+
+The [local Ethereum demo runbook](docs/runbooks/LOCAL_ETHEREUM_DEMO.md) records prerequisites, immutable image identities and licenses, exact assertions, restart recovery, troubleshooting, preserved-state behavior, and destructive teardown.
 
 After Maven builds the packaged JAR, run it with `java -jar`. Running the application does not start PostgreSQL: the operator must provide an existing private/local PostgreSQL 17 server and inject its credentials through environment variables or another secret mechanism. Flyway validates and migrates that database at startup; it neither creates the PostgreSQL server nor provides an in-memory fallback. No credentials are committed.
 

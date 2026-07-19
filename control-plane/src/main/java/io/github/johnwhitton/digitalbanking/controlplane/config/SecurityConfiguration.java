@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
@@ -15,6 +16,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 
 @Configuration(proxyBeanMethods = false)
 public class SecurityConfiguration {
@@ -27,7 +29,10 @@ public class SecurityConfiguration {
             """;
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            ObjectProvider<LocalDemoBearerTokenAuthenticationFilter> localDemoFilter)
+            throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -71,6 +76,10 @@ public class SecurityConfiguration {
                                 "/local/v1/mock-banks/operations/*",
                                 "/local/v1/mock-banks/openapi.yaml")
                         .hasAuthority("local-bank:read")
+                        .requestMatchers(HttpMethod.GET,
+                                "/local/v1/demo/status",
+                                "/local/v1/demo/openapi.yaml")
+                        .hasAuthority("local-demo:status")
                         .anyRequest().denyAll())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, failure) ->
@@ -78,6 +87,10 @@ public class SecurityConfiguration {
                         .accessDeniedHandler((request, response, failure) ->
                                 writeProblem(response, 403, UNAUTHORIZED)))
                 .anonymous(Customizer.withDefaults());
+        LocalDemoBearerTokenAuthenticationFilter filter = localDemoFilter.getIfAvailable();
+        if (filter != null) {
+            http.addFilterBefore(filter, AnonymousAuthenticationFilter.class);
+        }
         return http.build();
     }
 

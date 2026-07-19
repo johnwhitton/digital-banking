@@ -1,0 +1,4 @@
+**
+!Dockerfile
+!control-plane/target/digital-banking-control-plane-0.1.0-SNAPSHOT.jar
+!scripts/demo/control-plane-entrypoint.sh

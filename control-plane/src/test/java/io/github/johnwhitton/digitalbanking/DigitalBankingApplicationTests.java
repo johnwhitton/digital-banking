@@ -6,6 +6,7 @@ import io.github.johnwhitton.digitalbanking.application.MockBankApplicationServi
 import io.github.johnwhitton.digitalbanking.application.UsdzelleWorkflowApplicationService;
 import io.github.johnwhitton.digitalbanking.application.port.SignerPort;
 import io.github.johnwhitton.digitalbanking.controlplane.api.LocalMockBankController;
+import io.github.johnwhitton.digitalbanking.controlplane.api.LocalDemoStatusController;
 import io.github.johnwhitton.digitalbanking.controlplane.api.UsdzelleWorkflowController;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -41,6 +42,7 @@ class DigitalBankingApplicationTests extends PostgresApiIntegrationSupport {
     @Test
     void localFinancialCapabilityIsAbsentWithoutTheExplicitProfile() {
         assertTrue(context.getBeansOfType(LocalMockBankController.class).isEmpty());
+        assertTrue(context.getBeansOfType(LocalDemoStatusController.class).isEmpty());
         assertTrue(context.getBeansOfType(MockBankApplicationService.class).isEmpty());
         assertTrue(context.getBeansOfType(AccountingApplicationService.class).isEmpty());
         assertTrue(context.getBeansOfType(UsdzelleWorkflowController.class).isEmpty());

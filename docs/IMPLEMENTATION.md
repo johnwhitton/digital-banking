@@ -58,14 +58,14 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 6A. Synthetic reserves and mock banks  | `verified` | Exact local USD withdrawals/deposits/inquiry plus closed reserve/liability posting, authoritative one-time evidence consumption, durable reversals, and reserve/supply reconciliation pass focused and full offline gates. |
 | 6B. User-held workflows                | `verified` | Separate acquisition and redemption parents compose exact synthetic bank, accounting, custody, mint/burn, payout-before-burn, and reconciliation boundaries under the combined local profiles; the 487-test offline reactor is green. |
 | 6C. Settlement-only orchestration      | `verified` | A V10 companion durably composes sender acquisition, exact custody transfer, recipient `AUTO_REDEEM`, and final reconciliation for one server-registered local transfer route; the consolidated PostgreSQL/Anvil proof, stable-diff reviews, and 498-test offline reactor are green. |
-| 6D. Ethereum demo environment          | `planned`     | Reproducible local environment, commands, cleanup, and evidence summaries for both demos. |
+| 6D. Ethereum demo environment          | `verified` | Digest-pinned loopback-only Compose, deterministic contract bootstrap, API-driven Demo A/B assertions, durable restart recovery, scoped cleanup, stable-diff reviews, and the 503-test offline reactor are green. |
 | 7A. Native Solana semantic gate        | `planned`     | Local tooling and Java-client/native-contract mapping gate. |
 | 7B. Solana mint parity                 | `planned`     | SPL mint meets Phase 5A business/evidence guarantees. |
 | 7C. Solana transfer and burn parity    | `planned`     | Native transfer/redemption/burn meet applicable Phase 5C/5D guarantees. |
 | 7D. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
 | 8. Final reference review              | `planned`     | Architecture, code, security, recovery, API/demo, and share-readiness review. |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil mint/custody/transfer/redemption/burn primitives, Phase 6A's exact-USD synthetic bank and reserve/liability accounting primitives, Phase 6B's separate configured user-held acquisition/redemption parents, and Phase 6C's one configured settlement-only parent composition. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the separate local mock-bank contract; combined with `local-ethereum` it composes the existing chain handlers, participant-scoped `/v1/usdzelle` workflow resources, and the registered local route behind `/v1/transfers`. `local-signer` plus `local-ethereum` composes the separate Phase 5A mint handler. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. No dynamic wallet management, real bank/reserve, arbitrary settlement routing, automatic compensation, reproducible demo environment, or Solana adapter exists. Both workflow cores exist locally, while complete operator demonstrations remain future work. Each planned phase below requires its own separately authorized plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil mint/custody/transfer/redemption/burn primitives, Phase 6A's exact-USD synthetic bank and reserve/liability accounting primitives, Phase 6B's separate configured user-held acquisition/redemption parents, Phase 6C's one configured settlement-only parent composition, and Phase 6D's reproducible local operator environment. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the separate local mock-bank contract; combined with `local-ethereum` it composes the existing chain handlers, participant-scoped `/v1/usdzelle` workflow resources, and the registered local route behind `/v1/transfers`. The additional `local-demo-environment` profile supplies only generated local bearer identities and a bounded read-only aggregate status/OpenAPI projection for the digest-pinned Compose runtime. `local-signer` plus `local-ethereum` composes the separate Phase 5A mint handler. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. No dynamic wallet management, real bank/reserve, arbitrary settlement routing, automatic compensation, or Solana adapter exists. Each planned phase below requires its own separately authorized plan.
 
 ## Phase 1: Foundation
 
@@ -197,7 +197,7 @@ Phases 4-8 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 ### Phase 5C: Ethereum generic wallet transfer
 
-**Status:** `verified`
+**Status:** `implemented`
 
 **Dependency:** Phase 5B and the verified Phase 5A native attempt/observation seam.
 
@@ -269,15 +269,17 @@ Phases 4-8 below consume the relevant acceptance criteria in [`docs/TRANSFER_DEM
 
 ### Phase 6D: Ethereum local demonstration environment and scripts
 
-**Status:** `planned`
+**Status:** `verified`
 
 **Dependency:** Phases 6B and 6C.
 
-**Plan:** not created until separately authorized.
+**Plan:** completed at [`docs/plans/completed/PHASE_6D_REPRODUCIBLE_ETHEREUM_DEMO_ENVIRONMENT.md`](plans/completed/PHASE_6D_REPRODUCIBLE_ETHEREUM_DEMO_ENVIRONMENT.md).
 
 **Deliverables:** Docker Compose or an accepted equivalent for PostgreSQL, Anvil, the control plane, executable mock banks, identity fixtures, contract deployment, health/dependency ordering, deterministic cleanup, and concise evidence output; local keys are generated or supplied through ignored local secret input and never committed.
 
-**Exit gate:** from a trusted clean checkout, one documented command can run each Ethereum demo, produce the specified evidence, and tear down deterministically without public-network access or committed secrets.
+**Delivered boundary:** root Compose uses the exact approved PostgreSQL 17.10, Foundry/Anvil 1.5.1, and Temurin 25.0.2 image digests with `pull_policy: never`, an internal named network, named PostgreSQL/Anvil volumes, and loopback-only host ports. Bootstrap verifies the ignored mode-`0600` ten-key map, generates only missing mode-restricted database/bearer/run material, builds the packaged JAR and minimal non-root runtime image, and deploys/verifies the existing token through a one-shot Foundry service. A profile-isolated local bearer adapter maps one sender to only the existing Phase 6B/6C authorities and a distinct operator to a bounded read-only status/OpenAPI resource.
+
+**Exit gate:** Demo A drives exact `USD 100.00` acquisition, held-token/reserve/liability checkpoints, payout-before-burn redemption, zeroed final positions, reconciliation, and exact replay. After explicit reset, Demo B drives the existing transfer resource through exactly one withdrawal, mint, user transfer, redemption-custody transfer, payout, and burn; sender/recipient fiat moves `10,000` cents, all chain/accounting positions return to zero, reconciliation completes, and replay creates no duplicate. A durably accepted non-terminal acquisition resumes after control-plane restart with PostgreSQL/Anvil preserved and produces one withdrawal/mint. Whole-stack stop/start retains the contract, block, workflow, balances, supply, and effect counts. Explicit reset removes only the named demo state. One Ponytail review and one independent review completed with all valid in-scope Important findings remediated before the single final offline reactor passed 503 tests with zero failures, errors, or skips; the prescribed five-test default/readiness selection also passed.
 
 **Non-goals:** cloud deployment, CI production topology, public networks, real funds, production custody, or combining the two product paths into one claim.
 
@@ -375,6 +377,11 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Completed Phase 5A local Ethereum mint plan: [`docs/plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md`](plans/completed/PHASE_5A_ETHEREUM_LOCAL_MINT_VERTICAL_SLICE.md).
 - Completed Phase 5B configured local custody plan: [`docs/plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md`](plans/completed/PHASE_5B_LOCAL_MULTI_WALLET_CUSTODY.md).
 - Completed Phase 5C local Ethereum wallet-transfer plan: [`docs/plans/completed/PHASE_5C_ETHEREUM_WALLET_TRANSFER.md`](plans/completed/PHASE_5C_ETHEREUM_WALLET_TRANSFER.md).
+- Completed Phase 5D redemption and burn plan: [`docs/plans/completed/PHASE_5D_ETHEREUM_REDEMPTION_AND_BURN.md`](plans/completed/PHASE_5D_ETHEREUM_REDEMPTION_AND_BURN.md).
+- Completed Phase 6A synthetic reserves/mock banks plan: [`docs/plans/completed/PHASE_6A_SYNTHETIC_RESERVES_AND_MOCK_BANKS.md`](plans/completed/PHASE_6A_SYNTHETIC_RESERVES_AND_MOCK_BANKS.md).
+- Completed Phase 6B user-held workflow plan: [`docs/plans/completed/PHASE_6B_USER_HELD_ONRAMP_AND_REDEMPTION.md`](plans/completed/PHASE_6B_USER_HELD_ONRAMP_AND_REDEMPTION.md).
+- Completed Phase 6C settlement-only orchestration plan: [`docs/plans/completed/PHASE_6C_SETTLEMENT_ONLY_TRANSFER_ORCHESTRATION.md`](plans/completed/PHASE_6C_SETTLEMENT_ONLY_TRANSFER_ORCHESTRATION.md).
+- Completed Phase 6D reproducible local demo plan: [`docs/plans/completed/PHASE_6D_REPRODUCIBLE_ETHEREUM_DEMO_ENVIRONMENT.md`](plans/completed/PHASE_6D_REPRODUCIBLE_ETHEREUM_DEMO_ENVIRONMENT.md).
 - Completed dual-product-path and delivery-roadmap alignment: [`docs/plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md`](plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md).
 - Completed Zelle share-readiness and transfer-roadmap plan: [`docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
@@ -438,6 +445,16 @@ The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A
 
 ## Latest bounded vertical slice
 
+Action Request 21 implements **Phase 6D Reproducible Ethereum Demo Environment**:
+
+- one root digest-pinned Compose topology for the cached/approved PostgreSQL, Foundry/Anvil, and Temurin images, with an internal network, loopback ports, persistent database/chain volumes, deterministic contract/role bootstrap, health ordering, and a minimal non-root application image;
+- ignored mode-restricted runtime secrets, separate local sender/operator bearer identities, deny-by-default authorities, and one fixed-scope aggregate status/OpenAPI projection with no mutation, raw transaction, key, token, or unrestricted evidence surface;
+- POSIX commands for prerequisite aggregation, bootstrap, start/readiness/status, Demo A user-held lifecycle, Demo B settlement-only transfer, restart recovery, state-preserving stop, and explicitly destructive exact-project reset;
+- exact API-driven cents/atomic-unit, bank/ledger/custody/supply, six-effect, payout-before-burn, reconciliation, replay, and no-duplicate assertions; and
+- ordinary control-plane and whole-stack restart evidence preserving authoritative PostgreSQL and Anvil state.
+
+This slice adds no dependency, migration, Solidity behavior, public product field, general orchestration, public network, real bank/reserve/funds, production identity/custody/deployment, automatic compensation, or Solana behavior. The [local runbook](runbooks/LOCAL_ETHEREUM_DEMO.md) is the operator entry point. The 503-test offline reactor and stable-diff reviews are green; Phase 7A is the next bounded slice.
+
 Action Request 20 implements **Phase 6C Settlement-Only Transfer Orchestration**:
 
 - one V10 companion keyed by the existing V3 `TransferId`, with immutable exact amount, two versioned server-owned instructions, two synthetic participant/account/custody routes, ADMIN, network/contract, policy, child-correlation, ordered-boundary, history, and reconciliation context;
@@ -447,7 +464,7 @@ Action Request 20 implements **Phase 6C Settlement-Only Transfer Orchestration**
 - explicit pending, unknown, no-effect, manual-review, completion, exhausted-delivery, and cross-child reconciliation handling with stable parent-derived idempotency and version fencing; and
 - one consolidated PostgreSQL/Anvil proof that moves exact value from `USER_1`'s synthetic bank account to `USER_2`'s while all intermediate token, reserve, liability, custody, and supply positions return to zero.
 
-This slice adds no endpoint, dependency, contract change, caller wallet control, arbitrary route enrollment, recipient retention mode, automatic compensation/refund/reversal, environment script, real bank/reserve/custody, public network, Solana behavior, or production settlement/finality claim. The bounded local proof uses segregated custody aliases to preserve the existing child authorities; broader institutional bank-wallet routing remains future work. Stable-diff reviews and the final offline reactor remain before closeout; Phase 6D's reproducible local environment is next.
+This slice adds no endpoint, dependency, contract change, caller wallet control, arbitrary route enrollment, recipient retention mode, automatic compensation/refund/reversal, environment script, real bank/reserve/custody, public network, Solana behavior, or production settlement/finality claim. The bounded local proof uses segregated custody aliases to preserve the existing child authorities; broader institutional bank-wallet routing remains future work. Phase 6D subsequently packages this path without changing its product contract.
 
 Action Request 19 implements **Phase 6B User-Held On-Ramp and Redemption Orchestration**:
 
@@ -584,4 +601,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, and Phase 6C settlement-only companion—plus the remaining operator environment and Solana paths—are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 6C closeout, the next recommended bounded action is Phase 6D's reproducible local Ethereum environment; it must preserve both product meanings and add no public-network or production-custody behavior.
+The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, and Phase 6D operator environment—plus the remaining Solana paths—are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). After Phase 6D closeout, the next recommended bounded action is Phase 7A's native Solana tooling and semantic gate; it must preserve both product meanings and native Solana evidence without adding public-network or production-custody behavior.

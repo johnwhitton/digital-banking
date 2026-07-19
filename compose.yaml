@@ -1,0 +1,115 @@
+name: digital-banking-phase6d
+
+services:
+  postgres:
+    # PostgreSQL 17.10 on Alpine 3.23, pinned by approved index digest.
+    image: postgres:17.10-alpine3.23@sha256:8189a1f6e40904781fc9e2612687877791d21679866db58b1de996b31fc312e4
+    pull_policy: never
+    environment:
+      POSTGRES_DB: digital_banking_demo
+      POSTGRES_USER: digital_banking_demo
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ${DEMO_RUNTIME_DIR}/postgres-password:/run/secrets/postgres-password:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U digital_banking_demo -d digital_banking_demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [demo]
+
+  anvil:
+    # Official Foundry/Anvil 1.5.1, pinned by approved index digest.
+    image: ghcr.io/foundry-rs/foundry:v1.5.1@sha256:3a70bfa9bd2c732a767bb60d12c8770b40e8f9b6cca28efc4b12b1be81c7f28e
+    pull_policy: never
+    entrypoint: ["/bin/sh", "/scripts/anvil-entrypoint.sh"]
+    volumes:
+      - anvil-data:/home/foundry
+      - ./docker/demo/anvil-genesis.json:/config/anvil-genesis.json:ro
+      - ./scripts/demo/anvil-entrypoint.sh:/scripts/anvil-entrypoint.sh:ro
+    ports:
+      - "127.0.0.1:8545:8545"
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/anvil-state-ready && cast chain-id --rpc-url http://127.0.0.1:8545 >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [demo]
+
+  deployer:
+    image: ghcr.io/foundry-rs/foundry:v1.5.1@sha256:3a70bfa9bd2c732a767bb60d12c8770b40e8f9b6cca28efc4b12b1be81c7f28e
+    pull_policy: never
+    user: "${DEMO_UID}:${DEMO_GID}"
+    entrypoint: ["/bin/sh", "/scripts/deploy-contract.sh"]
+    environment:
+      HOME: /tmp
+      ETH_RPC_URL: http://anvil:8545
+      DEMO_RUNTIME_DIR: /runtime
+    volumes:
+      - ./contracts/evm:/contracts:ro
+      - ./scripts/demo/deploy-contract.sh:/scripts/deploy-contract.sh:ro
+      - ./.env.local-anvil:/run/secrets/local-anvil.env:ro
+      - ${DEMO_RUNTIME_DIR}:/runtime
+    depends_on:
+      anvil:
+        condition: service_healthy
+    restart: "no"
+    networks: [demo]
+
+  control-plane:
+    image: digital-banking-phase6d-control-plane:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    pull_policy: never
+    user: "${DEMO_UID}:${DEMO_GID}"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    environment:
+      SPRING_PROFILES_ACTIVE: local-demo,local-ethereum,local-demo-environment
+      SPRING_CONFIG_LOCATION: file:/run/config/application.properties
+      SPRING_CONFIG_IMPORT: optional:file:/run/config/local-anvil.properties,optional:file:/run/config/deployment.properties,configtree:/run/configtree/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/digital_banking_demo
+      SPRING_DATASOURCE_USERNAME: digital_banking_demo
+      LOCAL_ETHEREUM_RPC_URL: http://anvil:8545
+      LOCAL_DEMO_CHAIN_ID: "31337"
+      LOCAL_DEMO_SENDER_TOKEN_FILE: /run/secrets/sender-token
+      LOCAL_DEMO_OPERATOR_TOKEN_FILE: /run/secrets/operator-token
+      LOCAL_DEMO_WORKER_ENABLED: "${DEMO_WORKER_ENABLED:-true}"
+      LOCAL_DEMO_WORKER_POLL_INTERVAL: PT1S
+    volumes:
+      - ./docker/demo/application.properties:/run/config/application.properties:ro
+      - ./.env.local-anvil:/run/config/local-anvil.properties:ro
+      - ${DEMO_RUNTIME_DIR}/postgres-password:/run/configtree/spring.datasource.password:ro
+      - ${DEMO_RUNTIME_DIR}/sender-token:/run/secrets/sender-token:ro
+      - ${DEMO_RUNTIME_DIR}/operator-token:/run/secrets/operator-token:ro
+      - ${DEMO_RUNTIME_DIR}/deployment.env:/run/config/deployment.properties:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    depends_on:
+      postgres:
+        condition: service_healthy
+      anvil:
+        condition: service_healthy
+      deployer:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+    networks: [demo]
+
+networks:
+  demo:
+    name: digital-banking-phase6d-network
+    internal: true
+
+volumes:
+  postgres-data:
+    name: digital-banking-phase6d-postgres-data
+  anvil-data:
+    name: digital-banking-phase6d-anvil-data

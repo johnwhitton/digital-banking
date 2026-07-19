@@ -1,0 +1,93 @@
+openapi: 3.1.0
+info:
+  title: Local Digital Banking Demo Status API
+  version: 1.0.0
+  description: >-
+    Read-only, local-profile-only synthetic evidence for the Phase 6D disposable
+    demonstration environment. This is not a production operations or accounting API.
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /local/v1/demo/status:
+    get:
+      summary: Read bounded local demonstration evidence
+      security:
+        - localDemoBearer: []
+      responses:
+        '200':
+          description: Fixed-fixture bank, accounting, chain, effect, and parent status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoStatus'
+        '401':
+          description: Authentication required
+        '403':
+          description: Operator status authority required
+components:
+  securitySchemes:
+    localDemoBearer:
+      type: http
+      scheme: bearer
+      description: Generated ignored local operator token; no example value is published.
+  schemas:
+    DemoStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - network
+        - chainId
+        - blockNumber
+        - contractAddress
+        - bankBalancesCents
+        - ledgerBalancesCents
+        - operationalPositionsCents
+        - tokenBalancesAtomic
+        - confirmedEffects
+      properties:
+        network: {type: string, const: LOCAL_ANVIL}
+        chainId: {type: string, const: '31337'}
+        blockNumber: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        contractAddress: {type: string, pattern: '^0x[0-9a-f]{40}$'}
+        bankBalancesCents: {$ref: '#/components/schemas/ExactAmounts'}
+        ledgerBalancesCents: {$ref: '#/components/schemas/ExactAmounts'}
+        operationalPositionsCents: {$ref: '#/components/schemas/ExactAmounts'}
+        tokenBalancesAtomic: {$ref: '#/components/schemas/TokenBalances'}
+        confirmedEffects: {$ref: '#/components/schemas/EffectCounts'}
+        latestAcquisition: {$ref: '#/components/schemas/ParentStatus'}
+        latestRedemption: {$ref: '#/components/schemas/ParentStatus'}
+        latestSettlement: {$ref: '#/components/schemas/ParentStatus'}
+        payoutBeforeBurn: {type: [boolean, 'null']}
+    ExactAmounts:
+      type: object
+      additionalProperties:
+        type: string
+        pattern: '^(0|[1-9][0-9]*)$'
+    TokenBalances:
+      type: object
+      additionalProperties: false
+      required: [userOne, userTwo, admin, totalSupply]
+      properties:
+        userOne: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        userTwo: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        admin: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        totalSupply: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+    EffectCounts:
+      type: object
+      additionalProperties: false
+      required: [withdrawals, mints, userTransfers, custodyTransfers, payouts, burns]
+      properties:
+        withdrawals: {type: integer, minimum: 0}
+        mints: {type: integer, minimum: 0}
+        userTransfers: {type: integer, minimum: 0}
+        custodyTransfers: {type: integer, minimum: 0}
+        payouts: {type: integer, minimum: 0}
+        burns: {type: integer, minimum: 0}
+    ParentStatus:
+      type: [object, 'null']
+      additionalProperties: false
+      required: [id, status]
+      properties:
+        id: {type: string, format: uuid}
+        status: {type: string, maxLength: 48}
+        reconciliation: {type: [string, 'null'], maxLength: 48}

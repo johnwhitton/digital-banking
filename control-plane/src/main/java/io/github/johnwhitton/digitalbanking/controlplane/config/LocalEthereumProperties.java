@@ -22,7 +22,8 @@ public record LocalEthereumProperties(
         int decimals,
         BigInteger maxAtomicUnits,
         String policyVersion,
-        String redemptionSourceWallet) {
+        String redemptionSourceWallet,
+        boolean composeEnvironment) {
 
     public LocalEthereumProperties {
         URI endpoint;
@@ -31,15 +32,16 @@ public record LocalEthereumProperties(
         } catch (RuntimeException failure) {
             throw new IllegalArgumentException("local Ethereum RPC URL is invalid", failure);
         }
-        Set<String> loopbackHosts = Set.of("127.0.0.1", "localhost", "::1", "[::1]");
+        Set<String> localHosts = Set.of("127.0.0.1", "localhost", "::1", "[::1]");
         if (!"http".equals(endpoint.getScheme())
-                || !loopbackHosts.contains(endpoint.getHost())
+                || !(localHosts.contains(endpoint.getHost())
+                        || (composeEnvironment && "anvil".equals(endpoint.getHost())))
                 || endpoint.getUserInfo() != null
                 || endpoint.getQuery() != null
                 || endpoint.getFragment() != null
                 || endpoint.getPort() < 1) {
             throw new IllegalArgumentException(
-                    "local Ethereum RPC URL must be an uncredentialed loopback HTTP endpoint");
+                    "local Ethereum RPC URL must be an uncredentialed local Anvil HTTP endpoint");
         }
         if (chainId != 31_337L) {
             throw new IllegalArgumentException("local Ethereum chain ID must be 31337");

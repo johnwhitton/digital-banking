@@ -43,11 +43,16 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
     public PostgresWeb3jUsdzelleChainEvidenceAdapter(
             DataSource dataSource,
             String rpcUrl,
+            boolean composeEnvironment,
             Configuration configuration,
             Clock clock) {
         Objects.requireNonNull(dataSource, "dataSource");
-        if (rpcUrl == null || !rpcUrl.matches("http://(127\\.0\\.0\\.1|localhost):[0-9]{1,5}")) {
-            throw new IllegalArgumentException("workflow chain evidence requires loopback RPC");
+        if (rpcUrl == null
+                || !rpcUrl.matches(composeEnvironment
+                        ? "http://(127\\.0\\.0\\.1|localhost|anvil):[0-9]{1,5}"
+                        : "http://(127\\.0\\.0\\.1|localhost):[0-9]{1,5}")) {
+            throw new IllegalArgumentException(
+                    "workflow chain evidence requires a local Anvil RPC");
         }
         this.jdbc = JdbcClient.create(dataSource);
         this.transactions = new TransactionTemplate(

@@ -242,7 +242,7 @@ public class LocalUsdzelleWorkflowConfiguration {
                                                             + user.keyVersion());
                                 }));
         return new PostgresWeb3jUsdzelleChainEvidenceAdapter(
-                dataSource, ethereum.rpcUrl(),
+                dataSource, ethereum.rpcUrl(), ethereum.composeEnvironment(),
                 new PostgresWeb3jUsdzelleChainEvidenceAdapter.Configuration(
                         ethereum.contractAddress(), users, admin.normalizedAddress(),
                         ADMIN.value(),

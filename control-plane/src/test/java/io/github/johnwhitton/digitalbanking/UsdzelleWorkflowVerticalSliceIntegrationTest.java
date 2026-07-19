@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -70,7 +71,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@ActiveProfiles({"local-demo", "local-ethereum"})
+@ActiveProfiles({"local-demo", "local-ethereum", "local-demo-environment"})
 class UsdzelleWorkflowVerticalSliceIntegrationTest {
 
     private static final Pattern WORKFLOW_ID = Pattern.compile(
@@ -86,9 +87,19 @@ class UsdzelleWorkflowVerticalSliceIntegrationTest {
     private static final PostgreSQLContainer POSTGRES;
     private static final LocalAnvil ANVIL;
     private static final String CONTRACT;
+    private static final Path DEMO_SECRETS;
+    private static final Path SENDER_TOKEN_FILE;
+    private static final Path OPERATOR_TOKEN_FILE;
+    private static final String SENDER_TOKEN = "a".repeat(64);
+    private static final String OPERATOR_TOKEN = "b".repeat(64);
 
     static {
         try {
+            DEMO_SECRETS = Files.createTempDirectory("phase-6d-test-secrets-");
+            SENDER_TOKEN_FILE = DEMO_SECRETS.resolve("sender-token");
+            OPERATOR_TOKEN_FILE = DEMO_SECRETS.resolve("operator-token");
+            Files.writeString(SENDER_TOKEN_FILE, SENDER_TOKEN + System.lineSeparator());
+            Files.writeString(OPERATOR_TOKEN_FILE, OPERATOR_TOKEN + System.lineSeparator());
             POSTGRES = new PostgreSQLContainer("postgres:17.10-alpine3.23")
                     .withDatabaseName("usdzelle_workflow_vertical")
                     .withUsername("usdzelle_workflow_test")
@@ -126,6 +137,10 @@ class UsdzelleWorkflowVerticalSliceIntegrationTest {
         registry.add("LOCAL_ETHEREUM_CONTRACT_ADDRESS", () -> CONTRACT);
         registry.add("LOCAL_ETHEREUM_RECIPIENT_ADDRESS",
                 () -> wallet("USER_WALLET_1").address());
+        registry.add("digital-banking.local-demo-identity.sender-token-file",
+                SENDER_TOKEN_FILE::toString);
+        registry.add("digital-banking.local-demo-identity.operator-token-file",
+                OPERATOR_TOKEN_FILE::toString);
         for (Fixture fixture : WALLETS) {
             registry.add("LOCAL_DEMO_" + fixture.name() + "_PRIVATE_KEY",
                     fixture::privateKey);
@@ -159,6 +174,13 @@ class UsdzelleWorkflowVerticalSliceIntegrationTest {
     static void stopInfrastructure() {
         ANVIL.close();
         POSTGRES.stop();
+        try {
+            Files.deleteIfExists(SENDER_TOKEN_FILE);
+            Files.deleteIfExists(OPERATOR_TOKEN_FILE);
+            Files.deleteIfExists(DEMO_SECRETS);
+        } catch (IOException ignored) {
+            // Disposable test secrets contain no retained evidence.
+        }
     }
 
     @Test
@@ -276,6 +298,46 @@ class UsdzelleWorkflowVerticalSliceIntegrationTest {
                         .doesNotExist())
                 .andExpect(jsonPath("$.settlementOrchestration.recipientParticipant")
                         .doesNotExist());
+
+        mvc.perform(get("/local/v1/demo/status"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/local/v1/demo/status")
+                        .header("Authorization", "Bearer " + SENDER_TOKEN))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/local/v1/demo/status")
+                        .header("Authorization", "Bearer " + OPERATOR_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.network").value("LOCAL_ANVIL"))
+                .andExpect(jsonPath("$.chainId").value("31337"))
+                .andExpect(jsonPath("$.contractAddress").value(CONTRACT))
+                .andExpect(jsonPath("$.bankBalancesCents.USER_1_BANK_ACCOUNT")
+                        .value("0"))
+                .andExpect(jsonPath("$.bankBalancesCents.USER_2_BANK_ACCOUNT")
+                        .value("10000"))
+                .andExpect(jsonPath("$.ledgerBalancesCents.RESERVE_CASH_ASSET")
+                        .value("0"))
+                .andExpect(jsonPath("$.operationalPositionsCents.ADMIN_REDEMPTION_CUSTODY_PENDING_BURN")
+                        .value("0"))
+                .andExpect(jsonPath("$.tokenBalancesAtomic.userOne").value("0"))
+                .andExpect(jsonPath("$.tokenBalancesAtomic.userTwo").value("0"))
+                .andExpect(jsonPath("$.tokenBalancesAtomic.admin").value("0"))
+                .andExpect(jsonPath("$.tokenBalancesAtomic.totalSupply").value("0"))
+                .andExpect(jsonPath("$.confirmedEffects.withdrawals").value(2))
+                .andExpect(jsonPath("$.confirmedEffects.mints").value(2))
+                .andExpect(jsonPath("$.confirmedEffects.userTransfers").value(1))
+                .andExpect(jsonPath("$.confirmedEffects.custodyTransfers").value(2))
+                .andExpect(jsonPath("$.confirmedEffects.payouts").value(2))
+                .andExpect(jsonPath("$.confirmedEffects.burns").value(2))
+                .andExpect(jsonPath("$.latestAcquisition.reconciliation")
+                        .value("RECONCILED"))
+                .andExpect(jsonPath("$.latestRedemption.reconciliation")
+                        .value("RECONCILED"))
+                .andExpect(jsonPath("$.latestSettlement.reconciliation")
+                        .value("RECONCILED"))
+                .andExpect(jsonPath("$.payoutBeforeBurn").value(true))
+                .andExpect(jsonPath("$.privateKey").doesNotExist())
+                .andExpect(jsonPath("$.token").doesNotExist())
+                .andExpect(jsonPath("$.rawTransaction").doesNotExist());
     }
 
     private String acceptSettlement() throws Exception {

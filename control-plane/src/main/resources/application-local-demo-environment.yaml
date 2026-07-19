@@ -1,0 +1,13 @@
+spring:
+    config:
+        activate:
+            on-profile: local-demo-environment
+
+digital-banking:
+    local-ethereum:
+        compose-environment: true
+    local-demo-identity:
+        sender-token-file: ${LOCAL_DEMO_SENDER_TOKEN_FILE:/run/secrets/sender-token}
+        operator-token-file: ${LOCAL_DEMO_OPERATOR_TOKEN_FILE:/run/secrets/operator-token}
+    delivery-worker:
+        poll-interval: ${LOCAL_DEMO_WORKER_POLL_INTERVAL:PT1S}
