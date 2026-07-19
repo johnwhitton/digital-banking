@@ -82,7 +82,7 @@ class PostgresMockBankAdapterTest {
                         SELECT COUNT(*) FROM flyway_schema_history
                         WHERE success = TRUE
                         """).query(Integer.class).single();
-        assertEquals(7, count);
+        assertEquals(8, count);
         assertEquals(new BigInteger("10000"), account(USER_1).balance().value());
 
         MockBankPort.BankResponse withdrawal = adapter.execute(command(

@@ -47,7 +47,8 @@ public final class LocalSolanaConfiguredSigner
     private static final Instant VALID_FROM = Instant.EPOCH;
     private static final Set<SigningRequest.KeyRole> SUPPORTED_ROLES = Set.of(
             SigningRequest.KeyRole.FEE_PAYER,
-            SigningRequest.KeyRole.MINT_AUTHORITY);
+            SigningRequest.KeyRole.MINT_AUTHORITY,
+            SigningRequest.KeyRole.TRANSFER_AUTHORITY);
     private static final Set<SigningRequest.Algorithm> ALGORITHMS = Set.of(
             SigningRequest.Algorithm.ED25519);
     private static final Set<SettlementNetwork> NETWORKS = Set.of(
@@ -80,7 +81,7 @@ public final class LocalSolanaConfiguredSigner
             }
             if (!roles.keySet().equals(SUPPORTED_ROLES)) {
                 throw new IllegalArgumentException(
-                        "fee-payer and mint-authority keys are both required");
+                        "fee-payer, mint-authority, and transfer-authority keys are required");
             }
             keys = Map.copyOf(loaded);
         } catch (RuntimeException failure) {
@@ -186,8 +187,8 @@ public final class LocalSolanaConfiguredSigner
                 || request.payloadIdentity().mode() != SigningRequest.Mode.SOLANA_MESSAGE
                 || request.payloadIdentity().algorithm() != SigningRequest.Algorithm.ED25519
                 || request.authorityContext().network() != SettlementNetwork.SOLANA
-                || request.authorityContext().action() != SigningRequest.Action.MINT
                 || request.keyContext().role() != key.role()
+                || !actionMatches(key.role(), request.authorityContext().action())
                 || !request.authorityContext().sourceReference().equals(key.publicKeyBase58())) {
             return false;
         }
@@ -199,6 +200,17 @@ public final class LocalSolanaConfiguredSigner
                 && context.allowedRoles().equals(Set.of(key.role()))
                 && context.allowedAlgorithms().equals(ALGORITHMS)
                 && context.allowedNetworks().equals(NETWORKS);
+    }
+
+    private static boolean actionMatches(
+            SigningRequest.KeyRole role, SigningRequest.Action action) {
+        return switch (role) {
+            case FEE_PAYER -> action == SigningRequest.Action.MINT
+                    || action == SigningRequest.Action.TRANSFER;
+            case MINT_AUTHORITY -> action == SigningRequest.Action.MINT;
+            case TRANSFER_AUTHORITY -> action == SigningRequest.Action.TRANSFER;
+            case BURN_AUTHORITY -> false;
+        };
     }
 
     private static ActiveKey load(Path root, ConfiguredKey configured) {

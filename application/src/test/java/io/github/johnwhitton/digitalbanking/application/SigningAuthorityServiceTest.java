@@ -191,20 +191,28 @@ class SigningAuthorityServiceTest {
     }
 
     @Test
-    void feePayerRoleIsAuthorizedOnlyForMintInThisSlice() {
-        for (SigningRequest.Action action : List.of(
-                SigningRequest.Action.TRANSFER, SigningRequest.Action.BURN)) {
-            Fixture fixture = new Fixture();
-            fixture.allowedRoles = Set.of(SigningRequest.KeyRole.FEE_PAYER);
-            SigningAuthorityService.Request request = fixture.request(
-                    24 + action.ordinal(), SigningRequest.Mode.SOLANA_MESSAGE,
-                    SigningRequest.Algorithm.ED25519, bytes(64, 1), List.of(),
-                    action, SigningRequest.KeyRole.FEE_PAYER);
+    void feePayerRoleIsAuthorizedForSolanaMintAndTransferOnly() {
+        Fixture transfer = new Fixture();
+        transfer.allowedRoles = Set.of(SigningRequest.KeyRole.FEE_PAYER);
+        SigningAuthorityService.Request transferRequest = transfer.request(
+                24, SigningRequest.Mode.SOLANA_MESSAGE,
+                SigningRequest.Algorithm.ED25519, bytes(64, 1),
+                List.of(new EvidenceRef("evidence:transfer-approved")),
+                SigningRequest.Action.TRANSFER, SigningRequest.KeyRole.FEE_PAYER);
 
-            assertInstanceOf(SigningAuthorityService.Denied.class,
-                    fixture.service.sign(request));
-            assertEquals(0, fixture.signer.solanaCalls());
-        }
+        assertInstanceOf(SigningAuthorityService.Signed.class,
+                transfer.service.sign(transferRequest));
+        assertEquals(1, transfer.signer.solanaCalls());
+
+        Fixture burn = new Fixture();
+        burn.allowedRoles = Set.of(SigningRequest.KeyRole.FEE_PAYER);
+        SigningAuthorityService.Request burnRequest = burn.request(
+                25, SigningRequest.Mode.SOLANA_MESSAGE,
+                SigningRequest.Algorithm.ED25519, bytes(64, 1), List.of(),
+                SigningRequest.Action.BURN, SigningRequest.KeyRole.FEE_PAYER);
+        assertInstanceOf(SigningAuthorityService.Denied.class,
+                burn.service.sign(burnRequest));
+        assertEquals(0, burn.signer.solanaCalls());
 
         Fixture ethereum = new Fixture();
         ethereum.allowedRoles = Set.of(SigningRequest.KeyRole.FEE_PAYER);

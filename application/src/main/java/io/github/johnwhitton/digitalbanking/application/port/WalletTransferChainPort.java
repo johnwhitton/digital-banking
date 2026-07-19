@@ -1,6 +1,8 @@
 package io.github.johnwhitton.digitalbanking.application.port;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import io.github.johnwhitton.digitalbanking.application.WalletTransferOperation;
@@ -13,6 +15,16 @@ public interface WalletTransferChainPort {
 
     Optional<ChainPort.SignedAttempt> findSignedAttempt(
             ChainPort.AttemptIdentity attemptIdentity);
+
+    default List<ChainPort.SigningRequirement> requiredSigners(
+            ChainPort.AttemptIdentity attemptIdentity) {
+        return List.of();
+    }
+
+    default Set<Integer> retainedSignatureOrders(
+            ChainPort.AttemptIdentity attemptIdentity) {
+        return Set.of();
+    }
 
     ChainPort.SignedAttempt attachSignature(
             ChainPort.AttemptIdentity attemptIdentity,

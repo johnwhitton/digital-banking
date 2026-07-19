@@ -78,6 +78,58 @@ final class SolanaMintTransactionCodec {
                 List.of(signers), sha256(message), sha256(instructionBytes));
     }
 
+    PreparedTransferMessage prepareTransfer(
+            PublicKey feePayer,
+            PublicKey sourceOwner,
+            PublicKey destinationOwner,
+            PublicKey mint,
+            String recentBlockhash,
+            BigInteger amount,
+            int decimals,
+            boolean createDestinationAta) {
+        Objects.requireNonNull(feePayer, "feePayer");
+        Objects.requireNonNull(sourceOwner, "sourceOwner");
+        Objects.requireNonNull(destinationOwner, "destinationOwner");
+        Objects.requireNonNull(mint, "mint");
+        requireAmount(amount);
+        if (decimals != 2) {
+            throw new IllegalArgumentException("local USDZELLE requires two decimals");
+        }
+        PublicKey sourceAta = associatedTokenAddress(sourceOwner, mint);
+        PublicKey destinationAta = associatedTokenAddress(destinationOwner, mint);
+        Instruction checkedTransfer = transferChecked(
+                sourceAta, mint, destinationAta, sourceOwner, amount, decimals);
+        List<Instruction> instructions = createDestinationAta
+                ? List.of(createAta(
+                        feePayer, destinationOwner, mint, destinationAta), checkedTransfer)
+                : List.of(checkedTransfer);
+        Transaction transaction = Transaction.createTx(feePayer, instructions);
+        transaction.setRecentBlockHash(recentBlockhash);
+        if (transaction.exceedsSizeLimit()) {
+            throw new IllegalArgumentException(
+                    "Solana transfer transaction exceeds native limit");
+        }
+        byte[] unsigned = transaction.serialized();
+        TransactionSkeleton skeleton = TransactionSkeleton.deserializeSkeleton(unsigned);
+        if (!skeleton.isLegacy()) {
+            throw new IllegalStateException("bounded Solana transfer must use a legacy message");
+        }
+        PublicKey[] signers = skeleton.parseSignerPublicKeys();
+        if (!Arrays.equals(signers, new PublicKey[] {feePayer, sourceOwner})) {
+            throw new IllegalStateException("legacy message signer ordering is not canonical");
+        }
+        byte[] message = serializedMessage(unsigned);
+        byte[] instructionBytes = instructions.stream()
+                .flatMap(instruction -> java.util.stream.Stream.of(
+                        instruction.programId().publicKey().toByteArray(),
+                        instruction.copyData()))
+                .reduce(new byte[0], SolanaMintTransactionCodec::concat);
+        return new PreparedTransferMessage(
+                unsigned, message, sourceAta, destinationAta,
+                List.copyOf(instructions), List.of(signers),
+                sha256(message), sha256(instructionBytes));
+    }
+
     SignedTransaction assemble(
             byte[] unsignedTransaction,
             List<AuthorizedSignature> signatures) {
@@ -153,6 +205,47 @@ final class SolanaMintTransactionCodec {
         }
     }
 
+    boolean matchesExpectedTransferInstructions(
+            byte[] serializedTransaction,
+            PublicKey feePayer,
+            PublicKey sourceOwner,
+            PublicKey destinationOwner,
+            PublicKey mint,
+            BigInteger amount,
+            int decimals,
+            boolean includesDestinationAta) {
+        try {
+            PublicKey sourceAta = associatedTokenAddress(sourceOwner, mint);
+            PublicKey destinationAta = associatedTokenAddress(destinationOwner, mint);
+            List<Instruction> expected = includesDestinationAta
+                    ? List.of(createAta(
+                                    feePayer, destinationOwner, mint, destinationAta),
+                            transferChecked(sourceAta, mint, destinationAta,
+                                    sourceOwner, amount, decimals))
+                    : List.of(transferChecked(sourceAta, mint, destinationAta,
+                            sourceOwner, amount, decimals));
+            Instruction[] observed = TransactionSkeleton.deserializeSkeleton(
+                    serializedTransaction).parseLegacyInstructions();
+            if (observed.length != expected.size()) {
+                return false;
+            }
+            for (int index = 0; index < observed.length; index++) {
+                Instruction left = observed[index];
+                Instruction right = expected.get(index);
+                if (!left.programId().publicKey().equals(right.programId().publicKey())
+                        || !Arrays.equals(left.copyData(), right.copyData())
+                        || !left.accounts().stream().map(AccountMeta::publicKey).toList()
+                                .equals(right.accounts().stream()
+                                        .map(AccountMeta::publicKey).toList())) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (RuntimeException malformed) {
+            return false;
+        }
+    }
+
     static PublicKey associatedTokenAddress(PublicKey owner, PublicKey mint) {
         ProgramDerivedAddress derived = PublicKey.findProgramAddress(
                 List.of(owner.toByteArray(), TOKEN_PROGRAM.toByteArray(), mint.toByteArray()),
@@ -182,6 +275,23 @@ final class SolanaMintTransactionCodec {
                 .put((byte) 14).putLong(amount.longValue()).put((byte) decimals).array();
         return Instruction.createInstruction(TOKEN_PROGRAM, List.of(
                 AccountMeta.createWrite(mint),
+                AccountMeta.createWrite(destination),
+                AccountMeta.createReadOnlySigner(authority)), data);
+    }
+
+    private static Instruction transferChecked(
+            PublicKey source,
+            PublicKey mint,
+            PublicKey destination,
+            PublicKey authority,
+            BigInteger amount,
+            int decimals) {
+        requireAmount(amount);
+        byte[] data = ByteBuffer.allocate(10).order(ByteOrder.LITTLE_ENDIAN)
+                .put((byte) 12).putLong(amount.longValue()).put((byte) decimals).array();
+        return Instruction.createInstruction(TOKEN_PROGRAM, List.of(
+                AccountMeta.createWrite(source),
+                AccountMeta.createRead(mint),
                 AccountMeta.createWrite(destination),
                 AccountMeta.createReadOnlySigner(authority)), data);
     }
@@ -251,6 +361,29 @@ final class SolanaMintTransactionCodec {
         PreparedMessage {
             unsignedTransaction = unsignedTransaction.clone();
             message = message.clone();
+            instructions = List.copyOf(instructions);
+            requiredSigners = List.copyOf(requiredSigners);
+        }
+
+        @Override public byte[] unsignedTransaction() { return unsignedTransaction.clone(); }
+        @Override public byte[] message() { return message.clone(); }
+    }
+
+    record PreparedTransferMessage(
+            byte[] unsignedTransaction,
+            byte[] message,
+            PublicKey sourceAta,
+            PublicKey destinationAta,
+            List<Instruction> instructions,
+            List<PublicKey> requiredSigners,
+            String messageSha256,
+            String instructionSha256) {
+
+        PreparedTransferMessage {
+            unsignedTransaction = unsignedTransaction.clone();
+            message = message.clone();
+            Objects.requireNonNull(sourceAta, "sourceAta");
+            Objects.requireNonNull(destinationAta, "destinationAta");
             instructions = List.copyOf(instructions);
             requiredSigners = List.copyOf(requiredSigners);
         }

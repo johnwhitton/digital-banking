@@ -21,6 +21,8 @@ import java.util.concurrent.CompletionException;
 import javax.sql.DataSource;
 
 import io.github.johnwhitton.digitalbanking.application.port.ChainPort;
+import io.github.johnwhitton.digitalbanking.application.WalletTransferOperation;
+import io.github.johnwhitton.digitalbanking.application.port.WalletTransferChainPort;
 import io.github.johnwhitton.digitalbanking.domain.operation.AttemptId;
 import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationAttempt;
@@ -39,11 +41,13 @@ import software.sava.rpc.json.http.request.Commitment;
 import software.sava.rpc.json.http.response.AccountInfo;
 import software.sava.rpc.json.http.response.JsonRpcException;
 import software.sava.rpc.json.http.response.LatestBlockHash;
+import software.sava.rpc.json.http.response.TokenBalance;
 import software.sava.rpc.json.http.response.Tx;
 import software.sava.rpc.json.http.response.TxStatus;
 
 /** Durable local-only classic-SPL mint adapter. Sava types remain inside this module. */
-public final class SavaSolanaMintChainAdapter implements ChainPort {
+public final class SavaSolanaMintChainAdapter
+        implements ChainPort, WalletTransferChainPort {
 
     private static final String SIGNATURE_ENCODING = "solana-ed25519-64-byte";
     private static final BigInteger MAX_U64 = new BigInteger("18446744073709551615");
@@ -179,10 +183,13 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
                         .orElseThrow().replacementSequence() + 1;
         SolanaMintAttemptStore.Draft draft = new SolanaMintAttemptStore.Draft(
                 operation.operationId(), attempt.attemptId(), deliveryId, UUID.randomUUID(),
-                replacementParent, replacementSequence, configuration.clusterIdentity(),
+                replacementParent, replacementSequence,
+                SolanaMintAttemptStore.EffectKind.MINT,
+                configuration.clusterIdentity(),
                 routeSnapshot(operation), SolanaMintTransactionCodec.TOKEN_PROGRAM.toBase58(),
                 SolanaMintTransactionCodec.ATA_PROGRAM.toBase58(),
-                configuration.mintAddress(), configuration.destinationOwner(),
+                configuration.mintAddress(), Optional.empty(), Optional.empty(),
+                Optional.empty(), configuration.destinationOwner(),
                 destinationAta.toBase58(), ataExisted, configuration.decimals(),
                 operation.quantity().atomicUnits(), preSupply, preBalance,
                 signer(configuration.feePayerKeyAlias(), SigningRequest.KeyRole.FEE_PAYER,
@@ -192,6 +199,106 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
                         SigningRequest.KeyRole.MINT_AUTHORITY,
                         configuration.mintAuthorityKeyVersion(),
                         configuration.mintAuthorityPublicKey()),
+                configuration.policyVersion(), configuration.maximumFeeLamports(),
+                latest.blockHash(), latest.lastValidBlockHeight(),
+                message.unsignedTransaction(), message.messageSha256(),
+                message.instructionSha256());
+        return prepared(attempts.prepare(draft, now()));
+    }
+
+    @Override
+    public PreparedAttempt prepare(
+            UUID deliveryId, WalletTransferOperation operation) {
+        validateTransfer(operation);
+        Optional<SolanaMintAttemptStore.AttemptRow> existing = attempts.find(
+                operation.operationId(), operation.attemptId());
+        if (existing.isPresent()) {
+            SolanaMintAttemptStore.AttemptRow retained = existing.orElseThrow();
+            if (!retained.deliveryId().equals(deliveryId)
+                    || retained.effectKind()
+                            != SolanaMintAttemptStore.EffectKind.TRANSFER
+                    || !retained.amount().equals(operation.quantity().atomicUnits())) {
+                throw new IllegalStateException(
+                        "Solana attempt is already bound to different acceptance context");
+            }
+            return prepared(retained);
+        }
+
+        PublicKey mintAddress = key(configuration.mintAddress(), "mintAddress");
+        PublicKey sourceOwner = key(operation.source().normalizedAddress(), "sourceOwner");
+        PublicKey destinationOwner = key(
+                operation.destination().normalizedAddress(), "destinationOwner");
+        PublicKey feePayer = key(configuration.feePayerPublicKey(), "feePayerPublicKey");
+        PublicKey mintAuthority = key(
+                configuration.mintAuthorityPublicKey(), "mintAuthorityPublicKey");
+        AccountInfo<byte[]> mintAccount = requiredAccount(
+                observationClient.getAccountInfo(
+                        Commitment.FINALIZED, mintAddress).join(),
+                "configured mint");
+        validateMintAccount(mintAccount, mintAddress, mintAuthority);
+
+        PublicKey sourceAta = SolanaMintTransactionCodec.associatedTokenAddress(
+                sourceOwner, mintAddress);
+        AccountInfo<byte[]> sourceAccount = requiredAccount(
+                observationClient.getAccountInfo(
+                        Commitment.FINALIZED, sourceAta).join(),
+                "configured source associated token account");
+        validateTokenAccount(sourceAccount, sourceAta, sourceOwner, mintAddress);
+        BigInteger preSourceBalance = unsigned(TokenAccount.read(
+                sourceAta, sourceAccount.data()).amount());
+        if (preSourceBalance.compareTo(operation.quantity().atomicUnits()) < 0) {
+            throw new IllegalStateException(
+                    "local Solana source has insufficient token balance");
+        }
+
+        PublicKey destinationAta = SolanaMintTransactionCodec.associatedTokenAddress(
+                destinationOwner, mintAddress);
+        AccountInfo<byte[]> destinationAccount = observationClient.getAccountInfo(
+                Commitment.FINALIZED, destinationAta).join();
+        boolean destinationExisted = destinationAccount != null
+                && destinationAccount.data() != null;
+        BigInteger preDestinationBalance = BigInteger.ZERO;
+        if (destinationExisted) {
+            validateTokenAccount(
+                    destinationAccount, destinationAta, destinationOwner, mintAddress);
+            preDestinationBalance = unsigned(TokenAccount.read(
+                    destinationAta, destinationAccount.data()).amount());
+        }
+        BigInteger preSupply = unsigned(Mint.read(
+                mintAddress, mintAccount.data()).supply());
+        requireFundedFeePayer(feePayer);
+        LatestBlockHash latest = latestUsableBlockhash();
+        SolanaMintTransactionCodec.PreparedTransferMessage message =
+                codec.prepareTransfer(
+                        feePayer, sourceOwner, destinationOwner, mintAddress,
+                        latest.blockHash(), operation.quantity().atomicUnits(),
+                        configuration.decimals(), !destinationExisted);
+        if (!message.sourceAta().equals(sourceAta)
+                || !message.destinationAta().equals(destinationAta)) {
+            throw new IllegalStateException("derived associated token account changed");
+        }
+
+        SolanaMintAttemptStore.Draft draft = new SolanaMintAttemptStore.Draft(
+                operation.operationId(), operation.attemptId(), deliveryId,
+                UUID.randomUUID(), Optional.empty(), 0,
+                SolanaMintAttemptStore.EffectKind.TRANSFER,
+                configuration.clusterIdentity(), routeSnapshot(operation),
+                SolanaMintTransactionCodec.TOKEN_PROGRAM.toBase58(),
+                SolanaMintTransactionCodec.ATA_PROGRAM.toBase58(),
+                configuration.mintAddress(), Optional.of(sourceOwner.toBase58()),
+                Optional.of(sourceAta.toBase58()), Optional.of(preSourceBalance),
+                destinationOwner.toBase58(), destinationAta.toBase58(),
+                destinationExisted, configuration.decimals(),
+                operation.quantity().atomicUnits(), preSupply,
+                preDestinationBalance,
+                signer(configuration.feePayerKeyAlias(),
+                        SigningRequest.KeyRole.FEE_PAYER,
+                        configuration.feePayerKeyVersion(),
+                        configuration.feePayerPublicKey()),
+                signer(configuration.transferAuthorityKeyAlias(),
+                        SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                        configuration.transferAuthorityKeyVersion(),
+                        sourceOwner.toBase58()),
                 configuration.policyVersion(), configuration.maximumFeeLamports(),
                 latest.blockHash(), latest.lastValidBlockHeight(),
                 message.unsignedTransaction(), message.messageSha256(),
@@ -348,6 +455,7 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
                         configuration.observationCommitment().name().toLowerCase(Locale.ROOT),
                         Optional.empty(), Optional.empty(), Optional.empty(), false,
                         Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty(),
                         evidence(attempt, "expired-unobserved").value()), now());
                 return inquiry(attempt, nativeIdentity, RetrySafety.UNSAFE,
                         "inquiry-expired-unobserved");
@@ -387,6 +495,9 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
     }
 
     private ObservationEvidence observeNative(SolanaMintAttemptStore.AttemptRow attempt) {
+        if (attempt.effectKind() == SolanaMintAttemptStore.EffectKind.TRANSFER) {
+            return observeTransferNative(attempt);
+        }
         TxStatus status = observationClient.getSignatureStatuses(
                 List.of(attempt.transactionSignature()), true).join()
                 .get(attempt.transactionSignature());
@@ -463,6 +574,191 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
                         "finalized-mint-effect-mismatch");
     }
 
+    private ObservationEvidence observeTransferNative(
+            SolanaMintAttemptStore.AttemptRow attempt) {
+        TxStatus status = observationClient.getSignatureStatuses(
+                List.of(attempt.transactionSignature()), true).join()
+                .get(attempt.transactionSignature());
+        if (status == null || status.nil()) {
+            return ObservationEvidence.pending("signature-status-absent");
+        }
+        if (status.confirmationStatus() != Commitment.FINALIZED) {
+            return ObservationEvidence.pending("signature-not-finalized");
+        }
+        if (status.error() != null) {
+            return ObservationEvidence.reverted(
+                    status.slot(), "finalized-transaction-failed",
+                    status.error().getClass().getSimpleName());
+        }
+        Tx transaction = observationClient.getTransaction(
+                Commitment.FINALIZED, attempt.transactionSignature()).join();
+        if (transaction == null || transaction.meta() == null) {
+            return ObservationEvidence.pending("finalized-transaction-unavailable");
+        }
+        if (transaction.meta().error() != null) {
+            return ObservationEvidence.reverted(
+                    transaction.slot(), "finalized-metadata-failed",
+                    transaction.meta().error().getClass().getSimpleName());
+        }
+        PublicKey feePayer = key(attempt.feePayer().publicKey(), "feePayer");
+        PublicKey sourceOwner = key(
+                attempt.sourceOwner().orElseThrow(), "sourceOwner");
+        PublicKey destinationOwner = key(
+                attempt.destinationOwner(), "destinationOwner");
+        PublicKey mint = key(attempt.mintAddress(), "mintAddress");
+        boolean identityMatches = Base58.encode(
+                software.sava.core.tx.Transaction.getId(transaction.data()))
+                .equals(attempt.transactionSignature());
+        boolean instructionsMatch = identityMatches
+                && codec.matchesExpectedTransferInstructions(
+                        transaction.data(), feePayer, sourceOwner,
+                        destinationOwner, mint, attempt.amount(),
+                        attempt.decimals(), !attempt.ataExisted());
+        Optional<TransactionTokenBalances> transactionBalances =
+                transferTokenBalances(transaction, sourceOwner, destinationOwner,
+                        mint, key(attempt.sourceAta().orElseThrow(), "sourceAta"),
+                        key(attempt.destinationAta(), "destinationAta"),
+                        attempt.ataExisted(), attempt.decimals());
+        if (transactionBalances.isEmpty()) {
+            return ObservationEvidence.mismatchedTransfer(
+                    transaction.slot(), transaction.blockTime(), instructionsMatch,
+                    Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), "finalized-transaction-token-balances-missing");
+        }
+        AccountInfo<byte[]> mintAccount = observationClient.getAccountInfo(
+                Commitment.FINALIZED, mint).join();
+        PublicKey sourceAta = key(attempt.sourceAta().orElseThrow(), "sourceAta");
+        PublicKey destinationAta = key(attempt.destinationAta(), "destinationAta");
+        AccountInfo<byte[]> sourceAccount = observationClient.getAccountInfo(
+                Commitment.FINALIZED, sourceAta).join();
+        AccountInfo<byte[]> destinationAccount = observationClient.getAccountInfo(
+                Commitment.FINALIZED, destinationAta).join();
+        if (mintAccount == null || mintAccount.data() == null
+                || sourceAccount == null || sourceAccount.data() == null
+                || destinationAccount == null || destinationAccount.data() == null) {
+            return ObservationEvidence.mismatchedTransfer(
+                    transaction.slot(), transaction.blockTime(), instructionsMatch,
+                    Optional.empty(), Optional.empty(), Optional.empty(),
+                    transactionBalances,
+                    "finalized-account-missing");
+        }
+        boolean accountsMatch;
+        try {
+            validateMintAccount(mintAccount, mint,
+                    key(configuration.mintAuthorityPublicKey(), "mintAuthority"));
+            validateTokenAccount(sourceAccount, sourceAta, sourceOwner, mint);
+            validateTokenAccount(
+                    destinationAccount, destinationAta, destinationOwner, mint);
+            accountsMatch = true;
+        } catch (RuntimeException mismatch) {
+            accountsMatch = false;
+        }
+        BigInteger supply = unsigned(Mint.read(mint, mintAccount.data()).supply());
+        BigInteger sourceBalance = unsigned(TokenAccount.read(
+                sourceAta, sourceAccount.data()).amount());
+        BigInteger destinationBalance = unsigned(TokenAccount.read(
+                destinationAta, destinationAccount.data()).amount());
+        BigInteger supplyDelta = supply.subtract(attempt.preMintSupply());
+        TransactionTokenBalances nativeBalances = transactionBalances.orElseThrow();
+        BigInteger sourceDelta = nativeBalances.preSource()
+                .subtract(nativeBalances.postSource());
+        BigInteger destinationDelta = nativeBalances.postDestination()
+                .subtract(nativeBalances.preDestination());
+        boolean transactionExact = nativeBalances.preSource().equals(
+                        attempt.preSourceBalance().orElseThrow())
+                && nativeBalances.preDestination().equals(
+                        attempt.preDestinationBalance())
+                && sourceDelta.equals(attempt.amount())
+                && destinationDelta.equals(attempt.amount());
+        boolean exact = accountsMatch && instructionsMatch
+                && supplyDelta.signum() == 0
+                && transactionExact;
+        return exact
+                ? ObservationEvidence.confirmedTransfer(
+                        transaction.slot(), transaction.blockTime(), supply,
+                        sourceBalance, destinationBalance, sourceDelta,
+                        destinationDelta, nativeBalances)
+                : ObservationEvidence.mismatchedTransfer(
+                        transaction.slot(), transaction.blockTime(), instructionsMatch,
+                        Optional.of(supply), Optional.of(sourceBalance),
+                        Optional.of(destinationBalance), transactionBalances,
+                        "finalized-transfer-effect-mismatch");
+    }
+
+    private static Optional<TransactionTokenBalances> transferTokenBalances(
+            Tx transaction, PublicKey sourceOwner, PublicKey destinationOwner,
+            PublicKey mint, PublicKey sourceAta, PublicKey destinationAta,
+            boolean destinationExisted, int decimals) {
+        try {
+            var accounts = transaction.skeleton().parseAccounts();
+            int sourceIndex = accountIndex(accounts, sourceAta);
+            int destinationIndex = accountIndex(accounts, destinationAta);
+            if (sourceIndex < 0 || destinationIndex < 0) {
+                return Optional.empty();
+            }
+            Optional<BigInteger> preSource = tokenBalance(
+                    transaction.meta().preTokenBalances(), sourceIndex,
+                    mint, sourceOwner, decimals);
+            Optional<BigInteger> postSource = tokenBalance(
+                    transaction.meta().postTokenBalances(), sourceIndex,
+                    mint, sourceOwner, decimals);
+            Optional<BigInteger> postDestination = tokenBalance(
+                    transaction.meta().postTokenBalances(), destinationIndex,
+                    mint, destinationOwner, decimals);
+            Optional<BigInteger> preDestination;
+            if (destinationExisted) {
+                preDestination = tokenBalance(
+                        transaction.meta().preTokenBalances(), destinationIndex,
+                        mint, destinationOwner, decimals);
+            } else if (transaction.meta().preTokenBalances().stream().anyMatch(
+                    balance -> balance.accountIndex() == destinationIndex)) {
+                return Optional.empty();
+            } else {
+                preDestination = Optional.of(BigInteger.ZERO);
+            }
+            if (preSource.isEmpty() || postSource.isEmpty()
+                    || preDestination.isEmpty() || postDestination.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(new TransactionTokenBalances(
+                    preSource.orElseThrow(), postSource.orElseThrow(),
+                    preDestination.orElseThrow(), postDestination.orElseThrow()));
+        } catch (RuntimeException invalidMetadata) {
+            return Optional.empty();
+        }
+    }
+
+    private static int accountIndex(
+            software.sava.core.accounts.meta.AccountMeta[] accounts,
+            PublicKey address) {
+        int found = -1;
+        for (int index = 0; index < accounts.length; index++) {
+            if (accounts[index].publicKey().equals(address)) {
+                if (found >= 0) return -1;
+                found = index;
+            }
+        }
+        return found;
+    }
+
+    private static Optional<BigInteger> tokenBalance(
+            List<TokenBalance> balances, int accountIndex, PublicKey mint,
+            PublicKey owner, int decimals) {
+        List<TokenBalance> matching = balances.stream()
+                .filter(balance -> balance.accountIndex() == accountIndex)
+                .toList();
+        if (matching.size() != 1) return Optional.empty();
+        TokenBalance balance = matching.getFirst();
+        if (!mint.equals(balance.mint()) || !owner.equals(balance.owner())
+                || !SolanaMintTransactionCodec.TOKEN_PROGRAM.equals(balance.programId())
+                || balance.decimals() != decimals || balance.amount() == null
+                || balance.amount().signum() < 0
+                || balance.amount().compareTo(MAX_U64) > 0) {
+            return Optional.empty();
+        }
+        return Optional.of(balance.amount());
+    }
+
     private SolanaMintTransactionCodec.SignedTransaction assemble(
             SolanaMintAttemptStore.AttemptRow attempt) {
         List<SolanaMintAttemptStore.SignatureRow> signatures = attempts.signatures(
@@ -487,8 +783,12 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
                 .getBytes(StandardCharsets.UTF_8));
         return new PreparedAttempt(
                 message, "solana-sha256:" + attempt.messageSha256(),
-                attempt.feePayer().publicKey(), attempt.destinationOwner(),
-                "solana-mint:" + attempt.nativeAttemptId(), lifetime,
+                attempt.effectKind() == SolanaMintAttemptStore.EffectKind.MINT
+                        ? attempt.feePayer().publicKey()
+                        : attempt.sourceOwner().orElseThrow(),
+                attempt.destinationOwner(),
+                "solana-" + attempt.effectKind().name().toLowerCase(Locale.ROOT)
+                        + ":" + attempt.nativeAttemptId(), lifetime,
                 "max-lamports=" + attempt.maximumFeeLamports(),
                 sha256(attempt.unsignedTransaction()), attempt.policyVersion(),
                 evidence(attempt, "prepared"));
@@ -554,6 +854,52 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
             String alias, SigningRequest.KeyRole role, String version, String publicKey) {
         return new SolanaMintAttemptStore.SignerContext(
                 new KeyAlias(alias), role, version, publicKey);
+    }
+
+    private void validateTransfer(WalletTransferOperation operation) {
+        var unit = operation.quantity().unit();
+        if (operation.purpose() != WalletTransferOperation.Purpose.USER_TRANSFER
+                || operation.network() != SettlementNetwork.SOLANA
+                || !configuration.assetId().equals(unit.assetId())
+                || !configuration.unitId().equals(unit.unitId())
+                || configuration.unitVersion() != unit.version()
+                || configuration.decimals() != unit.scale()
+                || !operation.quantity().atomicUnits().equals(BigInteger.valueOf(10_000))
+                || !configuration.mintAddress().equals(operation.contractAddress())
+                || !configuration.policyVersion().equals(
+                        operation.finalityPolicyVersion())
+                || !configuration.destinationOwner().equals(
+                        operation.source().normalizedAddress())
+                || !configuration.transferDestinationOwner().equals(
+                        operation.destination().normalizedAddress())
+                || !new KeyAlias(configuration.transferAuthorityKeyAlias()).equals(
+                        operation.source().keyReference())
+                || !configuration.transferAuthorityKeyVersion().equals(
+                        operation.source().keyVersion())) {
+            throw new IllegalArgumentException(
+                    "wallet transfer does not match the retained local Solana policy");
+        }
+    }
+
+    private void requireFundedFeePayer(PublicKey feePayer) {
+        BigInteger feeBalance = unsigned(
+                submissionClient.getBalance(Commitment.FINALIZED, feePayer)
+                        .join().lamports());
+        if (feeBalance.compareTo(configuration.minimumFeePayerLamports()) < 0) {
+            throw new IllegalStateException("local Solana fee payer has insufficient funds");
+        }
+    }
+
+    private LatestBlockHash latestUsableBlockhash() {
+        LatestBlockHash latest = submissionClient.getLatestBlockHash(
+                configuration.preparationCommitment().nativeCommitment()).join();
+        if (latest.lastValidBlockHeight() < 0
+                || submissionClient.getBlockHeight(
+                        configuration.preparationCommitment().nativeCommitment())
+                        .join().height() > latest.lastValidBlockHeight()) {
+            throw new IllegalStateException("local Solana blockhash validity is incoherent");
+        }
+        return latest;
     }
 
     private void validateMint(TokenOperation operation, OperationAttempt attempt) {
@@ -682,6 +1028,11 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
                 + operation.acceptanceContext().commandDigest().substring(0, 32);
     }
 
+    private static String routeSnapshot(WalletTransferOperation operation) {
+        return "route:local-solana-transfer-v1:"
+                + operation.commandDigest().substring(0, 32);
+    }
+
     private Instant now() {
         return clock.instant().truncatedTo(ChronoUnit.MICROS);
     }
@@ -715,6 +1066,9 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
             String mintAuthorityPublicKey,
             String mintAuthorityKeyAlias,
             String mintAuthorityKeyVersion,
+            String transferDestinationOwner,
+            String transferAuthorityKeyAlias,
+            String transferAuthorityKeyVersion,
             String assetId,
             String unitId,
             int unitVersion,
@@ -725,6 +1079,39 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
             BigInteger minimumFeePayerLamports,
             BigInteger maximumFeeLamports,
             Duration requestTimeout) {
+
+        public Configuration(
+                URI rpcUri,
+                String clusterIdentity,
+                String mintAddress,
+                String destinationOwner,
+                String feePayerPublicKey,
+                String feePayerKeyAlias,
+                String feePayerKeyVersion,
+                String mintAuthorityPublicKey,
+                String mintAuthorityKeyAlias,
+                String mintAuthorityKeyVersion,
+                String assetId,
+                String unitId,
+                int unitVersion,
+                int decimals,
+                String policyVersion,
+                CommitmentLevel preparationCommitment,
+                CommitmentLevel observationCommitment,
+                BigInteger minimumFeePayerLamports,
+                BigInteger maximumFeeLamports,
+                Duration requestTimeout) {
+            this(rpcUri, clusterIdentity, mintAddress, destinationOwner,
+                    feePayerPublicKey, feePayerKeyAlias, feePayerKeyVersion,
+                    mintAuthorityPublicKey, mintAuthorityKeyAlias,
+                    mintAuthorityKeyVersion,
+                    "86Cud6zB3MZRYcCBgYftqoZRZw1jVqQfDkobchgk9vir",
+                    "local-solana:transfer-authority",
+                    "local-solana-transfer-authority-v1",
+                    assetId, unitId, unitVersion, decimals, policyVersion,
+                    preparationCommitment, observationCommitment,
+                    minimumFeePayerLamports, maximumFeeLamports, requestTimeout);
+        }
 
         public Configuration {
             Objects.requireNonNull(rpcUri, "rpcUri");
@@ -741,12 +1128,19 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
             key(clusterIdentity, "clusterIdentity");
             key(mintAddress, "mintAddress");
             key(destinationOwner, "destinationOwner");
+            key(transferDestinationOwner, "transferDestinationOwner");
             key(feePayerPublicKey, "feePayerPublicKey");
             key(mintAuthorityPublicKey, "mintAuthorityPublicKey");
             requireText(feePayerKeyAlias, "feePayerKeyAlias", 128);
             requireText(feePayerKeyVersion, "feePayerKeyVersion", 256);
             requireText(mintAuthorityKeyAlias, "mintAuthorityKeyAlias", 128);
             requireText(mintAuthorityKeyVersion, "mintAuthorityKeyVersion", 256);
+            requireText(transferAuthorityKeyAlias, "transferAuthorityKeyAlias", 128);
+            requireText(transferAuthorityKeyVersion, "transferAuthorityKeyVersion", 256);
+            if (destinationOwner.equals(transferDestinationOwner)) {
+                throw new IllegalArgumentException(
+                        "local Solana transfer owners must differ");
+            }
             requireText(assetId, "assetId", 64);
             requireText(unitId, "unitId", 64);
             requireText(policyVersion, "policyVersion", 256);
@@ -799,6 +1193,13 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
         }
     }
 
+    private record TransactionTokenBalances(
+            BigInteger preSource,
+            BigInteger postSource,
+            BigInteger preDestination,
+            BigInteger postDestination) {
+    }
+
     private record ObservationEvidence(
             ObservationClassification classification,
             SolanaMintAttemptStore.ObservationStatus status,
@@ -808,8 +1209,14 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
             boolean expectedInstructions,
             Optional<BigInteger> supply,
             Optional<BigInteger> balance,
+            Optional<BigInteger> sourceBalance,
+            Optional<BigInteger> transactionPreSourceBalance,
+            Optional<BigInteger> transactionPostSourceBalance,
+            Optional<BigInteger> transactionPreDestinationBalance,
+            Optional<BigInteger> transactionPostDestinationBalance,
             Optional<BigInteger> supplyDelta,
             Optional<BigInteger> balanceDelta,
+            Optional<BigInteger> sourceDelta,
             String evidenceKind) {
 
         static ObservationEvidence pending(String kind) {
@@ -817,7 +1224,9 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
                     ObservationClassification.ABSENT_OR_PENDING,
                     SolanaMintAttemptStore.ObservationStatus.ABSENT_OR_PENDING,
                     Optional.empty(), Optional.empty(), Optional.empty(), false,
-                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), kind);
+                    Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), Optional.empty(), kind);
         }
 
         static ObservationEvidence reverted(long slot, String kind, String error) {
@@ -825,7 +1234,9 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
                     ObservationClassification.REVERTED,
                     SolanaMintAttemptStore.ObservationStatus.REVERTED,
                     Optional.of(slot), Optional.empty(), Optional.of(bounded(error)), false,
-                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), kind);
+                    Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), Optional.empty(), kind);
         }
 
         static ObservationEvidence confirmed(
@@ -836,8 +1247,10 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
                     ObservationClassification.CONFIRMED,
                     SolanaMintAttemptStore.ObservationStatus.CONFIRMED,
                     Optional.of(slot), boxed(blockTime), Optional.empty(), true,
-                    Optional.of(supply), Optional.of(balance),
-                    Optional.of(supplyDelta), Optional.of(balanceDelta), "mint-confirmed");
+                    Optional.of(supply), Optional.of(balance), Optional.empty(),
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.of(supplyDelta), Optional.of(balanceDelta), Optional.empty(),
+                    "mint-confirmed");
         }
 
         static ObservationEvidence mismatched(
@@ -847,13 +1260,58 @@ public final class SavaSolanaMintChainAdapter implements ChainPort {
                     ObservationClassification.MISMATCHED,
                     SolanaMintAttemptStore.ObservationStatus.MISMATCHED,
                     Optional.of(slot), boxed(blockTime), Optional.empty(), instructions,
-                    supply, balance, Optional.empty(), Optional.empty(), kind);
+                    supply, balance, Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), kind);
+        }
+
+        static ObservationEvidence confirmedTransfer(
+                long slot, java.util.OptionalLong blockTime,
+                BigInteger supply, BigInteger sourceBalance,
+                BigInteger destinationBalance, BigInteger sourceDelta,
+                BigInteger destinationDelta,
+                TransactionTokenBalances transactionBalances) {
+            return new ObservationEvidence(
+                    ObservationClassification.CONFIRMED,
+                    SolanaMintAttemptStore.ObservationStatus.CONFIRMED,
+                    Optional.of(slot), boxed(blockTime), Optional.empty(), true,
+                    Optional.of(supply), Optional.of(destinationBalance),
+                    Optional.of(sourceBalance),
+                    Optional.of(transactionBalances.preSource()),
+                    Optional.of(transactionBalances.postSource()),
+                    Optional.of(transactionBalances.preDestination()),
+                    Optional.of(transactionBalances.postDestination()),
+                    Optional.of(BigInteger.ZERO),
+                    Optional.of(destinationDelta), Optional.of(sourceDelta),
+                    "transfer-confirmed");
+        }
+
+        static ObservationEvidence mismatchedTransfer(
+                long slot, java.util.OptionalLong blockTime, boolean instructions,
+                Optional<BigInteger> supply, Optional<BigInteger> sourceBalance,
+                Optional<BigInteger> destinationBalance,
+                Optional<TransactionTokenBalances> transactionBalances,
+                String kind) {
+            return new ObservationEvidence(
+                    ObservationClassification.MISMATCHED,
+                    SolanaMintAttemptStore.ObservationStatus.MISMATCHED,
+                    Optional.of(slot), boxed(blockTime), Optional.empty(), instructions,
+                    supply, destinationBalance, sourceBalance,
+                    transactionBalances.map(TransactionTokenBalances::preSource),
+                    transactionBalances.map(TransactionTokenBalances::postSource),
+                    transactionBalances.map(TransactionTokenBalances::preDestination),
+                    transactionBalances.map(TransactionTokenBalances::postDestination),
+                    Optional.empty(), Optional.empty(), Optional.empty(), kind);
         }
 
         SolanaMintAttemptStore.ObservationDraft toDraft(String evidenceReference) {
             return new SolanaMintAttemptStore.ObservationDraft(
                     status, "finalized", slot, blockTime, errorCode,
-                    expectedInstructions, supply, balance, supplyDelta, balanceDelta,
+                    expectedInstructions, supply, balance, sourceBalance,
+                    transactionPreSourceBalance, transactionPostSourceBalance,
+                    transactionPreDestinationBalance,
+                    transactionPostDestinationBalance,
+                    supplyDelta, balanceDelta, sourceDelta,
                     evidenceReference);
         }
 

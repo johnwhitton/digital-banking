@@ -57,6 +57,7 @@ import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationRepository;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresSigningRequestRepository;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresWalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.signer.local.LocalConfiguredSigner;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;

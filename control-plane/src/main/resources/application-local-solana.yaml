@@ -14,6 +14,7 @@ digital-banking:
         cluster-identity: ${LOCAL_SOLANA_CLUSTER_IDENTITY:}
         mint-address: ${LOCAL_SOLANA_MINT_ADDRESS:}
         destination-owner: ${LOCAL_SOLANA_DESTINATION_OWNER:}
+        transfer-destination-owner: ${LOCAL_SOLANA_TRANSFER_DESTINATION_OWNER:}
         runtime-root: ${LOCAL_SOLANA_RUNTIME_ROOT:.solana-runtime}
         fee-payer-key-file: ${LOCAL_SOLANA_FEE_PAYER_KEY_FILE:.solana-runtime/keys/fee-payer.json}
         fee-payer-public-key: ${LOCAL_SOLANA_FEE_PAYER_PUBLIC_KEY:}
@@ -23,6 +24,9 @@ digital-banking:
         mint-authority-public-key: ${LOCAL_SOLANA_MINT_AUTHORITY_PUBLIC_KEY:}
         mint-authority-key-alias: local-solana:admin-mint-authority
         mint-authority-key-version: local-solana-mint-authority-v1
+        transfer-authority-key-file: ${LOCAL_SOLANA_TRANSFER_AUTHORITY_KEY_FILE:.solana-runtime/keys/user-1.json}
+        transfer-authority-key-alias: local-solana:user-1-transfer-authority
+        transfer-authority-key-version: local-solana-user-1-v1
         asset-id: USD_STABLE
         unit-id: USD
         unit-version: 1

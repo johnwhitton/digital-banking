@@ -15,6 +15,7 @@ public record LocalSolanaProperties(
         String clusterIdentity,
         String mintAddress,
         String destinationOwner,
+        String transferDestinationOwner,
         Path runtimeRoot,
         Path feePayerKeyFile,
         String feePayerPublicKey,
@@ -24,6 +25,9 @@ public record LocalSolanaProperties(
         String mintAuthorityPublicKey,
         String mintAuthorityKeyAlias,
         String mintAuthorityKeyVersion,
+        Path transferAuthorityKeyFile,
+        String transferAuthorityKeyAlias,
+        String transferAuthorityKeyVersion,
         String assetId,
         String unitId,
         int unitVersion,
@@ -40,6 +44,7 @@ public record LocalSolanaProperties(
         Objects.requireNonNull(runtimeRoot, "runtimeRoot");
         Objects.requireNonNull(feePayerKeyFile, "feePayerKeyFile");
         Objects.requireNonNull(mintAuthorityKeyFile, "mintAuthorityKeyFile");
+        Objects.requireNonNull(transferAuthorityKeyFile, "transferAuthorityKeyFile");
         if (maxAtomicUnits == null || maxAtomicUnits.signum() <= 0) {
             throw new IllegalArgumentException(
                     "local Solana maximum atomic units must be positive");
@@ -48,6 +53,8 @@ public record LocalSolanaProperties(
                 rpcUri, clusterIdentity, mintAddress, destinationOwner,
                 feePayerPublicKey, feePayerKeyAlias, feePayerKeyVersion,
                 mintAuthorityPublicKey, mintAuthorityKeyAlias, mintAuthorityKeyVersion,
+                transferDestinationOwner, transferAuthorityKeyAlias,
+                transferAuthorityKeyVersion,
                 assetId, unitId, unitVersion, decimals, policyVersion,
                 preparationCommitment, observationCommitment,
                 minimumFeePayerLamports, maximumFeeLamports, requestTimeout);

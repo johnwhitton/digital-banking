@@ -1,4 +1,4 @@
-package io.github.johnwhitton.digitalbanking.ethereum.web3j;
+package io.github.johnwhitton.digitalbanking.persistence.postgres;
 
 import java.math.BigInteger;
 import java.sql.ResultSet;
@@ -459,7 +459,8 @@ public final class PostgresWalletTransferRepository implements WalletTransferRep
                 new WalletReference(result.getString(prefix + "_wallet_ref")),
                 redemptionAdmin ? WalletIdentityRegistry.OwnerCategory.ADMIN
                         : WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
-                SettlementNetwork.ETHEREUM, result.getString(prefix + "_address"),
+                SettlementNetwork.valueOf(result.getString("network")),
+                result.getString(prefix + "_address"),
                 new KeyAlias(result.getString(prefix + "_key_alias")),
                 result.getString(prefix + "_registry_version"),
                 result.getString(prefix + "_key_version"),

@@ -73,6 +73,31 @@ class WalletTransferAcceptanceServiceTest {
     }
 
     @Test
+    void resolvesAndRetainsExactServerOwnedSolanaWalletContext() {
+        InMemoryRepository repository = new InMemoryRepository();
+        String sourceOwner = "5FN9G4Lm7ffMX3Uun11thakD29iuQgxBJHmFCiwYVWVG";
+        String destinationOwner = "86Cud6zB3MZRYcCBgYftqoZRZw1jVqQfDkobchgk9vir";
+        String mint = "Cai56Lab3CBjqgRzGpB42BYe8cXURLuynreV2spWbVLN";
+        Map<WalletReference, WalletIdentityRegistry.WalletIdentity> identities = Map.of(
+                SOURCE, identity(SOURCE, SettlementNetwork.SOLANA, sourceOwner),
+                DESTINATION, identity(
+                        DESTINATION, SettlementNetwork.SOLANA, destinationOwner));
+        WalletTransferAcceptanceService service = service(
+                repository, identities, mint);
+
+        var accepted = service.accept(
+                PARTICIPANT, new IdempotencyKey("solana-wallet-transfer-1"),
+                request("100", SOURCE, DESTINATION));
+
+        assertEquals(SettlementNetwork.SOLANA, accepted.operation().network());
+        assertEquals(new BigInteger("10000"), accepted.operation().quantity().atomicUnits());
+        assertEquals(mint, accepted.operation().contractAddress());
+        assertEquals(sourceOwner, accepted.operation().source().normalizedAddress());
+        assertEquals(destinationOwner,
+                accepted.operation().destination().normalizedAddress());
+    }
+
+    @Test
     void rejectsConflictsAndNonUserOrSameWalletAuthority() {
         InMemoryRepository repository = new InMemoryRepository();
         WalletReference bank = wallet("BANK_1_SETTLEMENT");
@@ -215,6 +240,15 @@ class WalletTransferAcceptanceServiceTest {
     private static WalletTransferAcceptanceService service(
             InMemoryRepository repository,
             Map<WalletReference, WalletIdentityRegistry.WalletIdentity> identities) {
+        return service(
+                repository, identities,
+                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    }
+
+    private static WalletTransferAcceptanceService service(
+            InMemoryRepository repository,
+            Map<WalletReference, WalletIdentityRegistry.WalletIdentity> identities,
+            String contractAddress) {
         IdGenerator ids = new IdGenerator() {
             @Override public OperationId nextOperationId() {
                 return new OperationId(UUID.randomUUID());
@@ -253,7 +287,7 @@ class WalletTransferAcceptanceServiceTest {
                         ? Optional.of(USD) : Optional.empty(),
                 registry, () -> Instant.parse("2026-07-17T12:00:00Z"), ids, transferIds,
                 new WalletTransferAcceptanceService.Policy(
-                        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        contractAddress,
                         "local-usdzelle-v1", "local-transfer-finality-v1"));
     }
 
@@ -265,9 +299,14 @@ class WalletTransferAcceptanceServiceTest {
 
     private static WalletIdentityRegistry.WalletIdentity identity(
             WalletReference reference, String address) {
+        return identity(reference, SettlementNetwork.ETHEREUM, address);
+    }
+
+    private static WalletIdentityRegistry.WalletIdentity identity(
+            WalletReference reference, SettlementNetwork network, String address) {
         return new WalletIdentityRegistry.WalletIdentity(
                 reference, Set.of(), WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
-                SettlementNetwork.ETHEREUM, address,
+                network, address,
                 new KeyAlias("local-demo:" + reference.value().substring("synthetic-wallet:".length())),
                 "registry-v1", "key-v1",
                 Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),

@@ -28,7 +28,7 @@ import io.github.johnwhitton.digitalbanking.domain.operation.OperationKind;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningRequest;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
 import io.github.johnwhitton.digitalbanking.domain.workflow.UsdzelleWorkflow;
-import io.github.johnwhitton.digitalbanking.ethereum.web3j.PostgresWalletTransferRepository;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresWalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.ethereum.web3j.Web3jEthereumBurnChainAdapter;
 import io.github.johnwhitton.digitalbanking.ethereum.web3j.Web3jEthereumWalletTransferChainAdapter;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationDeliveryQueue;

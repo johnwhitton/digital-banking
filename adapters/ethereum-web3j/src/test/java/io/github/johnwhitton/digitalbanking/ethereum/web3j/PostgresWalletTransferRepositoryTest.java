@@ -38,6 +38,7 @@ import io.github.johnwhitton.digitalbanking.domain.transfer.TransferEffect;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferId;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationDeliveryQueue;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresWalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationRepository;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;

@@ -4,9 +4,11 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import io.github.johnwhitton.digitalbanking.application.SigningAuthorityService;
@@ -85,25 +87,57 @@ public final class WalletTransferAcceptedDeliveryHandler
         if (operation.status() == WalletTransferOperation.Status.SIGNING) {
             verifyCurrentSource(operation);
             ChainPort.PreparedAttempt prepared = chain.prepare(delivery.deliveryId(), operation);
+            List<ChainPort.SigningRequirement> requirements = signingRequirements(
+                    identity, operation, prepared);
             Optional<ChainPort.SignedAttempt> retained = chain.findSignedAttempt(identity);
             if (retained.isEmpty()) {
-                SigningAuthorityService.Result result = signing.sign(
-                        signingRequest(operation, prepared));
-                if (!(result instanceof SigningAuthorityService.Signed signed)) {
-                    return signingFailure(operation, result);
+                Set<Integer> attached = chain.retainedSignatureOrders(identity);
+                for (ChainPort.SigningRequirement requirement : requirements) {
+                    if (attached.contains(requirement.order())) {
+                        continue;
+                    }
+                    SigningAuthorityService.Request request = signingRequest(
+                            operation, prepared, requirement);
+                    SigningAuthorityService.Result result = signing.resumeExisting(
+                            request.requestId(), prepared.signableMaterial())
+                            .orElseGet(() -> signing.sign(request));
+                    if (!(result instanceof SigningAuthorityService.Signed signed)) {
+                        return signingFailure(operation, result);
+                    }
+                    if (!"resolved-by-signing-registry".equals(requirement.keyVersion())
+                            && !signed.request().keyContext().keyVersion()
+                            .equals(Optional.of(requirement.keyVersion()))) {
+                        transition(operation, WalletTransferOperation.Status.MANUAL_REVIEW,
+                                "signing-key-version-mismatch");
+                        return DeliveryOutcome.terminalFailure(
+                                "signing-key-version-mismatch");
+                    }
+                    Optional<SigningAuthorityService.SignatureMaterial> material =
+                            signed.signatureMaterial();
+                    if (material.isEmpty()) {
+                        material = signing.recoverSignature(
+                                signed.request().requestId(), prepared.signableMaterial());
+                    }
+                    if (material.isEmpty()) {
+                        transition(operation, WalletTransferOperation.Status.MANUAL_REVIEW,
+                                "signed-material-unavailable");
+                        return DeliveryOutcome.terminalFailure(
+                                "signed-material-unavailable");
+                    }
+                    SigningAuthorityService.SignatureMaterial signature =
+                            material.orElseThrow();
+                    chain.attachSignature(
+                            identity, new ChainPort.AuthorizedSignature(
+                                    signature.bytes(), signature.encoding(),
+                                    requirement.signerReference()));
                 }
-                Optional<SigningAuthorityService.SignatureMaterial> material =
-                        signed.signatureMaterial();
-                if (material.isEmpty()) {
-                    transition(operation, WalletTransferOperation.Status.MANUAL_REVIEW,
-                            "signed-material-unavailable");
-                    return DeliveryOutcome.terminalFailure("signed-material-unavailable");
-                }
-                SigningAuthorityService.SignatureMaterial signature = material.orElseThrow();
-                retained = Optional.of(chain.attachSignature(
-                        identity, new ChainPort.AuthorizedSignature(
-                                signature.bytes(), signature.encoding(),
-                                operation.source().normalizedAddress())));
+                retained = chain.findSignedAttempt(identity);
+            }
+            if (retained.isEmpty()) {
+                transition(operation, WalletTransferOperation.Status.MANUAL_REVIEW,
+                        "required-signatures-incomplete");
+                return DeliveryOutcome.terminalFailure(
+                        "required-signatures-incomplete");
             }
             operation = transition(
                     operation, WalletTransferOperation.Status.SUBMISSION_PENDING,
@@ -168,7 +202,8 @@ public final class WalletTransferAcceptedDeliveryHandler
                 }
                 case CONFIRMED -> {
                     WalletTransferOperation finality = operation.reachBlockchainFinality(
-                            operation.version(), "independent-ethereum-observer",
+                            operation.version(), "independent-" + networkName(operation)
+                                    + "-observer",
                             observation.evidenceReferences().getLast(), now());
                     transfers.save(finality, operation.version());
                     operation = transition(finality, WalletTransferOperation.Status.COMPLETED,
@@ -189,32 +224,96 @@ public final class WalletTransferAcceptedDeliveryHandler
     }
 
     private SigningAuthorityService.Request signingRequest(
-            WalletTransferOperation operation, ChainPort.PreparedAttempt prepared) {
-        if (!prepared.sourceReference().equals(operation.source().normalizedAddress())
-                || !prepared.destinationReference().equals(
-                        operation.destination().normalizedAddress())) {
-            throw new IllegalStateException(
-                    "prepared wallet identities do not match accepted context");
-        }
+            WalletTransferOperation operation, ChainPort.PreparedAttempt prepared,
+            ChainPort.SigningRequirement requirement) {
         Instant issuedAt = now();
         UUID requestId = UUID.nameUUIDFromBytes(
-                ("wallet-transfer-signing-v1:" + operation.operationId() + ":"
-                        + operation.attemptId()).getBytes(StandardCharsets.UTF_8));
+                ("wallet-transfer-signing-v2:" + operation.operationId() + ":"
+                        + operation.attemptId() + ":" + requirement.order() + ":"
+                        + requirement.keyRole()).getBytes(StandardCharsets.UTF_8));
         return new SigningAuthorityService.Request(
                 new SigningRequestId(requestId),
                 new SigningRequest.Correlation(
                         operation.operationId(), operation.attemptId(),
                         Optional.of(operation.transferId()), Optional.of(operation.effectId())),
-                Optional.empty(), SigningRequest.Action.TRANSFER, operation.network(),
-                operation.quantity(), prepared.sourceReference(),
+                Optional.empty(), SigningRequest.Action.TRANSFER, requirement.network(),
+                operation.quantity(), requirement.signerReference(),
                 prepared.destinationReference(), prepared.nativeActionIdentity(),
                 prepared.lifetimeContextDigest(), prepared.feeLimit(),
-                prepared.nativeConstraintDigest(), operation.source().keyReference(),
-                SigningRequest.KeyRole.TRANSFER_AUTHORITY,
-                SigningRequest.Mode.EVM_DIGEST, SigningRequest.Algorithm.SECP256K1,
+                prepared.nativeConstraintDigest(), requirement.keyAlias(),
+                requirement.keyRole(), requirement.mode(), requirement.algorithm(),
                 prepared.signableMaterial(), prepared.policyVersion(),
                 List.of(prepared.evidenceReference()), issuedAt,
                 issuedAt.plus(signingLifetime));
+    }
+
+    private List<ChainPort.SigningRequirement> signingRequirements(
+            ChainPort.AttemptIdentity identity,
+            WalletTransferOperation operation,
+            ChainPort.PreparedAttempt prepared) {
+        if (!prepared.sourceReference().equals(operation.source().normalizedAddress())
+                || !prepared.destinationReference().equals(
+                        operation.destination().normalizedAddress())
+                || !operation.finalityPolicyVersion().equals(prepared.policyVersion())) {
+            throw new IllegalStateException(
+                    "prepared transfer context differs from accepted server policy");
+        }
+        List<ChainPort.SigningRequirement> requirements = chain.requiredSigners(identity);
+        if (requirements.isEmpty()) {
+            requirements = List.of(new ChainPort.SigningRequirement(
+                    0, operation.source().keyReference(),
+                    SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                    operation.network(), SigningRequest.Mode.EVM_DIGEST,
+                    SigningRequest.Algorithm.SECP256K1,
+                    operation.source().normalizedAddress(),
+                    operation.source().keyVersion()));
+        }
+        Set<Integer> orders = new HashSet<>();
+        for (int index = 0; index < requirements.size(); index++) {
+            ChainPort.SigningRequirement requirement = requirements.get(index);
+            if (requirement.order() != index || !orders.add(requirement.order())
+                    || requirement.network() != operation.network()) {
+                throw new IllegalStateException(
+                        "native signer requirements do not match transfer policy");
+            }
+        }
+        if (operation.network()
+                == io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork
+                .SOLANA) {
+            if (requirements.size() != 2
+                    || requirements.get(0).keyRole()
+                            != SigningRequest.KeyRole.FEE_PAYER
+                    || requirements.get(1).keyRole()
+                            != SigningRequest.KeyRole.TRANSFER_AUTHORITY
+                    || requirements.stream().anyMatch(requirement ->
+                            requirement.mode() != SigningRequest.Mode.SOLANA_MESSAGE
+                                    || requirement.algorithm()
+                                    != SigningRequest.Algorithm.ED25519)) {
+                throw new IllegalStateException(
+                        "Solana transfer requires fee payer then source owner");
+            }
+        } else if (requirements.size() != 1
+                || requirements.getFirst().keyRole()
+                        != SigningRequest.KeyRole.TRANSFER_AUTHORITY
+                || requirements.getFirst().mode() != SigningRequest.Mode.EVM_DIGEST
+                || requirements.getFirst().algorithm()
+                        != SigningRequest.Algorithm.SECP256K1) {
+            throw new IllegalStateException(
+                    "Ethereum transfer requires its configured source authority");
+        }
+        ChainPort.SigningRequirement source = requirements.getLast();
+        if (!source.keyAlias().equals(operation.source().keyReference())
+                || !source.signerReference().equals(
+                        operation.source().normalizedAddress())
+                || !source.keyVersion().equals(operation.source().keyVersion())) {
+            throw new IllegalStateException(
+                    "transfer source signer differs from accepted wallet snapshot");
+        }
+        Set<Integer> retained = chain.retainedSignatureOrders(identity);
+        if (!orders.containsAll(retained)) {
+            throw new IllegalStateException("retained signature order is not required");
+        }
+        return List.copyOf(requirements);
     }
 
     private void verifyCurrentSource(WalletTransferOperation operation) {
@@ -247,7 +346,7 @@ public final class WalletTransferAcceptedDeliveryHandler
         WalletTransferOperation changed = operation.transition(
                 operation.version(), status,
                 new EvidenceRef(evidence.startsWith("internal:") ? evidence
-                        : "internal:local-ethereum:" + evidence + ":"
+                        : "internal:local-" + networkName(operation) + ":" + evidence + ":"
                                 + operation.operationId()),
                 now());
         transfers.save(changed, operation.version());
@@ -257,5 +356,9 @@ public final class WalletTransferAcceptedDeliveryHandler
     private Instant now() {
         return Objects.requireNonNull(clock.now(), "clock result")
                 .truncatedTo(ChronoUnit.MICROS);
+    }
+
+    private static String networkName(WalletTransferOperation operation) {
+        return operation.network().name().toLowerCase(java.util.Locale.ROOT);
     }
 }

@@ -19,6 +19,8 @@ class LocalSolanaPropertiesTest {
             "83wQsbSD89is8SVPAR325f5qXPhg5hdTuJfbwotqRsnT";
     private static final String USER =
             "5FN9G4Lm7ffMX3Uun11thakD29iuQgxBJHmFCiwYVWVG";
+    private static final String USER_2 =
+            "86Cud6zB3MZRYcCBgYftqoZRZw1jVqQfDkobchgk9vir";
     private static final String FEE =
             "6LrPaQmHcveWvBDZAEoaRwtjtRZNGFAetBdAbNWDr7Wj";
     private static final String AUTHORITY =
@@ -37,11 +39,13 @@ class LocalSolanaPropertiesTest {
         assertThrows(IllegalArgumentException.class,
                 () -> properties("http://user:secret@127.0.0.1:8899"));
         assertThrows(IllegalArgumentException.class, () -> new LocalSolanaProperties(
-                URI.create("http://127.0.0.1:8899"), GENESIS, MINT, USER,
+                URI.create("http://127.0.0.1:8899"), GENESIS, MINT, USER, USER_2,
                 Path.of(".solana-runtime"), Path.of(".solana-runtime/keys/fee.json"),
                 FEE, "local-solana:fee", "fee-v1",
                 Path.of(".solana-runtime/keys/authority.json"), AUTHORITY,
-                "local-solana:authority", "authority-v1", "USD_STABLE", "USD",
+                "local-solana:authority", "authority-v1",
+                Path.of(".solana-runtime/keys/user-1.json"),
+                "local-solana:transfer", "transfer-v1", "USD_STABLE", "USD",
                 1, 2, BigInteger.valueOf(1_000_000_000_000L), "policy-v1",
                 SavaSolanaMintChainAdapter.CommitmentLevel.CONFIRMED,
                 SavaSolanaMintChainAdapter.CommitmentLevel.CONFIRMED,
@@ -51,12 +55,14 @@ class LocalSolanaPropertiesTest {
 
     private static LocalSolanaProperties properties(String rpc) {
         return new LocalSolanaProperties(
-                URI.create(rpc), GENESIS, MINT, USER,
+                URI.create(rpc), GENESIS, MINT, USER, USER_2,
                 Path.of(".solana-runtime"),
                 Path.of(".solana-runtime/keys/fee-payer.json"),
                 FEE, "local-solana:fee-payer", "fee-v1",
                 Path.of(".solana-runtime/keys/admin-mint-authority.json"),
                 AUTHORITY, "local-solana:mint-authority", "authority-v1",
+                Path.of(".solana-runtime/keys/user-1.json"),
+                "local-solana:transfer-authority", "transfer-v1",
                 "USD_STABLE", "USD", 1, 2,
                 BigInteger.valueOf(1_000_000_000_000L), "local-solana-mint-v1",
                 SavaSolanaMintChainAdapter.CommitmentLevel.CONFIRMED,

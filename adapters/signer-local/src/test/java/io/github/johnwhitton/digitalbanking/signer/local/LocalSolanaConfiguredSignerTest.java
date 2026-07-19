@@ -92,6 +92,44 @@ class LocalSolanaConfiguredSignerTest {
     }
 
     @Test
+    void signsTransferOnlyWithTheConfiguredTransferAuthority() throws Exception {
+        Fixture fixture = fixture();
+        TestKey transfer = key(
+                fixture.root().resolve("transfer-authority.json"),
+                "local-solana:transfer-authority");
+        byte[] message = "one exact transfer message".getBytes(StandardCharsets.UTF_8);
+        try (LocalSolanaConfiguredSigner signer = new LocalSolanaConfiguredSigner(
+                new LocalSolanaConfiguredSigner.Configuration(
+                        fixture.root(), List.of(
+                                configured(fixture.fee(), SigningRequest.KeyRole.FEE_PAYER,
+                                        "fee-v1"),
+                                configured(fixture.authority(),
+                                        SigningRequest.KeyRole.MINT_AUTHORITY,
+                                        "authority-v1"),
+                                configured(transfer,
+                                        SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                        "transfer-v1"))))) {
+            SignerPort.SolanaMessageCommand command = command(
+                    signer, transfer, SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                    message, "transfer-provider", transfer.address(),
+                    SigningRequest.Action.TRANSFER);
+            SignerPort.Signed result = assertInstanceOf(
+                    SignerPort.Signed.class, signer.signSolanaMessage(command));
+            assertTrue(verify(transfer.pair(), message, result.signature()));
+            SignerPort.SolanaMessageCommand unauthorizedMintAuthority = command(
+                    signer, fixture.authority(), SigningRequest.KeyRole.MINT_AUTHORITY,
+                    message, "unauthorized-transfer-provider",
+                    fixture.authority().address(), SigningRequest.Action.TRANSFER);
+            assertInstanceOf(SignerPort.Conflict.class,
+                    signer.signSolanaMessage(unauthorizedMintAuthority));
+            assertEquals(SigningRequest.KeyStatus.NOT_FOUND, signer.resolve(
+                    transfer.alias(), SigningRequest.KeyRole.MINT_AUTHORITY,
+                    SigningRequest.Algorithm.ED25519,
+                    SettlementNetwork.SOLANA).status());
+        }
+    }
+
+    @Test
     void rejectsWrongRoleIdentityPermissionsAndSymlinks() throws Exception {
         Fixture fixture = fixture();
         try (LocalSolanaConfiguredSigner signer = fixture.signer()) {
@@ -137,7 +175,10 @@ class LocalSolanaConfiguredSignerTest {
         TestKey fee = key(root.resolve("fee-payer.json"), "local-solana:fee-payer");
         TestKey authority = key(
                 root.resolve("mint-authority.json"), "local-solana:mint-authority");
-        return new Fixture(root, fee, authority);
+        TestKey transfer = key(
+                root.resolve("transfer-authority.json"),
+                "local-solana:transfer-authority");
+        return new Fixture(root, fee, authority, transfer);
     }
 
     private static TestKey key(Path path, String alias) throws Exception {
@@ -181,6 +222,18 @@ class LocalSolanaConfiguredSignerTest {
             byte[] message,
             String providerId,
             String source) {
+        return command(signer, key, role, message, providerId, source,
+                SigningRequest.Action.MINT);
+    }
+
+    private static SignerPort.SolanaMessageCommand command(
+            LocalSolanaConfiguredSigner signer,
+            TestKey key,
+            SigningRequest.KeyRole role,
+            byte[] message,
+            String providerId,
+            String source,
+            SigningRequest.Action action) {
         SigningRequest.KeyContext context = signer.resolve(
                 key.alias(), role, SigningRequest.Algorithm.ED25519,
                 SettlementNetwork.SOLANA);
@@ -195,7 +248,7 @@ class LocalSolanaConfiguredSignerTest {
                         SigningRequest.PayloadEncoding.SOLANA_SERIALIZED_MESSAGE),
                 context,
                 new SigningRequest.AuthorityContext(
-                        SigningRequest.Action.MINT, SettlementNetwork.SOLANA,
+                        action, SettlementNetwork.SOLANA,
                         TokenQuantity.parse("100", UNIT), source, "destination-owner",
                         "native-attempt", sha256("lifetime".getBytes(StandardCharsets.UTF_8)),
                         "bounded-fee", sha256("constraints".getBytes(StandardCharsets.UTF_8)),
@@ -259,13 +312,16 @@ class LocalSolanaConfiguredSignerTest {
     private record TestKey(KeyAlias alias, Path file, String address, KeyPair pair) {
     }
 
-    private record Fixture(Path root, TestKey fee, TestKey authority) {
+    private record Fixture(
+            Path root, TestKey fee, TestKey authority, TestKey transfer) {
         LocalSolanaConfiguredSigner signer() {
             return new LocalSolanaConfiguredSigner(
                     new LocalSolanaConfiguredSigner.Configuration(root, List.of(
                             configured(fee, SigningRequest.KeyRole.FEE_PAYER, "fee-v1"),
                             configured(authority, SigningRequest.KeyRole.MINT_AUTHORITY,
-                                    "authority-v1"))));
+                                    "authority-v1"),
+                            configured(transfer, SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                    "transfer-v1"))));
         }
     }
 }

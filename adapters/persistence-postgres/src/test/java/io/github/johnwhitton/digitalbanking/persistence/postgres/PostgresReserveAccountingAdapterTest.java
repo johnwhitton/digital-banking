@@ -89,6 +89,14 @@ class PostgresReserveAccountingAdapterTest {
 
     private static void createChainAuthorityTables() {
         JdbcClient schema = JdbcClient.create(dataSource);
+        schema.sql("""
+                DROP TABLE ethereum_wallet_transfer_observation,
+                    ethereum_wallet_transfer_attempt,
+                    wallet_transfer_handler_inbox,
+                    wallet_transfer_transition,
+                    wallet_transfer_finality,
+                    wallet_transfer_operation CASCADE
+                """).update();
         for (String statement : List.of(
                 """
                 CREATE TABLE ethereum_mint_attempt (

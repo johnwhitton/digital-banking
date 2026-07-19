@@ -119,6 +119,71 @@ class SolanaMintTransactionCodecTest {
                 Arrays.copyOfRange(data, 1, 9)));
     }
 
+    @Test
+    void buildsExactTransferCheckedWithCanonicalAtasAndOrderedAuthorities()
+            throws Exception {
+        KeyPair feePair = keyPair();
+        KeyPair sourcePair = keyPair();
+        PublicKey feePayer = publicKey(feePair);
+        PublicKey sourceOwner = publicKey(sourcePair);
+        PublicKey destinationOwner =
+                key("86Cud6zB3MZRYcCBgYftqoZRZw1jVqQfDkobchgk9vir");
+        PublicKey mint = key("83wQsbSD89is8SVPAR325f5qXPhg5hdTuJfbwotqRsnT");
+
+        SolanaMintTransactionCodec.PreparedTransferMessage prepared =
+                codec.prepareTransfer(
+                        feePayer, sourceOwner, destinationOwner, mint, BLOCKHASH,
+                        BigInteger.valueOf(10_000), 2, true);
+
+        assertEquals(SolanaMintTransactionCodec.associatedTokenAddress(sourceOwner, mint),
+                prepared.sourceAta());
+        assertEquals(SolanaMintTransactionCodec.associatedTokenAddress(
+                destinationOwner, mint), prepared.destinationAta());
+        assertEquals(List.of(feePayer, sourceOwner), prepared.requiredSigners());
+        assertEquals(2, prepared.instructions().size());
+        assertArrayEquals(new byte[] {12, 16, 39, 0, 0, 0, 0, 0, 0, 2},
+                prepared.instructions().getLast().copyData());
+        assertTrue(codec.matchesExpectedTransferInstructions(
+                prepared.unsignedTransaction(), feePayer, sourceOwner,
+                destinationOwner, mint, BigInteger.valueOf(10_000), 2, true));
+        assertFalse(codec.matchesExpectedTransferInstructions(
+                prepared.unsignedTransaction(), feePayer, sourceOwner,
+                destinationOwner, mint, BigInteger.valueOf(10_001), 2, true));
+
+        SolanaMintTransactionCodec.SignedTransaction signed = codec.assemble(
+                prepared.unsignedTransaction(), List.of(
+                        signature(feePair, prepared.message()),
+                        signature(sourcePair, prepared.message())));
+        assertFalse(signed.primarySignature().isBlank());
+    }
+
+    @Test
+    void transferCheckedRejectsInvalidScaleUnsignedOverflowAndSignerMutation()
+            throws Exception {
+        KeyPair feePair = keyPair();
+        KeyPair sourcePair = keyPair();
+        KeyPair wrongPair = keyPair();
+        PublicKey destinationOwner =
+                key("86Cud6zB3MZRYcCBgYftqoZRZw1jVqQfDkobchgk9vir");
+        PublicKey mint = key("83wQsbSD89is8SVPAR325f5qXPhg5hdTuJfbwotqRsnT");
+        SolanaMintTransactionCodec.PreparedTransferMessage prepared =
+                codec.prepareTransfer(
+                        publicKey(feePair), publicKey(sourcePair), destinationOwner,
+                        mint, BLOCKHASH, BigInteger.valueOf(10_000), 2, false);
+
+        assertEquals(1, prepared.instructions().size());
+        assertThrows(IllegalArgumentException.class, () -> codec.prepareTransfer(
+                publicKey(feePair), publicKey(sourcePair), destinationOwner, mint,
+                BLOCKHASH, BigInteger.ONE, 3, false));
+        assertThrows(IllegalArgumentException.class, () -> codec.prepareTransfer(
+                publicKey(feePair), publicKey(sourcePair), destinationOwner, mint,
+                BLOCKHASH, new BigInteger("18446744073709551616"), 2, false));
+        assertThrows(IllegalArgumentException.class, () -> codec.assemble(
+                prepared.unsignedTransaction(), List.of(
+                        signature(feePair, prepared.message()),
+                        signature(wrongPair, prepared.message()))));
+    }
+
     private static SolanaMintTransactionCodec.AuthorizedSignature signature(
             KeyPair pair, byte[] message) throws Exception {
         return new SolanaMintTransactionCodec.AuthorizedSignature(

@@ -3,14 +3,18 @@ package io.github.johnwhitton.digitalbanking.controlplane.config;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import javax.sql.DataSource;
 
 import io.github.johnwhitton.digitalbanking.application.SigningAuthorityService;
+import io.github.johnwhitton.digitalbanking.application.WalletTransferAcceptanceService;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
+import io.github.johnwhitton.digitalbanking.application.delivery.WalletTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.port.AssetUnitCatalog;
 import io.github.johnwhitton.digitalbanking.application.port.ClockPort;
 import io.github.johnwhitton.digitalbanking.application.port.IdGenerator;
@@ -18,6 +22,9 @@ import io.github.johnwhitton.digitalbanking.application.port.OperationRepository
 import io.github.johnwhitton.digitalbanking.application.port.SigningAuthorizationPort;
 import io.github.johnwhitton.digitalbanking.application.port.SigningIdentityGenerator;
 import io.github.johnwhitton.digitalbanking.application.port.SigningRequestRepository;
+import io.github.johnwhitton.digitalbanking.application.port.TransferIdentityGenerator;
+import io.github.johnwhitton.digitalbanking.application.port.WalletIdentityRegistry;
+import io.github.johnwhitton.digitalbanking.application.port.WalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
 import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
 import io.github.johnwhitton.digitalbanking.domain.operation.OperationKind;
@@ -26,8 +33,10 @@ import io.github.johnwhitton.digitalbanking.domain.signing.ProviderRequestId;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningAttemptId;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningRequest;
 import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
+import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresSigningRequestRepository;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresWalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.signer.local.LocalSolanaConfiguredSigner;
 import io.github.johnwhitton.digitalbanking.solana.sava.SavaSolanaMintChainAdapter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -40,6 +49,11 @@ import org.springframework.context.annotation.Profile;
 @Profile("local-solana & !local-ethereum & !local-demo & !local-signer")
 @EnableConfigurationProperties(LocalSolanaProperties.class)
 public class LocalSolanaConfiguration {
+
+    static final WalletReference USER_1 =
+            new WalletReference("synthetic-wallet:USER_1");
+    static final WalletReference USER_2 =
+            new WalletReference("synthetic-wallet:USER_2");
 
     @Bean(destroyMethod = "close")
     LocalSolanaConfiguredSigner localSolanaConfiguredSigner(
@@ -58,7 +72,14 @@ public class LocalSolanaConfiguration {
                                         SigningRequest.KeyRole.MINT_AUTHORITY,
                                         properties.mintAuthorityKeyFile(),
                                         properties.mintAuthorityPublicKey(),
-                                        properties.mintAuthorityKeyVersion()))));
+                                        properties.mintAuthorityKeyVersion()),
+                                new LocalSolanaConfiguredSigner.ConfiguredKey(
+                                        new KeyAlias(
+                                                properties.transferAuthorityKeyAlias()),
+                                        SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                        properties.transferAuthorityKeyFile(),
+                                        properties.destinationOwner(),
+                                        properties.transferAuthorityKeyVersion()))));
     }
 
     @Bean
@@ -107,7 +128,10 @@ public class LocalSolanaConfiguration {
                         properties.feePayerKeyVersion(),
                         properties.mintAuthorityPublicKey(),
                         properties.mintAuthorityKeyAlias(),
-                        properties.mintAuthorityKeyVersion(), properties.assetId(),
+                        properties.mintAuthorityKeyVersion(),
+                        properties.transferDestinationOwner(),
+                        properties.transferAuthorityKeyAlias(),
+                        properties.transferAuthorityKeyVersion(), properties.assetId(),
                         properties.unitId(), properties.unitVersion(), properties.decimals(),
                         properties.policyVersion(), properties.preparationCommitment(),
                         properties.observationCommitment(),
@@ -117,7 +141,7 @@ public class LocalSolanaConfiguration {
     }
 
     @Bean
-    OperationDeliveryHandler localSolanaMintDeliveryHandler(
+    TokenOperationAcceptedDeliveryHandler localSolanaMintDeliveryHandler(
             OperationRepository operations,
             SavaSolanaMintChainAdapter chain,
             SigningAuthorityService signing,
@@ -137,9 +161,78 @@ public class LocalSolanaConfiguration {
     }
 
     @Bean
+    WalletTransferRepository localSolanaWalletTransferRepository(DataSource dataSource) {
+        return new PostgresWalletTransferRepository(dataSource);
+    }
+
+    @Bean
+    WalletIdentityRegistry localSolanaWalletIdentityRegistry(
+            LocalSolanaProperties properties) {
+        Map<WalletReference, WalletIdentityRegistry.WalletIdentity> identities = Map.of(
+                USER_1, userIdentity(
+                        USER_1, properties.destinationOwner(),
+                        new KeyAlias(properties.transferAuthorityKeyAlias()),
+                        properties.transferAuthorityKeyVersion()),
+                USER_2, userIdentity(
+                        USER_2, properties.transferDestinationOwner(),
+                        new KeyAlias("local-solana:user-2-public"),
+                        "local-solana-user-2-v1"));
+        return new WalletIdentityRegistry() {
+            @Override public WalletIdentity resolve(WalletReference reference) {
+                WalletIdentity identity = identities.get(reference);
+                if (identity == null) {
+                    throw new IllegalArgumentException("unknown local Solana wallet");
+                }
+                return identity;
+            }
+
+            @Override public List<WalletIdentity> identities() {
+                return List.copyOf(identities.values());
+            }
+        };
+    }
+
+    @Bean
+    WalletTransferAcceptanceService localSolanaWalletTransferAcceptanceService(
+            WalletTransferRepository transfers,
+            AssetUnitCatalog assets,
+            WalletIdentityRegistry wallets,
+            ClockPort clock,
+            IdGenerator operationIds,
+            TransferIdentityGenerator transferIds,
+            LocalSolanaProperties properties) {
+        return new WalletTransferAcceptanceService(
+                transfers, assets, wallets, clock, operationIds, transferIds,
+                new WalletTransferAcceptanceService.Policy(
+                        properties.mintAddress(), "local-solana-token-v1",
+                        properties.policyVersion()));
+    }
+
+    @Bean
+    WalletTransferAcceptedDeliveryHandler localSolanaTransferDeliveryHandler(
+            WalletTransferRepository transfers,
+            SavaSolanaMintChainAdapter chain,
+            SigningAuthorityService signing,
+            WalletIdentityRegistry wallets,
+            ClockPort clock) {
+        return new WalletTransferAcceptedDeliveryHandler(
+                transfers, chain, signing, wallets, clock, Duration.ofMinutes(5));
+    }
+
+    @Bean
+    @Primary
+    OperationDeliveryHandler localSolanaDeliveryHandler(
+            TokenOperationAcceptedDeliveryHandler mint,
+            WalletTransferAcceptedDeliveryHandler transfer) {
+        return delivery -> WalletTransferAcceptedDeliveryHandler.EVENT_TYPE.equals(
+                delivery.eventType())
+                ? transfer.handle(delivery) : mint.handle(delivery);
+    }
+
+    @Bean
     @Primary
     OperationDeliveryQueue localSolanaMintDeliveryQueue(DataSource dataSource) {
-        return PostgresOperationDeliveryQueue.mintOnly(dataSource);
+        return PostgresOperationDeliveryQueue.localSolana(dataSource);
     }
 
     @Bean
@@ -151,5 +244,16 @@ public class LocalSolanaConfiguration {
         return (assetId, unitId, version) -> assetId.equals(unit.assetId())
                 && unitId.equals(unit.unitId()) && version == unit.version()
                 ? java.util.Optional.of(unit) : java.util.Optional.empty();
+    }
+
+    private static WalletIdentityRegistry.WalletIdentity userIdentity(
+            WalletReference reference, String address, KeyAlias keyAlias,
+            String keyVersion) {
+        return new WalletIdentityRegistry.WalletIdentity(
+                reference, Set.of(), WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
+                SettlementNetwork.SOLANA, address, keyAlias,
+                "local-solana-wallet-registry-v1", keyVersion,
+                Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
+                WalletIdentityRegistry.Status.ENABLED);
     }
 }

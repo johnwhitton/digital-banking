@@ -59,6 +59,11 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
         return new PostgresOperationDeliveryQueue(dataSource, Filter.LOCAL_ETHEREUM_DEMO);
     }
 
+    /** Local Solana view limited to mint and standalone wallet transfer events. */
+    public static PostgresOperationDeliveryQueue localSolana(DataSource dataSource) {
+        return new PostgresOperationDeliveryQueue(dataSource, Filter.LOCAL_SOLANA);
+    }
+
     @Override
     public ClaimBatch claim(
             String workerId, Instant now, Duration leaseDuration, int limit) {
@@ -104,6 +109,19 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                 AND supported_operation.operation_kind = 'MINT'))
                       OR (:filter = 'WALLET_TRANSFER'
                           AND candidate.event_type = 'WalletTransferAccepted')
+                      OR (:filter = 'LOCAL_SOLANA'
+                          AND ((candidate.event_type = 'WalletTransferAccepted'
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM wallet_transfer_operation supported_transfer
+                                    WHERE supported_transfer.operation_id =
+                                            candidate.wallet_transfer_id
+                                      AND supported_transfer.network = 'SOLANA'))
+                            OR (candidate.event_type = 'TokenOperationAccepted'
+                                AND EXISTS (
+                                    SELECT 1 FROM token_operation supported_operation
+                                    WHERE supported_operation.operation_id = candidate.operation_id
+                                      AND supported_operation.operation_kind = 'MINT'))))
                       OR (:filter = 'LOCAL_ETHEREUM_DEMO'
                           AND (candidate.event_type IN (
                                 'WalletTransferAccepted', 'UsdzelleWorkflowAccepted',
@@ -682,6 +700,7 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
         ALL,
         MINT,
         WALLET_TRANSFER,
+        LOCAL_SOLANA,
         LOCAL_ETHEREUM_DEMO
     }
 }

@@ -87,6 +87,17 @@ public final class SigningAuthorityService {
         }
     }
 
+    /** Resumes an already durable request without regenerating its bound time window. */
+    public Optional<Result> resumeExisting(
+            SigningRequestId requestId, byte[] signableMaterial) {
+        Objects.requireNonNull(requestId, "requestId");
+        Objects.requireNonNull(signableMaterial, "signableMaterial");
+        return requests.findById(requestId).map(request -> {
+            verifyMaterial(request, signableMaterial);
+            return resume(request, signableMaterial, true);
+        });
+    }
+
     public Result retry(
             SigningRequestId requestId,
             byte[] signableMaterial,
@@ -336,7 +347,9 @@ public final class SigningAuthorityService {
             case MINT -> role == SigningRequest.KeyRole.MINT_AUTHORITY
                     || (role == SigningRequest.KeyRole.FEE_PAYER
                         && network == SettlementNetwork.SOLANA);
-            case TRANSFER -> role == SigningRequest.KeyRole.TRANSFER_AUTHORITY;
+            case TRANSFER -> role == SigningRequest.KeyRole.TRANSFER_AUTHORITY
+                    || (role == SigningRequest.KeyRole.FEE_PAYER
+                        && network == SettlementNetwork.SOLANA);
             case BURN -> role == SigningRequest.KeyRole.BURN_AUTHORITY;
         };
     }

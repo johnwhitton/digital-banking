@@ -61,11 +61,13 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 6D. Ethereum demo environment          | `verified` | Digest-pinned loopback-only Compose, deterministic contract bootstrap, API-driven Demo A/B assertions, durable restart recovery, scoped cleanup, stable-diff reviews, and the 503-test offline reactor are green. |
 | 7A. Native Solana semantic gate        | `verified`    | Pinned native Agave/SPL tooling proves classic checked mint/transfer/redemption/burn semantics, exact quantities, canonical accounts, classified authority/valid-second-mint failures, finalized evidence, and zero end state on loopback. |
 | 7B. Solana mint parity                 | `verified`    | Sava 25.8.0 passes the Java 25 compatibility gate; an explicit local profile executes one exact classic-SPL mint through ordered external Ed25519 signatures, V11 durable attempt/fence/observation state, response-loss inquiry, restart recovery, and finalized exact supply/balance evidence. The 521-test offline reactor is green. |
-| 7C. Solana transfer and burn parity    | `planned`     | Native transfer/redemption/burn meet applicable Phase 5C/5D guarantees. |
-| 7D. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
+| 7C. Solana wallet transfer parity      | `verified`    | One internal exact USER_1-to-USER_2 classic-SPL transfer reuses durable ordered signing, submission fencing, inquiry, restart, and finalized independent source/destination/supply evidence. |
+| 7D. Solana redemption and burn parity  | `planned`     | Native redemption custody and ADMIN burn meet the applicable Phase 5D guarantees. |
+| 7E. Solana product orchestration       | `planned`     | The two product paths compose the separately verified native primitives while preserving server-owned routing and evidence. |
+| 7F. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
 | 8. Final reference review              | `planned`     | Architecture, code, security, recovery, API/demo, and share-readiness review. |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil mint/custody/transfer/redemption/burn primitives, Phase 6A's exact-USD synthetic bank and reserve/liability accounting primitives, Phase 6B's separate configured user-held acquisition/redemption parents, Phase 6C's one configured settlement-only parent composition, Phase 6D's reproducible local operator environment, Phase 7A's native local-Solana semantic gate, and Phase 7B's separate local Solana mint. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the separate local mock-bank contract; combined with `local-ethereum` it composes the existing chain handlers, participant-scoped `/v1/usdzelle` workflow resources, and the registered local route behind `/v1/transfers`. The additional `local-demo-environment` profile supplies only generated local bearer identities and a bounded read-only aggregate status/OpenAPI projection for the digest-pinned Compose runtime. `local-signer` plus `local-ethereum` composes the Phase 5A mint handler. The mutually exclusive `local-solana` profile composes only the existing mint queue/API, local Ed25519 authority, and isolated Sava adapter. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. No dynamic wallet management, real bank/reserve, arbitrary settlement routing, automatic compensation, Solana transfer/burn, or complete Solana product path exists. Each planned phase below requires its own separately authorized plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil mint/custody/transfer/redemption/burn primitives, Phase 6A's exact-USD synthetic bank and reserve/liability accounting primitives, Phase 6B's separate configured user-held acquisition/redemption parents, Phase 6C's one configured settlement-only parent composition, Phase 6D's reproducible local operator environment, Phase 7A's native local-Solana semantic gate, Phase 7B's separate local Solana mint, and Phase 7C's internal local Solana wallet transfer. `local-demo` alone initializes version-fenced synthetic fixtures and exposes the separate local mock-bank contract; combined with `local-ethereum` it composes the existing chain handlers, participant-scoped `/v1/usdzelle` workflow resources, and the registered local route behind `/v1/transfers`. The additional `local-demo-environment` profile supplies only generated local bearer identities and a bounded read-only aggregate status/OpenAPI projection for the digest-pinned Compose runtime. `local-signer` plus `local-ethereum` composes the Phase 5A mint handler. The mutually exclusive `local-solana` profile composes the existing mint API plus a server-owned internal USER_1-to-USER_2 transfer route through the local Ed25519 signer and isolated Sava adapter; it adds no wallet-transfer endpoint. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. No dynamic wallet management, real bank/reserve, arbitrary settlement routing, automatic compensation, Solana redemption/burn, or complete Solana product path exists. Each planned phase below requires its own separately authorized plan.
 
 ## Phase 1: Foundation
 
@@ -315,29 +317,57 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 **Non-goals:** transfer, burn, either full demonstration, public clusters, or production authority.
 
-### Phase 7C: Solana transfer and burn parity
+### Phase 7C: Solana wallet transfer parity
 
-**Status:** `planned`
+**Status:** `verified`
 
 **Dependency:** Phase 7B.
 
-**Plan:** not created until separately authorized.
+**Plan:** completed in [`docs/plans/completed/PHASE_7C_SOLANA_WALLET_TRANSFER_PARITY.md`](plans/completed/PHASE_7C_SOLANA_WALLET_TRANSFER_PARITY.md).
 
-**Deliverables:** native SPL transfer, redemption receipt, and ADMIN burn with the applicable Phase 5C/5D authorization, durable identity, ambiguity, observation, restart, supply reconciliation, and exact-quantity guarantees.
+**Deliverables:** one internal server-resolved USER_1-to-USER_2 classic-SPL `TransferChecked` through the provider-neutral wallet-transfer port; exact `100.00`/`10000` conversion through the versioned asset/unit catalog; ordered fee-payer and source-owner Ed25519 signatures over one immutable legacy message; V12 migration of the shared Solana attempt/signature/observation boundary for mint or transfer context; destination-ATA creation only when absent; inquiry-before-retry after response loss; and finalized independent transaction/instruction/account/source/destination/supply evidence, including indexed transaction pre/post token balances kept distinct from later account-state reads. The common PostgreSQL wallet-transfer repository now resides in the persistence adapter rather than either chain adapter.
 
-**Exit gate:** local-validator transfer and redemption/burn effects are exact, authorized, independently observable, and non-duplicating under replay or ambiguous response loss.
+**Exit gate:** focused codec, signer, acceptance, persistence, Sava, Ethereum-regression, profile, and default-context tests are green. One consolidated real PostgreSQL/Agave gate mints exactly `10000` units to USER_1, loses the transfer submission response after node acceptance, reconstructs signer/adapter/handler state, submits no second transaction, and finalizes only after USER_1 is `0`, USER_2 is `10000`, and total supply remains `10000` with matching native evidence. The final offline reactor discovered 527 tests across eight modules, executed 526 successfully, and skipped only the separately green opt-in validator test.
 
-**Non-goals:** parent bank workflows, public clusters, production custody, or treating EVM and Solana evidence as interchangeable.
+**Non-goals:** redemption custody, burn, parent bank workflows, product-path orchestration, demonstrations, public API expansion, public clusters, production custody, or treating EVM and Solana evidence as interchangeable.
 
-### Phase 7D: chain-selectable Solana demonstrations
+### Phase 7D: Solana redemption custody and burn parity
 
 **Status:** `planned`
 
-**Dependency:** Phase 7C and the accepted Demo A/Demo B contracts.
+**Dependency:** Phase 7C.
 
 **Plan:** not created until separately authorized.
 
-**Deliverables:** explicit network selection behind the same business APIs and provider-neutral application boundaries; Solana realization of both demonstrations; local-validator orchestration, fixtures, cleanup, and evidence; and preservation of chain-specific submission, lifetime, observation, and finality semantics.
+**Deliverables:** native redemption-custody receipt and ADMIN owner-authorized burn with the applicable Phase 5D authorization, durable identity, one-time evidence, ambiguity, observation, restart, and exact supply-reconciliation guarantees.
+
+**Exit gate:** local-validator redemption and burn effects are exact, authorized, independently observable, and non-duplicating under replay or ambiguous response loss; burn cannot begin before exact confirmed custody evidence is durably consumed once.
+
+**Non-goals:** parent bank workflows, demonstrations, public clusters, production custody, or arbitrary-holder burn.
+
+### Phase 7E: chain-selectable Solana product orchestration
+
+**Status:** `planned`
+
+**Dependency:** Phase 7D and the accepted Demo A/Demo B contracts.
+
+**Plan:** not created until separately authorized.
+
+**Deliverables:** explicit server-owned network selection behind the existing business APIs and provider-neutral application boundaries; Solana realization of the user-held and settlement-only parent workflows; and preservation of chain-specific submission, lifetime, observation, and finality semantics.
+
+**Exit gate:** both product parents compose only the verified Solana mint, wallet-transfer, redemption-custody, and burn primitives with the same exact economic states, replay, recovery, and reconciliation guarantees as Ethereum while retaining Solana-specific evidence.
+
+**Non-goals:** operator demo packaging, simultaneous cross-chain value movement, bridging, CCTP, public clusters, mainnet/testnet configuration, or one genericized finality model.
+
+### Phase 7F: chain-selectable Solana demonstrations
+
+**Status:** `planned`
+
+**Dependency:** Phase 7E.
+
+**Plan:** not created until separately authorized.
+
+**Deliverables:** native local-validator orchestration, fixtures, cleanup, and evidence that run both accepted product demonstrations through the Phase 7E Solana realization.
 
 **Exit gate:** Demo A and Demo B each run on native local Solana with the same economic before/after states and recovery guarantees as Ethereum while retaining Solana-specific evidence.
 
@@ -347,7 +377,7 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 **Status:** `planned`
 
-**Dependency:** Phase 7D.
+**Dependency:** Phase 7F.
 
 **Plan:** not created until separately authorized.
 
@@ -384,6 +414,7 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Completed Phase 6D reproducible local demo plan: [`docs/plans/completed/PHASE_6D_REPRODUCIBLE_ETHEREUM_DEMO_ENVIRONMENT.md`](plans/completed/PHASE_6D_REPRODUCIBLE_ETHEREUM_DEMO_ENVIRONMENT.md).
 - Completed Phase 7A native Solana semantic-gate plan: [`docs/plans/completed/PHASE_7A_NATIVE_SOLANA_TOOLCHAIN_AND_SEMANTIC_GATE.md`](plans/completed/PHASE_7A_NATIVE_SOLANA_TOOLCHAIN_AND_SEMANTIC_GATE.md).
 - Completed Phase 7B Java/Sava compatibility and Solana mint-parity plan: [`docs/plans/completed/PHASE_7B_JAVA_SAVA_COMPATIBILITY_AND_SOLANA_MINT_PARITY.md`](plans/completed/PHASE_7B_JAVA_SAVA_COMPATIBILITY_AND_SOLANA_MINT_PARITY.md).
+- Completed Phase 7C Solana wallet-transfer-parity plan: [`docs/plans/completed/PHASE_7C_SOLANA_WALLET_TRANSFER_PARITY.md`](plans/completed/PHASE_7C_SOLANA_WALLET_TRANSFER_PARITY.md).
 - Completed dual-product-path and delivery-roadmap alignment: [`docs/plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md`](plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md).
 - Completed Zelle share-readiness and transfer-roadmap plan: [`docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
@@ -455,6 +486,16 @@ The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A
 
 ## Latest bounded vertical slice
 
+Action Request 24 implements **Phase 7C Solana Wallet Transfer Parity**:
+
+- the existing provider-neutral wallet-transfer acceptance and delivery path accepts the allowlisted local Solana network while callers still cannot select wallets, signers, programs, RPC, policy, or finality;
+- the isolated Sava adapter constructs the canonical USER_1 and USER_2 associated token accounts, creates only a missing destination ATA, and serializes one exact classic-SPL `TransferChecked` for `100.00`/`10000` atomic units;
+- the configured local signer supplies ordered fee-payer and source-owner Ed25519 signatures over the same immutable legacy message, with exact role, alias, key-version, action, and network fencing;
+- V12 generalizes the existing V11 Solana attempt/signature/observation records in place for mint or transfer context, while the common wallet-transfer repository and V6 migration move to the persistence adapter so neither chain adapter owns shared durable state; and
+- focused fake-RPC/PostgreSQL coverage plus one consolidated real PostgreSQL/Agave gate prove source/destination account validation, sufficient balance, exact instruction/signer order, crash recovery from a durable signing result before adapter attachment, response-loss inquiry, restart recovery, no duplicate submission, populated V11-to-V12 preservation, indexed transaction balance attribution, finalized source `0`, destination `10000`, and unchanged supply `10000`. Only blockchain finality advances.
+
+Redemption custody, burn, product-path orchestration, demonstrations, public clusters, production custody, custom programs, Token-2022, CCTP, API expansion, and automatic replacement remain out of scope. ADRs 0003 and 0010 already govern the implemented native authority and evidence decisions, so no new ADR is required. Phase 7D native Solana redemption custody and burn is the next bounded recommendation; Phase 7E then composes product paths, Phase 7F packages both demonstrations, and Phase 8 follows Phase 7F.
+
 Action Request 23 implements **Phase 7B Java/Sava Compatibility and Solana Mint Parity**:
 
 - Sava Core/RPC 25.8.0 and `json-iterator` 25.3.0 pass executable Java 25 coverage for Phase 7A public vectors, classic Token/ATA layouts, checked-instruction fields, legacy message/signer ordering, external JDK Ed25519 signatures, and Agave 4.1.2 response shapes; Sava remains isolated to one adapter;
@@ -463,7 +504,7 @@ Action Request 23 implements **Phase 7B Java/Sava Compatibility and Solana Mint 
 - the unchanged participant-scoped mint API can run under a mutually exclusive loopback-only `local-solana` profile whose configured signer reads only ignored mode-restricted Phase 7A key files, retains only bound public signature results for crash-safe inquiry, and gives Sava no raw key access; and
 - real PostgreSQL plus Agave 4.1.2 proves one exact `100.00`/`10000` atomic-unit classic-SPL mint, forced response loss, process-boundary reconstruction, inquiry by the retained signature, no second submission, and finalized exact transaction/instruction/account/supply/balance evidence. Only blockchain finality advances.
 
-Transfer, redemption, burn, either Solana demonstration, public clusters, production custody, custom programs, Token-2022, CCTP, API expansion, and automatic replacement remain out of scope. ADR 0010 already governs the implemented native authority and evidence decisions, so no new ADR is required. Phase 7C native Solana transfer and burn parity is the next bounded recommendation.
+At that Phase 7B boundary, transfer, redemption, burn, either Solana demonstration, public clusters, production custody, custom programs, Token-2022, CCTP, API expansion, and automatic replacement remained out of scope. ADR 0010 governs the native authority and evidence decisions.
 
 Action Request 22 implements **Phase 7A Native Solana Toolchain and Semantic Gate**:
 
@@ -631,4 +672,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, Phase 7B local Solana mint, and remaining Solana product paths are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). The next recommended bounded action is Phase 7C native Solana transfer and burn parity; it must preserve both product meanings and native Solana evidence without adding public-network or production-custody behavior.
+The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, Phase 7B local Solana mint, Phase 7C local Solana wallet transfer, and remaining Solana product paths are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). The next recommended bounded action is Phase 7D native Solana redemption custody and burn; it must preserve both product meanings and native Solana evidence without adding public-network or production-custody behavior.

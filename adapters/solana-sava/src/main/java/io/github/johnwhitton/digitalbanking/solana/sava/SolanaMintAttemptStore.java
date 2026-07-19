@@ -46,8 +46,10 @@ final class SolanaMintAttemptStore {
                     INSERT INTO solana_mint_attempt (
                         operation_id, operation_attempt_id, delivery_id,
                         native_attempt_id, replacement_parent_id, replacement_sequence,
+                        effect_kind, token_operation_id, wallet_transfer_operation_id,
                         network, cluster_identity, route_snapshot_ref,
                         token_program_id, ata_program_id, mint_address,
+                        source_owner, source_ata, pre_source_balance,
                         destination_owner, destination_ata, ata_existed,
                         decimals, amount_atomic, pre_mint_supply,
                         pre_destination_balance, fee_payer_public_key,
@@ -61,8 +63,10 @@ final class SolanaMintAttemptStore {
                     VALUES (
                         :operationId, :attemptId, :deliveryId,
                         :nativeAttemptId, :replacementParentId, :replacementSequence,
+                        :effectKind, :tokenOperationId, :walletTransferOperationId,
                         'LOCAL_SOLANA', :clusterIdentity, :routeSnapshotRef,
                         :tokenProgramId, :ataProgramId, :mintAddress,
+                        :sourceOwner, :sourceAta, :preSourceBalance,
                         :destinationOwner, :destinationAta, :ataExisted,
                         :decimals, :amount, :preSupply, :preBalance,
                         :feePayer, :feePayerAlias, :feePayerVersion,
@@ -79,11 +83,20 @@ final class SolanaMintAttemptStore {
                     .param("nativeAttemptId", draft.nativeAttemptId())
                     .param("replacementParentId", draft.replacementParentId().orElse(null))
                     .param("replacementSequence", draft.replacementSequence())
+                    .param("effectKind", draft.effectKind().name())
+                    .param("tokenOperationId", draft.effectKind() == EffectKind.MINT
+                            ? draft.operationId().value() : null)
+                    .param("walletTransferOperationId",
+                            draft.effectKind() == EffectKind.TRANSFER
+                                    ? draft.operationId().value() : null)
                     .param("clusterIdentity", draft.clusterIdentity())
                     .param("routeSnapshotRef", draft.routeSnapshotRef())
                     .param("tokenProgramId", draft.tokenProgramId())
                     .param("ataProgramId", draft.ataProgramId())
                     .param("mintAddress", draft.mintAddress())
+                    .param("sourceOwner", draft.sourceOwner().orElse(null))
+                    .param("sourceAta", draft.sourceAta().orElse(null))
+                    .param("preSourceBalance", draft.preSourceBalance().orElse(null))
                     .param("destinationOwner", draft.destinationOwner())
                     .param("destinationAta", draft.destinationAta())
                     .param("ataExisted", draft.ataExisted())
@@ -119,8 +132,10 @@ final class SolanaMintAttemptStore {
         return jdbc.sql("""
                 SELECT operation_id, operation_attempt_id, delivery_id,
                        native_attempt_id, replacement_parent_id, replacement_sequence,
+                       effect_kind,
                        cluster_identity, route_snapshot_ref, token_program_id,
-                       ata_program_id, mint_address, destination_owner, destination_ata,
+                       ata_program_id, mint_address, source_owner, source_ata,
+                       pre_source_balance, destination_owner, destination_ata,
                        ata_existed, decimals, amount_atomic, pre_mint_supply,
                        pre_destination_balance, fee_payer_public_key,
                        fee_payer_key_alias, fee_payer_key_version,
@@ -189,17 +204,19 @@ final class SolanaMintAttemptStore {
             jdbc.sql("""
                     INSERT INTO solana_mint_signature (
                         operation_id, operation_attempt_id, signer_order,
+                        effect_kind,
                         key_role, key_alias, key_version, public_key,
                         signature_bytes, signature_sha256, signature_encoding,
                         retained_at)
                     VALUES (
-                        :operationId, :attemptId, :signerOrder, :keyRole,
+                        :operationId, :attemptId, :signerOrder, :effectKind, :keyRole,
                         :keyAlias, :keyVersion, :publicKey, :signatureBytes,
                         :signatureSha256, :signatureEncoding, :now)
                     """)
                     .param("operationId", current.operationId().value())
                     .param("attemptId", current.attemptId().value())
                     .param("signerOrder", signature.order())
+                    .param("effectKind", current.effectKind().name())
                     .param("keyRole", signature.keyRole().name())
                     .param("keyAlias", signature.keyAlias().value())
                     .param("keyVersion", signature.keyVersion())
@@ -316,20 +333,29 @@ final class SolanaMintAttemptStore {
             jdbc.sql("""
                     INSERT INTO solana_mint_observation (
                         operation_id, operation_attempt_id, observation_sequence,
+                        effect_kind,
                         observation_status, transaction_signature, commitment,
                         slot, block_time, transaction_error_code,
                         expected_instructions, observed_mint_supply,
-                        observed_destination_balance, mint_delta,
-                        destination_delta, evidence_ref, observed_at)
+                        observed_destination_balance, observed_source_balance,
+                        transaction_pre_source_balance,
+                        transaction_post_source_balance,
+                        transaction_pre_destination_balance,
+                        transaction_post_destination_balance,
+                        mint_delta, destination_delta, source_delta,
+                        evidence_ref, observed_at)
                     VALUES (
-                        :operationId, :attemptId, :sequence, :status,
+                        :operationId, :attemptId, :sequence, :effectKind, :status,
                         :signature, :commitment, :slot, :blockTime, :errorCode,
-                        :expectedInstructions, :supply, :balance, :mintDelta,
-                        :destinationDelta, :evidenceRef, :now)
+                        :expectedInstructions, :supply, :balance, :sourceBalance,
+                        :transactionPreSource, :transactionPostSource,
+                        :transactionPreDestination, :transactionPostDestination,
+                        :mintDelta, :destinationDelta, :sourceDelta, :evidenceRef, :now)
                     """)
                     .param("operationId", current.operationId().value())
                     .param("attemptId", current.attemptId().value())
                     .param("sequence", sequence)
+                    .param("effectKind", current.effectKind().name())
                     .param("status", draft.status().name())
                     .param("signature", current.transactionSignature())
                     .param("commitment", draft.commitment())
@@ -339,8 +365,18 @@ final class SolanaMintAttemptStore {
                     .param("expectedInstructions", draft.expectedInstructions())
                     .param("supply", draft.observedSupply().orElse(null))
                     .param("balance", draft.observedBalance().orElse(null))
+                    .param("sourceBalance", draft.observedSourceBalance().orElse(null))
+                    .param("transactionPreSource",
+                            draft.transactionPreSourceBalance().orElse(null))
+                    .param("transactionPostSource",
+                            draft.transactionPostSourceBalance().orElse(null))
+                    .param("transactionPreDestination",
+                            draft.transactionPreDestinationBalance().orElse(null))
+                    .param("transactionPostDestination",
+                            draft.transactionPostDestinationBalance().orElse(null))
                     .param("mintDelta", draft.mintDelta().orElse(null))
                     .param("destinationDelta", draft.destinationDelta().orElse(null))
+                    .param("sourceDelta", draft.sourceDelta().orElse(null))
                     .param("evidenceRef", draft.evidenceRef())
                     .param("now", utc(now))
                     .update();
@@ -384,15 +420,21 @@ final class SolanaMintAttemptStore {
     }
 
     private AttemptRow mapAttempt(ResultSet row, int rowNumber) throws SQLException {
+        EffectKind effectKind = EffectKind.valueOf(row.getString("effect_kind"));
         return new AttemptRow(
                 new OperationId(row.getObject("operation_id", UUID.class)),
                 new AttemptId(row.getObject("operation_attempt_id", UUID.class)),
                 row.getObject("delivery_id", UUID.class),
                 row.getObject("native_attempt_id", UUID.class),
                 Optional.ofNullable(row.getObject("replacement_parent_id", UUID.class)),
-                row.getInt("replacement_sequence"), row.getString("cluster_identity"),
+                row.getInt("replacement_sequence"),
+                effectKind,
+                row.getString("cluster_identity"),
                 row.getString("route_snapshot_ref"), row.getString("token_program_id"),
                 row.getString("ata_program_id"), row.getString("mint_address"),
+                Optional.ofNullable(row.getString("source_owner")),
+                Optional.ofNullable(row.getString("source_ata")),
+                integerOptional(row, "pre_source_balance"),
                 row.getString("destination_owner"), row.getString("destination_ata"),
                 row.getBoolean("ata_existed"), row.getInt("decimals"),
                 integer(row, "amount_atomic"), integer(row, "pre_mint_supply"),
@@ -404,7 +446,9 @@ final class SolanaMintAttemptStore {
                         row.getString("fee_payer_public_key")),
                 new SignerContext(
                         new KeyAlias(row.getString("mint_authority_key_alias")),
-                        SigningRequest.KeyRole.MINT_AUTHORITY,
+                        effectKind == EffectKind.MINT
+                                ? SigningRequest.KeyRole.MINT_AUTHORITY
+                                : SigningRequest.KeyRole.TRANSFER_AUTHORITY,
                         row.getString("mint_authority_key_version"),
                         row.getString("mint_authority_public_key")),
                 row.getString("policy_version"), integer(row, "maximum_fee_lamports"),
@@ -431,6 +475,12 @@ final class SolanaMintAttemptStore {
         return value.toBigIntegerExact();
     }
 
+    private static Optional<BigInteger> integerOptional(
+            ResultSet row, String column) throws SQLException {
+        BigDecimal value = row.getBigDecimal(column);
+        return value == null ? Optional.empty() : Optional.of(value.toBigIntegerExact());
+    }
+
     private static OffsetDateTime utc(Instant instant) {
         return Objects.requireNonNull(instant, "instant").atOffset(ZoneOffset.UTC);
     }
@@ -442,11 +492,15 @@ final class SolanaMintAttemptStore {
             UUID nativeAttemptId,
             Optional<UUID> replacementParentId,
             int replacementSequence,
+            EffectKind effectKind,
             String clusterIdentity,
             String routeSnapshotRef,
             String tokenProgramId,
             String ataProgramId,
             String mintAddress,
+            Optional<String> sourceOwner,
+            Optional<String> sourceAta,
+            Optional<BigInteger> preSourceBalance,
             String destinationOwner,
             String destinationAta,
             boolean ataExisted,
@@ -464,9 +518,38 @@ final class SolanaMintAttemptStore {
             String messageSha256,
             String instructionSha256) {
 
+        Draft(
+                OperationId operationId, AttemptId attemptId, UUID deliveryId,
+                UUID nativeAttemptId, Optional<UUID> replacementParentId,
+                int replacementSequence, String clusterIdentity,
+                String routeSnapshotRef, String tokenProgramId,
+                String ataProgramId, String mintAddress,
+                String destinationOwner, String destinationAta, boolean ataExisted,
+                int decimals, BigInteger amount, BigInteger preMintSupply,
+                BigInteger preDestinationBalance, SignerContext feePayer,
+                SignerContext mintAuthority, String policyVersion,
+                BigInteger maximumFeeLamports, String recentBlockhash,
+                long lastValidBlockHeight, byte[] unsignedTransaction,
+                String messageSha256, String instructionSha256) {
+            this(operationId, attemptId, deliveryId, nativeAttemptId,
+                    replacementParentId, replacementSequence, EffectKind.MINT,
+                    clusterIdentity, routeSnapshotRef, tokenProgramId, ataProgramId,
+                    mintAddress, Optional.empty(), Optional.empty(), Optional.empty(),
+                    destinationOwner, destinationAta, ataExisted, decimals, amount,
+                    preMintSupply, preDestinationBalance, feePayer, mintAuthority,
+                    policyVersion, maximumFeeLamports, recentBlockhash,
+                    lastValidBlockHeight, unsignedTransaction, messageSha256,
+                    instructionSha256);
+        }
+
         Draft {
             replacementParentId = Objects.requireNonNull(
                     replacementParentId, "replacementParentId");
+            Objects.requireNonNull(effectKind, "effectKind");
+            sourceOwner = Objects.requireNonNull(sourceOwner, "sourceOwner");
+            sourceAta = Objects.requireNonNull(sourceAta, "sourceAta");
+            preSourceBalance = Objects.requireNonNull(
+                    preSourceBalance, "preSourceBalance");
             unsignedTransaction = Objects.requireNonNull(
                     unsignedTransaction, "unsignedTransaction").clone();
         }
@@ -481,11 +564,15 @@ final class SolanaMintAttemptStore {
             UUID nativeAttemptId,
             Optional<UUID> replacementParentId,
             int replacementSequence,
+            EffectKind effectKind,
             String clusterIdentity,
             String routeSnapshotRef,
             String tokenProgramId,
             String ataProgramId,
             String mintAddress,
+            Optional<String> sourceOwner,
+            Optional<String> sourceAta,
+            Optional<BigInteger> preSourceBalance,
             String destinationOwner,
             String destinationAta,
             boolean ataExisted,
@@ -519,11 +606,15 @@ final class SolanaMintAttemptStore {
                     && nativeAttemptId.equals(draft.nativeAttemptId())
                     && replacementParentId.equals(draft.replacementParentId())
                     && replacementSequence == draft.replacementSequence()
+                    && effectKind == draft.effectKind()
                     && clusterIdentity.equals(draft.clusterIdentity())
                     && routeSnapshotRef.equals(draft.routeSnapshotRef())
                     && tokenProgramId.equals(draft.tokenProgramId())
                     && ataProgramId.equals(draft.ataProgramId())
                     && mintAddress.equals(draft.mintAddress())
+                    && sourceOwner.equals(draft.sourceOwner())
+                    && sourceAta.equals(draft.sourceAta())
+                    && preSourceBalance.equals(draft.preSourceBalance())
                     && destinationOwner.equals(draft.destinationOwner())
                     && destinationAta.equals(draft.destinationAta())
                     && ataExisted == draft.ataExisted()
@@ -606,9 +697,51 @@ final class SolanaMintAttemptStore {
             boolean expectedInstructions,
             Optional<BigInteger> observedSupply,
             Optional<BigInteger> observedBalance,
+            Optional<BigInteger> observedSourceBalance,
+            Optional<BigInteger> transactionPreSourceBalance,
+            Optional<BigInteger> transactionPostSourceBalance,
+            Optional<BigInteger> transactionPreDestinationBalance,
+            Optional<BigInteger> transactionPostDestinationBalance,
             Optional<BigInteger> mintDelta,
             Optional<BigInteger> destinationDelta,
+            Optional<BigInteger> sourceDelta,
             String evidenceRef) {
+
+        ObservationDraft(
+                ObservationStatus status, String commitment, Optional<Long> slot,
+                Optional<Long> blockTime, Optional<String> errorCode,
+                boolean expectedInstructions, Optional<BigInteger> observedSupply,
+                Optional<BigInteger> observedBalance, Optional<BigInteger> mintDelta,
+                Optional<BigInteger> destinationDelta, String evidenceRef) {
+            this(status, commitment, slot, blockTime, errorCode,
+                    expectedInstructions, observedSupply, observedBalance,
+                    Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), mintDelta, destinationDelta,
+                    Optional.empty(),
+                    evidenceRef);
+        }
+
+        ObservationDraft(
+                ObservationStatus status, String commitment, Optional<Long> slot,
+                Optional<Long> blockTime, Optional<String> errorCode,
+                boolean expectedInstructions, Optional<BigInteger> observedSupply,
+                Optional<BigInteger> observedBalance,
+                Optional<BigInteger> observedSourceBalance,
+                Optional<BigInteger> mintDelta,
+                Optional<BigInteger> destinationDelta,
+                Optional<BigInteger> sourceDelta,
+                String evidenceRef) {
+            this(status, commitment, slot, blockTime, errorCode,
+                    expectedInstructions, observedSupply, observedBalance,
+                    observedSourceBalance, Optional.empty(), Optional.empty(),
+                    Optional.empty(), Optional.empty(), mintDelta, destinationDelta,
+                    sourceDelta, evidenceRef);
+        }
+    }
+
+    enum EffectKind {
+        MINT,
+        TRANSFER
     }
 
     enum AttemptStatus {

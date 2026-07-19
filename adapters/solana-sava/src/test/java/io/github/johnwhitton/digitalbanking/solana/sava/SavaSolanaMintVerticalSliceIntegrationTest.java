@@ -43,15 +43,23 @@ import com.zaxxer.hikari.HikariDataSource;
 import io.github.johnwhitton.digitalbanking.application.OperationAcceptance;
 import io.github.johnwhitton.digitalbanking.application.SigningAuthorityService;
 import io.github.johnwhitton.digitalbanking.application.TokenOperationService;
+import io.github.johnwhitton.digitalbanking.application.WalletTransferAcceptanceService;
+import io.github.johnwhitton.digitalbanking.application.WalletTransferOperation;
+import io.github.johnwhitton.digitalbanking.application.command.BurnCommand;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyKey;
 import io.github.johnwhitton.digitalbanking.application.command.MintCommand;
 import io.github.johnwhitton.digitalbanking.application.command.ParticipantScope;
 import io.github.johnwhitton.digitalbanking.application.delivery.DeliveryOutcome;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDelivery;
 import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
+import io.github.johnwhitton.digitalbanking.application.delivery.WalletTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.port.IdGenerator;
+import io.github.johnwhitton.digitalbanking.application.port.ChainPort;
 import io.github.johnwhitton.digitalbanking.application.port.SigningAuthorizationPort;
 import io.github.johnwhitton.digitalbanking.application.port.SigningIdentityGenerator;
+import io.github.johnwhitton.digitalbanking.application.port.TransferIdentityGenerator;
+import io.github.johnwhitton.digitalbanking.application.port.WalletIdentityRegistry;
+import io.github.johnwhitton.digitalbanking.application.port.WalletTransferChainPort;
 import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
 import io.github.johnwhitton.digitalbanking.domain.asset.TokenQuantity;
 import io.github.johnwhitton.digitalbanking.domain.operation.AttemptId;
@@ -68,10 +76,17 @@ import io.github.johnwhitton.digitalbanking.domain.signing.ProviderRequestId;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningAttemptId;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningRequest;
 import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
+import io.github.johnwhitton.digitalbanking.domain.transfer.TransferEffect;
+import io.github.johnwhitton.digitalbanking.domain.transfer.TransferId;
+import io.github.johnwhitton.digitalbanking.domain.transfer.TransferTransition;
+import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationRepository;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresSigningRequestRepository;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresWalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.signer.local.LocalSolanaConfiguredSigner;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -98,6 +113,8 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
             new ParticipantScope("tenant-solana", "participant-solana");
     private static final PublicKey DESTINATION_OWNER = PublicKey.fromBase58Encoded(
             "5FN9G4Lm7ffMX3Uun11thakD29iuQgxBJHmFCiwYVWVG");
+    private static final PublicKey TRANSFER_DESTINATION_OWNER = PublicKey.fromBase58Encoded(
+            "86Cud6zB3MZRYcCBgYftqoZRZw1jVqQfDkobchgk9vir");
 
     private static PostgreSQLContainer postgres;
     private static HikariDataSource dataSource;
@@ -206,6 +223,497 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                     """).param("operationId", first.operation().operationId().value())
                     .query(Integer.class).single());
         }
+    }
+
+    @Test
+    void transfersExactQuantityThroughTwoSignersAndRecoversLostResponse()
+            throws Exception {
+        TestKey fee = key(temporary.resolve("transfer-fee.json"),
+                "local-solana:transfer-fee");
+        TestKey mintAuthority = key(temporary.resolve("transfer-mint.json"),
+                "local-solana:transfer-mint");
+        TestKey source = key(temporary.resolve("transfer-source.json"),
+                "local-solana:transfer-source");
+        Files.setPosixFilePermissions(temporary, Set.of(
+                PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_WRITE,
+                PosixFilePermission.OWNER_EXECUTE));
+        try (LocalSolanaConfiguredSigner signer = new LocalSolanaConfiguredSigner(
+                    new LocalSolanaConfiguredSigner.Configuration(temporary, List.of(
+                            configured(fee, SigningRequest.KeyRole.FEE_PAYER, "fee-v1"),
+                            configured(mintAuthority,
+                                    SigningRequest.KeyRole.MINT_AUTHORITY, "mint-v1"),
+                            configured(source,
+                                    SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                    "source-v1"))));
+                RpcFixture rpc = new RpcFixture(
+                        fee.publicKey(), mintAuthority.publicKey(), source.publicKey(),
+                        TRANSFER_DESTINATION_OWNER, BigInteger.valueOf(10_000),
+                        BigInteger.valueOf(10_000))) {
+            SavaSolanaMintChainAdapter.Configuration configuration =
+                    new SavaSolanaMintChainAdapter.Configuration(
+                            rpc.endpoint(), rpc.genesis(), rpc.mint().toBase58(),
+                            source.address(), fee.address(), fee.alias().value(), "fee-v1",
+                            mintAuthority.address(), mintAuthority.alias().value(), "mint-v1",
+                            TRANSFER_DESTINATION_OWNER.toBase58(), source.alias().value(),
+                            "source-v1", UNIT.assetId(), UNIT.unitId(), UNIT.version(),
+                            UNIT.scale(), "local-solana-transfer-v1",
+                            SavaSolanaMintChainAdapter.CommitmentLevel.CONFIRMED,
+                            SavaSolanaMintChainAdapter.CommitmentLevel.FINALIZED,
+                            BigInteger.valueOf(1_000_000), BigInteger.valueOf(100_000),
+                            Duration.ofSeconds(2));
+            SolanaRpcClient submission = client(rpc.endpoint());
+            AtomicBoolean lose = new AtomicBoolean(true);
+            SavaSolanaMintChainAdapter chain = new SavaSolanaMintChainAdapter(
+                    dataSource, submission, client(rpc.endpoint()), base64 -> {
+                        String signature = submission.sendTransaction(base64, 0).join();
+                        if (lose.compareAndSet(true, false)) {
+                            throw new IllegalStateException(
+                                    "synthetic response loss after transfer acceptance");
+                        }
+                        return signature;
+                    }, configuration, CLOCK);
+            PostgresWalletTransferRepository transfers =
+                    new PostgresWalletTransferRepository(dataSource);
+            WalletReference sourceRef = new WalletReference("synthetic-wallet:USER_1");
+            WalletReference destinationRef =
+                    new WalletReference("synthetic-wallet:USER_2");
+            WalletIdentityRegistry registry = walletRegistry(
+                    sourceRef, destinationRef, source, configuration);
+            WalletTransferAcceptanceService acceptance =
+                    new WalletTransferAcceptanceService(
+                            transfers, (asset, unit, version) ->
+                                    asset.equals(UNIT.assetId())
+                                            && unit.equals(UNIT.unitId())
+                                            && version == UNIT.version()
+                                            ? Optional.of(UNIT) : Optional.empty(),
+                            registry, CLOCK::instant, ids(), transferIds(),
+                            new WalletTransferAcceptanceService.Policy(
+                                    configuration.mintAddress(), "local-solana-token-v1",
+                                    configuration.policyVersion()));
+            var accepted = acceptance.accept(
+                    PARTICIPANT, new IdempotencyKey("solana-transfer-e2e"),
+                    new WalletTransferAcceptanceService.Request(
+                            "100", UNIT.assetId(), UNIT.unitId(), UNIT.version(),
+                            sourceRef, destinationRef));
+            OperationAcceptance burn = new TokenOperationService(
+                    new PostgresOperationRepository(dataSource), CLOCK::instant, ids(),
+                    (canonical, participant) -> new EvidenceRef(
+                            "participant:test:solana-routing-burn"))
+                    .accept(new BurnCommand(
+                                    1, PARTICIPANT, TokenQuantity.parse("100", UNIT),
+                                    "solana-routing-burn"),
+                            IdempotencyKey.of("solana-routing-burn"));
+            WalletReference ethereumSource =
+                    new WalletReference("synthetic-wallet:ETH_USER_1");
+            WalletReference ethereumDestination =
+                    new WalletReference("synthetic-wallet:ETH_USER_2");
+            WalletIdentityRegistry ethereumRegistry = walletRegistry(
+                    new WalletIdentityRegistry.WalletIdentity(
+                            ethereumSource, Set.of(),
+                            WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
+                            SettlementNetwork.ETHEREUM,
+                            "0x1111111111111111111111111111111111111111",
+                            new KeyAlias("local-ethereum:test-source"),
+                            "registry-v1", "source-v1",
+                            Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
+                            WalletIdentityRegistry.Status.ENABLED),
+                    new WalletIdentityRegistry.WalletIdentity(
+                            ethereumDestination, Set.of(),
+                            WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
+                            SettlementNetwork.ETHEREUM,
+                            "0x2222222222222222222222222222222222222222",
+                            new KeyAlias("local-ethereum:test-destination"),
+                            "registry-v1", "destination-v1",
+                            Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
+                            WalletIdentityRegistry.Status.ENABLED));
+            var ethereumTransfer = new WalletTransferAcceptanceService(
+                    transfers, (asset, unit, version) ->
+                            asset.equals(UNIT.assetId()) && unit.equals(UNIT.unitId())
+                                    && version == UNIT.version()
+                                    ? Optional.of(UNIT) : Optional.empty(),
+                    ethereumRegistry, CLOCK::instant, ids(), transferIds(),
+                    new WalletTransferAcceptanceService.Policy(
+                            "0x3333333333333333333333333333333333333333",
+                            "local-ethereum-token-v1", "local-ethereum-transfer-v1"))
+                    .accept(PARTICIPANT,
+                            new IdempotencyKey("ethereum-transfer-routing-control"),
+                            new WalletTransferAcceptanceService.Request(
+                                    "100", UNIT.assetId(), UNIT.unitId(), UNIT.version(),
+                                    ethereumSource, ethereumDestination));
+            WalletTransferAcceptedDeliveryHandler preparationHandler =
+                    new WalletTransferAcceptedDeliveryHandler(
+                            transfers, chain, signingService(signer), registry,
+                            CLOCK::instant, Duration.ofMinutes(5));
+            OperationDelivery delivery = walletDelivery(
+                    accepted.operation().operationId());
+            assertEquals("PENDING", jdbc.sql("""
+                    SELECT status FROM operation_outbox WHERE operation_id = :operationId
+                    """).param("operationId", burn.operation().operationId().value())
+                    .query(String.class).single());
+            assertEquals("PENDING", jdbc.sql("""
+                    SELECT status FROM operation_outbox
+                    WHERE wallet_transfer_id = :operationId
+                    """).param("operationId",
+                            ethereumTransfer.operation().operationId().value())
+                    .query(String.class).single());
+
+            for (RpcFixture.AccountFault fault : RpcFixture.AccountFault.values()) {
+                if (fault == RpcFixture.AccountFault.NONE) continue;
+                rpc.accountFault(fault);
+                assertThrows(IllegalStateException.class,
+                        () -> preparationHandler.handle(delivery));
+                assertEquals(0, jdbc.sql("""
+                        SELECT count(*) FROM solana_mint_attempt
+                        WHERE operation_id = :operationId
+                        """).param("operationId", accepted.operation().operationId().value())
+                        .query(Integer.class).single());
+            }
+            rpc.accountFault(RpcFixture.AccountFault.NONE);
+            rpc.balance(BigInteger.valueOf(9_999));
+            assertThrows(IllegalStateException.class,
+                    () -> preparationHandler.handle(delivery));
+            rpc.balance(BigInteger.valueOf(10_000));
+
+            WalletTransferAcceptedDeliveryHandler crashingHandler =
+                    new WalletTransferAcceptedDeliveryHandler(
+                            transfers, new FailFirstSignatureAttachment(chain),
+                            signingService(signer), registry, CLOCK::instant,
+                            Duration.ofMinutes(5));
+            assertThrows(IllegalStateException.class,
+                    () -> crashingHandler.handle(delivery));
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM signing_request
+                    WHERE operation_id = :operationId AND signing_status = 'SIGNED'
+                    """).param("operationId", accepted.operation().operationId().value())
+                    .query(Integer.class).single());
+            assertEquals(0, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_signature
+                    WHERE operation_id = :operationId
+                    """).param("operationId", accepted.operation().operationId().value())
+                    .query(Integer.class).single());
+            Clock restartedClock = Clock.fixed(NOW.plusSeconds(1), ZoneOffset.UTC);
+            WalletTransferAcceptedDeliveryHandler handler =
+                    new WalletTransferAcceptedDeliveryHandler(
+                    transfers, chain, signingService(signer, restartedClock), registry,
+                    restartedClock::instant, Duration.ofMinutes(5));
+            assertEquals(DeliveryOutcome.Classification.AMBIGUOUS_ACKNOWLEDGEMENT,
+                    handler.handle(delivery).classification());
+            SavaSolanaMintChainAdapter restarted = new SavaSolanaMintChainAdapter(
+                    dataSource, client(rpc.endpoint()), client(rpc.endpoint()),
+                    configuration, CLOCK);
+            WalletTransferAcceptedDeliveryHandler restartedHandler =
+                    new WalletTransferAcceptedDeliveryHandler(
+                            new PostgresWalletTransferRepository(dataSource), restarted,
+                            signingService(signer, restartedClock), registry,
+                            restartedClock::instant,
+                            Duration.ofMinutes(5));
+            assertEquals(DeliveryOutcome.Classification.DELIVERED,
+                    restartedHandler.handle(delivery).classification());
+            assertEquals(BigInteger.ZERO, rpc.balance());
+            assertEquals(BigInteger.valueOf(10_000), rpc.destinationBalance());
+            assertEquals(BigInteger.valueOf(10_000), rpc.supply());
+            assertEquals(1, rpc.submissionCalls());
+            assertEquals(DeliveryOutcome.Classification.DUPLICATE,
+                    restartedHandler.handle(delivery).classification());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_attempt
+                    WHERE operation_id = :operationId
+                      AND effect_kind = 'TRANSFER'
+                      AND attempt_status = 'CONFIRMED'
+                      AND pre_source_balance = 10000
+                    """).param("operationId", accepted.operation().operationId().value())
+                    .query(Integer.class).single());
+            assertEquals(List.of("FEE_PAYER", "TRANSFER_AUTHORITY"), jdbc.sql("""
+                    SELECT key_role FROM solana_mint_signature
+                    WHERE operation_id = :operationId ORDER BY signer_order
+                    """).param("operationId", accepted.operation().operationId().value())
+                    .query(String.class).list());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_observation
+                    WHERE operation_id = :operationId
+                      AND observation_status = 'CONFIRMED'
+                      AND observed_mint_supply = 10000
+                      AND observed_source_balance = 0
+                      AND observed_destination_balance = 10000
+                      AND transaction_pre_source_balance = 10000
+                      AND transaction_post_source_balance = 0
+                      AND transaction_pre_destination_balance = 0
+                      AND transaction_post_destination_balance = 10000
+                      AND mint_delta = 0
+                      AND source_delta = 10000
+                      AND destination_delta = 10000
+                    """).param("operationId", accepted.operation().operationId().value())
+                    .query(Integer.class).single());
+
+            rpc.balance(BigInteger.valueOf(10_000));
+            rpc.destinationBalance(BigInteger.ZERO);
+            rpc.transactionBalanceMismatch(true);
+            var mismatchedBalances = acceptance.accept(
+                    PARTICIPANT, new IdempotencyKey("solana-transfer-tx-balance-mismatch"),
+                    new WalletTransferAcceptanceService.Request(
+                            "100", UNIT.assetId(), UNIT.unitId(), UNIT.version(),
+                            sourceRef, destinationRef));
+            DeliveryOutcome mismatched = restartedHandler.handle(walletDelivery(
+                    mismatchedBalances.operation().operationId()));
+            assertEquals(DeliveryOutcome.Classification.TERMINAL_NO_EFFECT,
+                    mismatched.classification());
+            assertEquals(FinalityStatus.NOT_ASSESSED, transfers.findById(
+                    mismatchedBalances.operation().operationId()).orElseThrow()
+                    .finalityHistories().get(FinalityType.BLOCKCHAIN)
+                    .getLast().status());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_attempt a
+                    JOIN solana_mint_observation o
+                      USING (operation_id, operation_attempt_id, effect_kind)
+                    WHERE a.operation_id = :operationId
+                      AND a.attempt_status = 'MISMATCHED'
+                      AND o.transaction_pre_source_balance = 9999
+                    """).param("operationId",
+                            mismatchedBalances.operation().operationId().value())
+                    .query(Integer.class).single());
+            jdbc.sql("""
+                    UPDATE solana_mint_attempt SET attempt_status = 'REJECTED'
+                    WHERE operation_id = :operationId
+                    """).param("operationId",
+                            mismatchedBalances.operation().operationId().value()).update();
+            rpc.transactionBalanceMismatch(false);
+
+            rpc.balance(BigInteger.valueOf(10_000));
+            rpc.destinationBalance(BigInteger.ZERO);
+            rpc.finalizedFailure(true);
+            var finalizedFailure = acceptance.accept(
+                    PARTICIPANT, new IdempotencyKey("solana-transfer-finalized-failure"),
+                    new WalletTransferAcceptanceService.Request(
+                            "100", UNIT.assetId(), UNIT.unitId(), UNIT.version(),
+                            sourceRef, destinationRef));
+            DeliveryOutcome failed = restartedHandler.handle(walletDelivery(
+                    finalizedFailure.operation().operationId()));
+            assertEquals(DeliveryOutcome.Classification.TERMINAL_NO_EFFECT,
+                    failed.classification());
+            assertEquals(FinalityStatus.NOT_ASSESSED, transfers.findById(
+                    finalizedFailure.operation().operationId()).orElseThrow()
+                    .finalityHistories().get(FinalityType.BLOCKCHAIN)
+                    .getLast().status());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_attempt
+                    WHERE operation_id = :operationId
+                      AND effect_kind = 'TRANSFER'
+                      AND attempt_status = 'REVERTED'
+                    """).param("operationId",
+                            finalizedFailure.operation().operationId().value())
+                    .query(Integer.class).single());
+            assertEquals(BigInteger.valueOf(10_000), rpc.balance());
+            assertEquals(BigInteger.ZERO, rpc.destinationBalance());
+
+            rpc.finalizedFailure(false);
+            rpc.expired(true);
+            var expired = acceptance.accept(
+                    PARTICIPANT, new IdempotencyKey("solana-transfer-expired"),
+                    new WalletTransferAcceptanceService.Request(
+                            "100", UNIT.assetId(), UNIT.unitId(), UNIT.version(),
+                            sourceRef, destinationRef));
+            DeliveryOutcome expiredOutcome = restartedHandler.handle(walletDelivery(
+                    expired.operation().operationId()));
+            assertEquals(DeliveryOutcome.Classification.TERMINAL_NO_EFFECT,
+                    expiredOutcome.classification());
+            assertEquals(FinalityStatus.NOT_ASSESSED, transfers.findById(
+                    expired.operation().operationId()).orElseThrow()
+                    .finalityHistories().get(FinalityType.BLOCKCHAIN)
+                    .getLast().status());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM solana_mint_attempt
+                    WHERE operation_id = :operationId
+                      AND effect_kind = 'TRANSFER'
+                      AND attempt_status = 'EXPIRED'
+                    """).param("operationId", expired.operation().operationId().value())
+                    .query(Integer.class).single());
+            assertEquals(3, rpc.submissionCalls());
+        }
+    }
+
+    @Test
+    void v12MigratesAnExistingV11Schema() {
+        String schema = "phase7c_v11_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway v11 = Flyway.configure()
+                .dataSource(dataSource)
+                .schemas(schema)
+                .defaultSchema(schema)
+                .createSchemas(true)
+                .target(MigrationVersion.fromVersion("11"))
+                .cleanDisabled(true)
+                .load();
+        v11.migrate();
+        assertEquals("11", v11.info().current().getVersion().getVersion());
+
+        UUID operationId = UUID.randomUUID();
+        UUID attemptId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        UUID nativeAttemptId = UUID.randomUUID();
+        jdbc.sql(("""
+                INSERT INTO %s.token_operation (
+                    operation_id, tenant_id, participant_id, idempotency_resource,
+                    operation_kind, idempotency_key_digest, request_contract_version,
+                    canonicalization_version, command_digest, business_correlation,
+                    asset_id, unit_id, unit_version, unit_scale, unit_max_atomic,
+                    quantity_atomic, lifecycle_state, aggregate_version,
+                    acceptance_evidence_ref, created_at, updated_at)
+                VALUES (:operationId, 'tenant-v11', 'participant-v11',
+                    'TOKEN_OPERATION', 'MINT', repeat('a', 64), 1, 1,
+                    repeat('b', 64), 'v11-retained-mint', 'USD_STABLE', 'USD',
+                    1, 2, 1000000, 100, 'COMPLETED', 3,
+                    'internal:test:v11-acceptance', :now, :now)
+                """).formatted(schema))
+                .param("operationId", operationId)
+                .param("now", NOW.atOffset(ZoneOffset.UTC)).update();
+        jdbc.sql(("""
+                INSERT INTO %s.operation_attempt (
+                    operation_id, attempt_order, attempt_id,
+                    authorization_evidence_ref, aggregate_version, created_at)
+                VALUES (:operationId, 0, :attemptId,
+                    'internal:test:v11-attempt', 1, :now)
+                """).formatted(schema))
+                .param("operationId", operationId).param("attemptId", attemptId)
+                .param("now", NOW.atOffset(ZoneOffset.UTC)).update();
+        jdbc.sql(("""
+                INSERT INTO %s.operation_outbox (
+                    event_id, operation_id, event_type, event_version,
+                    payload_schema_version, payload, status, created_at,
+                    available_at, updated_at)
+                VALUES (:eventId, :operationId, 'TokenOperationAccepted', 1, 1,
+                    '{}'::jsonb, 'PENDING', :now, :now, :now)
+                """).formatted(schema))
+                .param("eventId", eventId).param("operationId", operationId)
+                .param("now", NOW.atOffset(ZoneOffset.UTC)).update();
+        jdbc.sql(("""
+                INSERT INTO %s.solana_mint_attempt (
+                    operation_id, operation_attempt_id, delivery_id,
+                    native_attempt_id, replacement_parent_id, replacement_sequence,
+                    network, cluster_identity, route_snapshot_ref, token_program_id,
+                    ata_program_id, mint_address, destination_owner, destination_ata,
+                    ata_existed, decimals, amount_atomic, pre_mint_supply,
+                    pre_destination_balance, fee_payer_public_key,
+                    fee_payer_key_alias, fee_payer_key_version,
+                    mint_authority_public_key, mint_authority_key_alias,
+                    mint_authority_key_version, policy_version,
+                    maximum_fee_lamports, commitment, recent_blockhash,
+                    last_valid_block_height, unsigned_transaction, message_sha256,
+                    instruction_sha256, transaction_signature, attempt_status,
+                    submit_fence, submission_started_at, submission_recorded_at,
+                    submission_code, aggregate_version, created_at, updated_at)
+                VALUES (:operationId, :attemptId, :eventId, :nativeAttemptId,
+                    NULL, 0, 'LOCAL_SOLANA', repeat('2', 32),
+                    'internal:test:v11-route', repeat('3', 32), repeat('4', 32),
+                    repeat('5', 32), repeat('6', 32), repeat('7', 32),
+                    false, 2, 100, 0, 0, repeat('8', 32), 'v11-fee', 'fee-v1',
+                    repeat('9', 32), 'v11-mint', 'mint-v1', 'v11-policy',
+                    100000, 'finalized', repeat('A', 32), 500,
+                    decode('01', 'hex'), repeat('c', 64), repeat('d', 64),
+                    repeat('C', 88), 'CONFIRMED', 1, :now, :now,
+                    'rpc-accepted', 3, :now, :now)
+                """).formatted(schema))
+                .param("operationId", operationId).param("attemptId", attemptId)
+                .param("eventId", eventId).param("nativeAttemptId", nativeAttemptId)
+                .param("now", NOW.atOffset(ZoneOffset.UTC)).update();
+        for (int order = 0; order < 2; order++) {
+            jdbc.sql(("""
+                    INSERT INTO %s.solana_mint_signature (
+                        operation_id, operation_attempt_id, signer_order, key_role,
+                        key_alias, key_version, public_key, signature_bytes,
+                        signature_sha256, signature_encoding, retained_at)
+                    VALUES (:operationId, :attemptId, :signerOrder, :keyRole,
+                        :keyAlias, :keyVersion, :publicKey,
+                        decode(repeat(:signatureByte, 64), 'hex'),
+                        repeat(:hashCharacter, 64), 'solana-ed25519-64-byte', :now)
+                    """).formatted(schema))
+                    .param("operationId", operationId).param("attemptId", attemptId)
+                    .param("signerOrder", order)
+                    .param("keyRole", order == 0 ? "FEE_PAYER" : "MINT_AUTHORITY")
+                    .param("keyAlias", order == 0 ? "v11-fee" : "v11-mint")
+                    .param("keyVersion", order == 0 ? "fee-v1" : "mint-v1")
+                    .param("publicKey", String.valueOf(order == 0 ? '8' : '9').repeat(32))
+                    .param("signatureByte", order == 0 ? "01" : "02")
+                    .param("hashCharacter", order == 0 ? "e" : "f")
+                    .param("now", NOW.atOffset(ZoneOffset.UTC)).update();
+        }
+        jdbc.sql(("""
+                INSERT INTO %s.solana_mint_observation (
+                    operation_id, operation_attempt_id, observation_sequence,
+                    observation_status, transaction_signature, commitment, slot,
+                    block_time, expected_instructions, observed_mint_supply,
+                    observed_destination_balance, mint_delta, destination_delta,
+                    evidence_ref, observed_at)
+                VALUES (:operationId, :attemptId, 1, 'CONFIRMED', repeat('C', 88),
+                    'finalized', 200, 1784472000, true, 100, 100, 100, 100,
+                    'internal:test:v11-observation', :now)
+                """).formatted(schema))
+                .param("operationId", operationId).param("attemptId", attemptId)
+                .param("now", NOW.atOffset(ZoneOffset.UTC)).update();
+
+        Flyway v12 = Flyway.configure()
+                .dataSource(dataSource)
+                .schemas(schema)
+                .defaultSchema(schema)
+                .createSchemas(false)
+                .cleanDisabled(true)
+                .load();
+        v12.migrate();
+
+        assertEquals("12", v12.info().current().getVersion().getVersion());
+        assertEquals(List.of("effect_kind", "pre_source_balance", "source_ata",
+                        "source_owner", "token_operation_id",
+                        "wallet_transfer_operation_id"),
+                jdbc.sql("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_schema = :schema
+                          AND table_name = 'solana_mint_attempt'
+                          AND column_name IN (
+                              'effect_kind', 'pre_source_balance', 'source_ata',
+                              'source_owner', 'token_operation_id',
+                              'wallet_transfer_operation_id')
+                        ORDER BY column_name
+                        """).param("schema", schema).query(String.class).list());
+        assertEquals(List.of("transaction_post_destination_balance",
+                        "transaction_post_source_balance",
+                        "transaction_pre_destination_balance",
+                        "transaction_pre_source_balance"),
+                jdbc.sql("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_schema = :schema
+                          AND table_name = 'solana_mint_observation'
+                          AND column_name LIKE 'transaction_%_balance'
+                        ORDER BY column_name
+                        """).param("schema", schema).query(String.class).list());
+        assertEquals("MINT", jdbc.sql(("""
+                SELECT effect_kind FROM %s.solana_mint_attempt
+                WHERE operation_id = :operationId
+                  AND token_operation_id = :operationId
+                  AND wallet_transfer_operation_id IS NULL
+                """).formatted(schema)).param("operationId", operationId)
+                .query(String.class).single());
+        assertEquals(List.of("FEE_PAYER:MINT", "MINT_AUTHORITY:MINT"),
+                jdbc.sql(("""
+                        SELECT key_role || ':' || effect_kind
+                        FROM %s.solana_mint_signature
+                        WHERE operation_id = :operationId ORDER BY signer_order
+                        """).formatted(schema)).param("operationId", operationId)
+                        .query(String.class).list());
+        assertEquals("CONFIRMED:MINT", jdbc.sql(("""
+                SELECT observation_status || ':' || effect_kind
+                FROM %s.solana_mint_observation
+                WHERE operation_id = :operationId
+                """).formatted(schema)).param("operationId", operationId)
+                .query(String.class).single());
+        assertEquals(3, jdbc.sql("""
+                SELECT count(*) FROM pg_constraint
+                WHERE connamespace = CAST(:schema AS regnamespace)
+                  AND conname IN ('fk_solana_native_token_operation',
+                      'fk_solana_mint_signature_attempt',
+                      'fk_solana_mint_observation_attempt')
+                  AND convalidated
+                """).param("schema", schema).query(Integer.class).single());
     }
 
     @Test
@@ -481,6 +989,9 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
         TestKey authority = key(
                 temporary.resolve("authority-" + loseResponse + ".json"),
                 "local-solana:authority-" + loseResponse);
+        TestKey transfer = key(
+                temporary.resolve("transfer-" + loseResponse + ".json"),
+                "local-solana:transfer-" + loseResponse);
         Files.setPosixFilePermissions(temporary, Set.of(
                 PosixFilePermission.OWNER_READ,
                 PosixFilePermission.OWNER_WRITE,
@@ -489,7 +1000,9 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                 new LocalSolanaConfiguredSigner.Configuration(temporary, List.of(
                         configured(fee, SigningRequest.KeyRole.FEE_PAYER, "fee-v1"),
                         configured(authority, SigningRequest.KeyRole.MINT_AUTHORITY,
-                                "authority-v1"))));
+                                "authority-v1"),
+                        configured(transfer, SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                "transfer-v1"))));
         RpcFixture rpc = new RpcFixture(fee.publicKey(), authority.publicKey());
         SolanaRpcClient submission = client(rpc.endpoint());
         SolanaRpcClient observation = client(rpc.endpoint());
@@ -542,6 +1055,11 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
 
     private static SigningAuthorityService signingService(
             LocalSolanaConfiguredSigner signer) {
+        return signingService(signer, CLOCK);
+    }
+
+    private static SigningAuthorityService signingService(
+            LocalSolanaConfiguredSigner signer, Clock clock) {
         SigningAuthorizationPort authorization = request ->
                 new SigningAuthorizationPort.Authorized(new EvidenceRef(
                         "internal:test:solana-signing-authorized:"
@@ -556,7 +1074,7 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
         };
         return new SigningAuthorityService(
                 new PostgresSigningRequestRepository(dataSource), signer,
-                authorization, signer, signingIds, CLOCK::instant);
+                authorization, signer, signingIds, clock::instant);
     }
 
     private static IdGenerator ids() {
@@ -568,6 +1086,78 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                 return new AttemptId(UUID.randomUUID());
             }
         };
+    }
+
+    private static TransferIdentityGenerator transferIds() {
+        return new TransferIdentityGenerator() {
+            @Override public TransferId nextTransferId() {
+                return new TransferId(UUID.randomUUID());
+            }
+            @Override public TransferEffect.Id nextEffectId() {
+                return new TransferEffect.Id(UUID.randomUUID());
+            }
+            @Override public TransferTransition.Id nextTransitionId() {
+                return new TransferTransition.Id(UUID.randomUUID());
+            }
+        };
+    }
+
+    private static WalletIdentityRegistry walletRegistry(
+            WalletReference sourceRef,
+            WalletReference destinationRef,
+            TestKey source,
+            SavaSolanaMintChainAdapter.Configuration configuration) {
+        var sourceIdentity = new WalletIdentityRegistry.WalletIdentity(
+                sourceRef, Set.of(), WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
+                SettlementNetwork.SOLANA, source.address(), source.alias(),
+                "registry-v1", "source-v1",
+                Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
+                WalletIdentityRegistry.Status.ENABLED);
+        var destinationIdentity = new WalletIdentityRegistry.WalletIdentity(
+                destinationRef, Set.of(),
+                WalletIdentityRegistry.OwnerCategory.USER_CUSTODY,
+                SettlementNetwork.SOLANA, configuration.transferDestinationOwner(),
+                new KeyAlias("local-solana:destination-public"),
+                "registry-v1", "destination-v1",
+                Set.of(WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER),
+                WalletIdentityRegistry.Status.ENABLED);
+        return new WalletIdentityRegistry() {
+            @Override public WalletIdentity resolve(WalletReference reference) {
+                if (sourceRef.equals(reference)) return sourceIdentity;
+                if (destinationRef.equals(reference)) return destinationIdentity;
+                throw new IllegalArgumentException("unknown test wallet");
+            }
+            @Override public List<WalletIdentity> identities() {
+                return List.of(sourceIdentity, destinationIdentity);
+            }
+        };
+    }
+
+    private static WalletIdentityRegistry walletRegistry(
+            WalletIdentityRegistry.WalletIdentity source,
+            WalletIdentityRegistry.WalletIdentity destination) {
+        return new WalletIdentityRegistry() {
+            @Override public WalletIdentity resolve(WalletReference reference) {
+                if (source.reference().equals(reference)) return source;
+                if (destination.reference().equals(reference)) return destination;
+                throw new IllegalArgumentException("unknown routing-control wallet");
+            }
+            @Override public List<WalletIdentity> identities() {
+                return List.of(source, destination);
+            }
+        };
+    }
+
+    private static OperationDelivery walletDelivery(OperationId operationId) {
+        var claimed = PostgresOperationDeliveryQueue.localSolana(dataSource).claim(
+                "solana-transfer-worker", NOW, Duration.ofMinutes(1), 100);
+        assertTrue(claimed.deliveries().stream().allMatch(delivery ->
+                TokenOperationAcceptedDeliveryHandler.EVENT_TYPE.equals(delivery.eventType())
+                        || WalletTransferAcceptedDeliveryHandler.EVENT_TYPE.equals(
+                                delivery.eventType())));
+        return claimed.deliveries().stream()
+                .filter(delivery -> delivery.aggregateId().equals(operationId.value()))
+                .findFirst().orElseThrow();
     }
 
     private static LocalSolanaConfiguredSigner.ConfiguredKey configured(
@@ -600,6 +1190,68 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
     }
 
     private record TestKey(KeyAlias alias, Path file, String address, PublicKey publicKey) {
+    }
+
+    private static final class FailFirstSignatureAttachment
+            implements WalletTransferChainPort {
+
+        private final WalletTransferChainPort delegate;
+        private final AtomicBoolean fail = new AtomicBoolean(true);
+
+        private FailFirstSignatureAttachment(WalletTransferChainPort delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public ChainPort.PreparedAttempt prepare(
+                UUID deliveryId, WalletTransferOperation operation) {
+            return delegate.prepare(deliveryId, operation);
+        }
+
+        @Override
+        public Optional<ChainPort.SignedAttempt> findSignedAttempt(
+                ChainPort.AttemptIdentity identity) {
+            return delegate.findSignedAttempt(identity);
+        }
+
+        @Override
+        public List<ChainPort.SigningRequirement> requiredSigners(
+                ChainPort.AttemptIdentity identity) {
+            return delegate.requiredSigners(identity);
+        }
+
+        @Override
+        public Set<Integer> retainedSignatureOrders(
+                ChainPort.AttemptIdentity identity) {
+            return delegate.retainedSignatureOrders(identity);
+        }
+
+        @Override
+        public ChainPort.SignedAttempt attachSignature(
+                ChainPort.AttemptIdentity identity,
+                ChainPort.AuthorizedSignature signature) {
+            if (fail.compareAndSet(true, false)) {
+                throw new IllegalStateException(
+                        "synthetic crash after durable signing result");
+            }
+            return delegate.attachSignature(identity, signature);
+        }
+
+        @Override
+        public ChainPort.SubmissionResult submitOnce(
+                ChainPort.SignedAttempt signedAttempt) {
+            return delegate.submitOnce(signedAttempt);
+        }
+
+        @Override
+        public ChainPort.InquiryResult inquire(ChainPort.AttemptIdentity identity) {
+            return delegate.inquire(identity);
+        }
+
+        @Override
+        public ChainPort.Observation observe(ChainPort.ObservationRequest request) {
+            return delegate.observe(request);
+        }
     }
 
     private record Scenario(
@@ -660,17 +1312,45 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
         private final PublicKey mint = PublicKey.createPubKey(fill((byte) 7));
         private final PublicKey feePayer;
         private final PublicKey authority;
-        private final PublicKey ata;
+        private final PublicKey sourceOwner;
+        private final PublicKey destinationOwner;
+        private final PublicKey sourceAta;
+        private final PublicKey destinationAta;
         private byte[] signedTransaction;
-        private BigInteger supply = BigInteger.ZERO;
-        private BigInteger balance = BigInteger.ZERO;
+        private BigInteger supply;
+        private BigInteger balance;
+        private BigInteger destinationBalance = BigInteger.ZERO;
+        private BigInteger transactionPreSource = BigInteger.ZERO;
+        private BigInteger transactionPreDestination = BigInteger.ZERO;
+        private AccountFault accountFault = AccountFault.NONE;
+        private boolean expired;
+        private boolean finalizedFailure;
+        private boolean transactionBalanceMismatch;
+        private int blockHeightCalls;
         private int submissionCalls;
 
         RpcFixture(PublicKey feePayer, PublicKey authority) throws IOException {
+            this(feePayer, authority, DESTINATION_OWNER,
+                    TRANSFER_DESTINATION_OWNER, BigInteger.ZERO, BigInteger.ZERO);
+        }
+
+        RpcFixture(
+                PublicKey feePayer,
+                PublicKey authority,
+                PublicKey sourceOwner,
+                PublicKey destinationOwner,
+                BigInteger supply,
+                BigInteger balance) throws IOException {
             this.feePayer = feePayer;
             this.authority = authority;
-            this.ata = SolanaMintTransactionCodec.associatedTokenAddress(
-                    DESTINATION_OWNER, mint);
+            this.sourceOwner = sourceOwner;
+            this.destinationOwner = destinationOwner;
+            this.sourceAta = SolanaMintTransactionCodec.associatedTokenAddress(
+                    sourceOwner, mint);
+            this.destinationAta = SolanaMintTransactionCodec.associatedTokenAddress(
+                    destinationOwner, mint);
+            this.supply = supply;
+            this.balance = balance;
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/", this::respond);
             server.start();
@@ -683,7 +1363,19 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
         PublicKey mint() { return mint; }
         BigInteger supply() { return supply; }
         BigInteger balance() { return balance; }
+        BigInteger destinationBalance() { return destinationBalance; }
         int submissionCalls() { return submissionCalls; }
+        void balance(BigInteger value) { balance = value; }
+        void destinationBalance(BigInteger value) { destinationBalance = value; }
+        void accountFault(AccountFault value) { accountFault = value; }
+        void expired(boolean value) {
+            expired = value;
+            blockHeightCalls = 0;
+        }
+        void finalizedFailure(boolean value) { finalizedFailure = value; }
+        void transactionBalanceMismatch(boolean value) {
+            transactionBalanceMismatch = value;
+        }
 
         private synchronized void respond(HttpExchange exchange) throws IOException {
             String request = new String(
@@ -697,7 +1389,8 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                         + PublicKey.createPubKey(new byte[32]).toBase58()
                         + "\",\"lastValidBlockHeight\":500}}";
             } else if (request.contains("getBlockHeight")) {
-                result = "100";
+                blockHeightCalls++;
+                result = expired && blockHeightCalls > 1 ? "501" : "100";
             } else if (request.contains("getBalance")) {
                 result = "{\"context\":{\"apiVersion\":\"4.1.2\",\"slot\":100},"
                         + "\"value\":1000000000}";
@@ -707,13 +1400,29 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                 signedTransaction = Base64.getDecoder().decode(matcher.group(1));
                 submissionCalls++;
                 BigInteger amount = amount(signedTransaction);
-                supply = supply.add(amount);
-                balance = balance.add(amount);
+                int opcode = opcode(signedTransaction);
+                transactionPreSource = balance;
+                transactionPreDestination = destinationBalance;
+                if (finalizedFailure) {
+                    // The deterministic node seam retains the failed transaction identity
+                    // without applying token-state effects.
+                } else if (opcode == 14) {
+                    supply = supply.add(amount);
+                    balance = balance.add(amount);
+                } else if (opcode == 12) {
+                    balance = balance.subtract(amount);
+                    destinationBalance = destinationBalance.add(amount);
+                } else {
+                    throw new IOException("unexpected classic SPL instruction");
+                }
                 result = quote(Transaction.getBase58Id(signedTransaction));
             } else if (request.contains("getSignatureStatuses")) {
                 result = "{\"context\":{\"apiVersion\":\"4.1.2\",\"slot\":201},"
                         + "\"value\":[{\"slot\":200,\"confirmations\":null,"
-                        + "\"err\":null,\"confirmationStatus\":\"finalized\"}]}";
+                        + "\"err\":" + (finalizedFailure
+                                ? "{\"InstructionError\":[0,{\"Custom\":1}]}"
+                                : "null")
+                        + ",\"confirmationStatus\":\"finalized\"}]}";
             } else if (request.contains("getTransaction")) {
                 result = signedTransaction == null ? "null" : transaction();
             } else if (request.contains("getAccountInfo")) {
@@ -737,30 +1446,71 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                 bytes = new byte[Mint.BYTES];
                 data.write(bytes, 0);
                 space = Mint.BYTES;
-            } else if (request.contains(ata.toBase58()) && signedTransaction != null) {
+            } else if (request.contains(sourceAta.toBase58())
+                    && accountFault == AccountFault.SOURCE_MISSING) {
+                return missingAccount();
+            } else if (request.contains(sourceAta.toBase58())
+                    && (balance.signum() > 0 || signedTransaction != null)) {
+                PublicKey accountMint = accountFault == AccountFault.SOURCE_WRONG_MINT
+                        ? PublicKey.createPubKey(fill((byte) 8)) : mint;
+                PublicKey accountOwner = accountFault == AccountFault.SOURCE_WRONG_OWNER
+                        ? PublicKey.createPubKey(fill((byte) 6)) : sourceOwner;
+                AccountState state = accountFault == AccountFault.SOURCE_FROZEN
+                        ? AccountState.Frozen : AccountState.Initialized;
                 TokenAccount data = new TokenAccount(
-                        ata, mint, DESTINATION_OWNER, balance.longValue(), 0, null,
-                        AccountState.Initialized, 0, 0L, 0L, 0, null);
+                        sourceAta, accountMint, accountOwner, balance.longValue(), 0, null,
+                        state, 0, 0L, 0L, 0, null);
+                bytes = new byte[TokenAccount.BYTES];
+                data.write(bytes, 0);
+                space = TokenAccount.BYTES;
+            } else if (request.contains(destinationAta.toBase58())
+                    && (destinationBalance.signum() > 0
+                        || accountFault.name().startsWith("DESTINATION_"))) {
+                PublicKey accountMint = accountFault == AccountFault.DESTINATION_WRONG_MINT
+                        ? PublicKey.createPubKey(fill((byte) 8)) : mint;
+                PublicKey accountOwner = accountFault == AccountFault.DESTINATION_WRONG_OWNER
+                        ? PublicKey.createPubKey(fill((byte) 6)) : destinationOwner;
+                AccountState state = accountFault == AccountFault.DESTINATION_FROZEN
+                        ? AccountState.Frozen : AccountState.Initialized;
+                TokenAccount data = new TokenAccount(
+                        destinationAta, accountMint, accountOwner,
+                        destinationBalance.longValue(), 0, null,
+                        state, 0, 0L, 0L, 0, null);
                 bytes = new byte[TokenAccount.BYTES];
                 data.write(bytes, 0);
                 space = TokenAccount.BYTES;
             } else {
-                return "{\"context\":{\"apiVersion\":\"4.1.2\",\"slot\":100},"
-                        + "\"value\":null}";
+                return missingAccount();
             }
+            String ownerProgram = (accountFault == AccountFault.SOURCE_WRONG_PROGRAM
+                            && request.contains(sourceAta.toBase58()))
+                    || (accountFault == AccountFault.DESTINATION_WRONG_PROGRAM
+                            && request.contains(destinationAta.toBase58()))
+                    ? SolanaMintTransactionCodec.SYSTEM_PROGRAM.toBase58()
+                    : SolanaMintTransactionCodec.TOKEN_PROGRAM.toBase58();
             return "{\"context\":{\"apiVersion\":\"4.1.2\",\"slot\":200},"
                     + "\"value\":{\"data\":[\""
                     + Base64.getEncoder().encodeToString(bytes)
                     + "\",\"base64\"],\"executable\":false,\"lamports\":1,"
-                    + "\"owner\":\"" + SolanaMintTransactionCodec.TOKEN_PROGRAM.toBase58()
+                    + "\"owner\":\"" + ownerProgram
                     + "\",\"rentEpoch\":0,\"space\":" + space + "}}";
         }
 
+        private static String missingAccount() {
+            return "{\"context\":{\"apiVersion\":\"4.1.2\",\"slot\":100},"
+                    + "\"value\":null}";
+        }
+
         private String transaction() {
+            String tokenBalances = opcode(signedTransaction) == 12
+                    ? transferTokenBalances() : "\"preTokenBalances\":[],"
+                            + "\"postTokenBalances\":[],";
             return "{\"slot\":200,\"blockTime\":1784472000,"
-                    + "\"meta\":{\"err\":null,\"fee\":5000,"
+                    + "\"meta\":{\"err\":" + (finalizedFailure
+                            ? "{\"InstructionError\":[0,{\"Custom\":1}]}"
+                    : "null") + ",\"fee\":5000,"
                     + "\"preBalances\":[1],\"postBalances\":[1],"
-                    + "\"preTokenBalances\":[],\"postTokenBalances\":[],"
+                    + tokenBalances
                     + "\"innerInstructions\":[],\"logMessages\":[],"
                     + "\"rewards\":[],\"loadedAddresses\":{\"readonly\":[],"
                     + "\"writable\":[]},\"computeUnitsConsumed\":100},"
@@ -769,13 +1519,57 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                     + "\",\"base64\"],\"version\":\"legacy\"}";
         }
 
+        private String transferTokenBalances() {
+            var accounts = software.sava.core.tx.TransactionSkeleton
+                    .deserializeSkeleton(signedTransaction).parseAccounts();
+            int sourceIndex = accountIndex(accounts, sourceAta);
+            int destinationIndex = accountIndex(accounts, destinationAta);
+            BigInteger preSource = transactionBalanceMismatch
+                    ? transactionPreSource.subtract(BigInteger.ONE)
+                    : transactionPreSource;
+            return "\"preTokenBalances\":["
+                    + tokenBalance(sourceIndex, sourceOwner, preSource) + "],"
+                    + "\"postTokenBalances\":["
+                    + tokenBalance(sourceIndex, sourceOwner, balance) + ","
+                    + tokenBalance(destinationIndex, destinationOwner,
+                            destinationBalance) + "],";
+        }
+
+        private String tokenBalance(int accountIndex, PublicKey owner, BigInteger amount) {
+            return "{\"accountIndex\":" + accountIndex
+                    + ",\"mint\":\"" + mint.toBase58()
+                    + "\",\"owner\":\"" + owner.toBase58()
+                    + "\",\"programId\":\""
+                    + SolanaMintTransactionCodec.TOKEN_PROGRAM.toBase58()
+                    + "\",\"uiTokenAmount\":{\"amount\":\"" + amount
+                    + "\",\"decimals\":2,\"uiAmount\":null,"
+                    + "\"uiAmountString\":\"" + amount + "\"}}";
+        }
+
+        private static int accountIndex(
+                software.sava.core.accounts.meta.AccountMeta[] accounts,
+                PublicKey address) {
+            for (int index = 0; index < accounts.length; index++) {
+                if (accounts[index].publicKey().equals(address)) return index;
+            }
+            throw new IllegalStateException("transaction account was not found");
+        }
+
         private static BigInteger amount(byte[] transaction) {
             var skeleton = software.sava.core.tx.TransactionSkeleton
                     .deserializeSkeleton(transaction);
-            byte[] data = skeleton.parseLegacyInstructions()[1].copyData();
+            var instructions = skeleton.parseLegacyInstructions();
+            byte[] data = instructions[instructions.length - 1].copyData();
             byte[] littleEndian = Arrays.copyOfRange(data, 1, 9);
             reverse(littleEndian);
             return new BigInteger(1, littleEndian);
+        }
+
+        private static int opcode(byte[] transaction) {
+            var instructions = software.sava.core.tx.TransactionSkeleton
+                    .deserializeSkeleton(transaction).parseLegacyInstructions();
+            return Byte.toUnsignedInt(
+                    instructions[instructions.length - 1].copyData()[0]);
         }
 
         private static String quote(String value) {
@@ -797,5 +1591,18 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
         }
 
         @Override public void close() { server.stop(0); }
+
+        enum AccountFault {
+            NONE,
+            SOURCE_MISSING,
+            SOURCE_WRONG_OWNER,
+            SOURCE_WRONG_MINT,
+            SOURCE_WRONG_PROGRAM,
+            SOURCE_FROZEN,
+            DESTINATION_WRONG_OWNER,
+            DESTINATION_WRONG_MINT,
+            DESTINATION_WRONG_PROGRAM,
+            DESTINATION_FROZEN
+        }
     }
 }

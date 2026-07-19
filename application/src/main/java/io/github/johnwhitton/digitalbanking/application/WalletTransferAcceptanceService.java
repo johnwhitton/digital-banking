@@ -31,6 +31,8 @@ public final class WalletTransferAcceptanceService {
 
     private static final int COMMAND_VERSION = 1;
     private static final Pattern EVM_ADDRESS = Pattern.compile("0x[0-9a-f]{40}");
+    private static final Pattern SOLANA_ADDRESS =
+            Pattern.compile("[1-9A-HJ-NP-Za-km-z]{32,44}");
 
     private final WalletTransferRepository transfers;
     private final AssetUnitCatalog assets;
@@ -79,8 +81,14 @@ public final class WalletTransferAcceptanceService {
             WalletIdentityRegistry.WalletIdentity source = wallets.resolve(request.source());
             WalletIdentityRegistry.WalletIdentity destination =
                     wallets.resolve(request.destination());
-            validateResolution(request.source(), source);
-            validateResolution(request.destination(), destination);
+            validateUserTransferResolution(request.source(), source);
+            validateUserTransferResolution(request.destination(), destination);
+            if (source.network() != destination.network()
+                    || !isAddressForNetwork(
+                            policy.contractAddress(), source.network())) {
+                throw new IllegalArgumentException(
+                        "wallets and configured asset must use one supported network");
+            }
             if (source.reference().equals(destination.reference())
                     || source.normalizedAddress().equals(destination.normalizedAddress())) {
                 throw new IllegalArgumentException("source and destination wallets must differ");
@@ -94,7 +102,7 @@ public final class WalletTransferAcceptanceService {
                     WalletTransferOperation.WalletSnapshot.from(source, request.source()),
                     WalletTransferOperation.WalletSnapshot.from(
                             destination, request.destination()),
-                    SettlementNetwork.ETHEREUM, policy.contractAddress(),
+                    source.network(), policy.contractAddress(),
                     policy.contractVersion(), policy.finalityPolicyVersion(),
                     operationIds.nextAttemptId(), WalletTransferOperation.Status.ACCEPTED,
                     0, acceptedAt, acceptedAt,
@@ -143,7 +151,7 @@ public final class WalletTransferAcceptanceService {
                     wallets.resolve(sourceReference);
             WalletIdentityRegistry.WalletIdentity destination =
                     wallets.resolve(adminRedemptionReference);
-            validateResolution(sourceReference, source);
+            validateEthereumUserResolution(sourceReference, source);
             validateRedemptionDestination(
                     adminRedemptionReference, destination);
             if (source.normalizedAddress().equals(destination.normalizedAddress())) {
@@ -200,7 +208,7 @@ public final class WalletTransferAcceptanceService {
             WalletIdentityRegistry.WalletIdentity source = wallets.resolve(request.source());
             WalletIdentityRegistry.WalletIdentity destination =
                     wallets.resolve(request.destination());
-            validateResolution(request.source(), source);
+            validateEthereumUserResolution(request.source(), source);
             validateRedemptionDestination(request.destination(), destination);
             if (source.normalizedAddress().equals(destination.normalizedAddress())) {
                 throw new IllegalArgumentException(
@@ -230,19 +238,36 @@ public final class WalletTransferAcceptanceService {
         }
     }
 
-    private static void validateResolution(
+    private static void validateUserTransferResolution(
             WalletReference requested, WalletIdentityRegistry.WalletIdentity resolved) {
         if (!resolved.reference().equals(requested)
                 || resolved.ownerCategory()
                         != WalletIdentityRegistry.OwnerCategory.USER_CUSTODY
-                || resolved.network() != SettlementNetwork.ETHEREUM
                 || resolved.status() != WalletIdentityRegistry.Status.ENABLED
                 || !resolved.allowedPurposes().contains(
                         WalletIdentityRegistry.Purpose.USER_CUSTODY_TRANSFER)
-                || !EVM_ADDRESS.matcher(resolved.normalizedAddress()).matches()) {
+                || !isAddressForNetwork(
+                        resolved.normalizedAddress(), resolved.network())) {
             throw new IllegalArgumentException(
                     "wallet registry returned an unauthorized transfer identity");
         }
+    }
+
+    private static void validateEthereumUserResolution(
+            WalletReference requested, WalletIdentityRegistry.WalletIdentity resolved) {
+        validateUserTransferResolution(requested, resolved);
+        if (resolved.network() != SettlementNetwork.ETHEREUM) {
+            throw new IllegalArgumentException(
+                    "redemption custody requires an Ethereum wallet");
+        }
+    }
+
+    private static boolean isAddressForNetwork(
+            String address, SettlementNetwork network) {
+        return switch (network) {
+            case ETHEREUM -> EVM_ADDRESS.matcher(address).matches();
+            case SOLANA -> SOLANA_ADDRESS.matcher(address).matches();
+        };
     }
 
     private static void validateRedemptionDestination(
