@@ -24,6 +24,14 @@ grep -F '127.0.0.1' "$SCRIPT_DIR/lib.sh" >/dev/null
 grep -F 'demo_compose up -d --wait postgres' "$SCRIPT_DIR/bootstrap.sh" >/dev/null
 grep -F ".state == \"healthy\"" "$SCRIPT_DIR/wait-ready.sh" >/dev/null
 grep -F ".state == \"healthy\"" "$SCRIPT_DIR/demo-restart-recovery.sh" >/dev/null
+for readiness_assignment in health status ports; do
+    if grep -F "&& $readiness_assignment=true" "$SCRIPT_DIR/wait-ready.sh" >/dev/null; then
+        printf '%s\n' 'wait-ready probe can terminate early under set -e' >&2
+        exit 1
+    fi
+done
+grep -F '(demo_status_json >/dev/null 2>&1)' "$SCRIPT_DIR/wait-ready.sh" >/dev/null \
+    || { printf '%s\n' 'status readiness probe is not isolated' >&2; exit 1; }
 
 if LOCAL_SOLANA_DEMO_API_URL=https://example.invalid \
         sh -c '. "$1"' "$SCRIPT_DIR/source-probe.sh" "$SCRIPT_DIR/lib.sh" \

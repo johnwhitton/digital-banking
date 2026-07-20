@@ -37,6 +37,14 @@ class UsdzelleOpenApiContractTest {
         assertTrue(map(paths.get("/v1/usdzelle/redemptions")).containsKey("post"));
         assertTrue(map(paths.get("/v1/usdzelle/redemptions/{workflowId}"))
                 .containsKey("get"));
+        assertOperationResponses(paths, "/v1/usdzelle/acquisitions", "post",
+                Set.of("202", "400", "401", "403", "409", "415", "422", "500", "503"));
+        assertOperationResponses(paths, "/v1/usdzelle/redemptions", "post",
+                Set.of("202", "400", "401", "403", "409", "415", "422", "500", "503"));
+        assertOperationResponses(paths, "/v1/usdzelle/acquisitions/{workflowId}", "get",
+                Set.of("200", "400", "401", "403", "404", "500", "503"));
+        assertOperationResponses(paths, "/v1/usdzelle/redemptions/{workflowId}", "get",
+                Set.of("200", "400", "401", "403", "404", "500", "503"));
 
         Map<String, Object> schemas = map(map(document.get("components")).get("schemas"));
         assertEquals(components(UsdzelleWorkflowController.AcceptanceRequest.class),
@@ -57,6 +65,15 @@ class UsdzelleOpenApiContractTest {
         }
         assertFalse(text.contains("mainnet"));
         assertFalse(text.contains("https://"));
+    }
+
+    private static void assertOperationResponses(
+            Map<String, Object> paths,
+            String path,
+            String method,
+            Set<String> expected) {
+        Map<String, Object> operation = map(map(paths.get(path)).get(method));
+        assertEquals(expected, map(operation.get("responses")).keySet());
     }
 
     private static Set<String> components(Class<?> type) {

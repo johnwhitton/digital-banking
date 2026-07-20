@@ -23,16 +23,22 @@ while :; do
     supply=$($spl --url "$DEMO_RPC_URL" supply "$mint_address" 2>/dev/null || true)
     case "$supply" in ''|*[!0-9]*) ;; *) mint=true ;; esac
     health=false
-    curl --fail --silent --max-time 3 "$DEMO_API_URL/actuator/health/readiness" \
-        >/dev/null 2>&1 && health=true
+    if curl --fail --silent --max-time 3 "$DEMO_API_URL/actuator/health/readiness" \
+            >/dev/null 2>&1; then
+        health=true
+    fi
     status=false
-    [ "$health" = true ] && demo_status_json >/dev/null 2>&1 && status=true
+    if [ "$health" = true ] && (demo_status_json >/dev/null 2>&1); then
+        status=true
+    fi
     ports=false
     binding=$(docker inspect "$DEMO_PROJECT-postgres-1" \
         --format '{{json .HostConfig.PortBindings}}' 2>/dev/null || true)
-    printf '%s' "$binding" | jq -e --arg port "$SOLANA_DEMO_POSTGRES_PORT" \
-        '.["5432/tcp"] == [{"HostIp":"127.0.0.1","HostPort":$port}]' \
-        >/dev/null 2>&1 && ports=true
+    if printf '%s' "$binding" | jq -e --arg port "$SOLANA_DEMO_POSTGRES_PORT" \
+            '.["5432/tcp"] == [{"HostIp":"127.0.0.1","HostPort":$port}]' \
+            >/dev/null 2>&1; then
+        ports=true
+    fi
     if [ "$postgres" = postgres ] && [ "$validator" = true ] \
             && [ "$cluster" = true ] && [ "$mint" = true ] \
             && [ "$health" = true ] && [ "$status" = true ] \
