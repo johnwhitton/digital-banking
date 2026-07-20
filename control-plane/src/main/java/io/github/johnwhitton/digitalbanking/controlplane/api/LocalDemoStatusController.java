@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /** Local-only, operator-authorized, read-only evidence for deterministic demo assertions. */
 @RestController
-@Profile("local-demo-environment & local-demo & local-ethereum & !local-signer")
+@Profile("local-demo-environment & local-demo & (local-ethereum | local-solana) & !local-signer")
 @RequestMapping("/local/v1/demo")
 public final class LocalDemoStatusController {
 

@@ -4,31 +4,31 @@ import java.util.Map;
 import java.math.BigInteger;
 import java.util.stream.Collectors;
 
-import io.github.johnwhitton.digitalbanking.ethereum.web3j.Web3jLocalDemoStatusReader;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresLocalDemoStatusReader;
 
 /** Combines fixed local database and chain evidence without exposing either provider model. */
 public final class LocalDemoStatusService {
 
     private final PostgresLocalDemoStatusReader database;
-    private final Web3jLocalDemoStatusReader chain;
+    private final LocalDemoChainStatusReader chain;
 
     public LocalDemoStatusService(
             PostgresLocalDemoStatusReader database,
-            Web3jLocalDemoStatusReader chain) {
+            LocalDemoChainStatusReader chain) {
         this.database = java.util.Objects.requireNonNull(database, "database");
         this.chain = java.util.Objects.requireNonNull(chain, "chain");
     }
 
     Status snapshot() {
         PostgresLocalDemoStatusReader.Snapshot durable = database.snapshot();
-        Web3jLocalDemoStatusReader.Snapshot observed = chain.snapshot();
-        if (!BigInteger.valueOf(31_337).equals(observed.chainId())) {
-            throw new IllegalStateException("local demo chain identity is invalid");
-        }
+        LocalDemoChainStatusReader.Snapshot observed = chain.snapshot();
+        boolean ethereum = "LOCAL_ANVIL".equals(observed.network());
         return new Status(
-                "LOCAL_ANVIL", observed.chainId().toString(),
-                observed.blockNumber().toString(), observed.contractAddress(),
+                observed.network(), observed.networkIdentity(),
+                observed.observationHeight(), observed.assetReference(),
+                ethereum ? observed.networkIdentity() : null,
+                ethereum ? observed.observationHeight() : null,
+                ethereum ? observed.assetReference() : null,
                 strings(durable.bankBalancesCents()),
                 strings(durable.ledgerBalancesCents()),
                 strings(durable.operationalPositionsCents()),
@@ -51,6 +51,9 @@ public final class LocalDemoStatusService {
 
     public record Status(
             String network,
+            String networkIdentity,
+            String observationHeight,
+            String assetReference,
             String chainId,
             String blockNumber,
             String contractAddress,

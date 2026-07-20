@@ -58,35 +58,55 @@ public final class PostgresLocalDemoStatusReader {
                        AND operation_status = 'SUCCEEDED') AS withdrawals,
                     (SELECT count(DISTINCT operation.operation_id)
                      FROM token_operation operation
-                     JOIN ethereum_mint_observation observation
-                       ON observation.operation_id = operation.operation_id
+                     JOIN (
+                         SELECT operation_id FROM ethereum_mint_observation
+                         WHERE observation_status = 'CONFIRMED'
+                         UNION
+                         SELECT operation_id FROM solana_mint_observation
+                         WHERE effect_kind = 'MINT'
+                           AND observation_status = 'CONFIRMED'
+                     ) observation ON observation.operation_id = operation.operation_id
                      WHERE operation.operation_kind = 'MINT'
-                       AND operation.lifecycle_state = 'COMPLETED'
-                       AND observation.observation_status = 'CONFIRMED') AS mints,
+                       AND operation.lifecycle_state = 'COMPLETED') AS mints,
                     (SELECT count(DISTINCT operation.operation_id)
                      FROM wallet_transfer_operation operation
-                     JOIN ethereum_wallet_transfer_observation observation
-                       ON observation.operation_id = operation.operation_id
+                     JOIN (
+                         SELECT operation_id FROM ethereum_wallet_transfer_observation
+                         WHERE observation_status = 'CONFIRMED'
+                         UNION
+                         SELECT operation_id FROM solana_mint_observation
+                         WHERE effect_kind = 'TRANSFER'
+                           AND observation_status = 'CONFIRMED'
+                     ) observation ON observation.operation_id = operation.operation_id
                      WHERE operation.transfer_purpose = 'USER_TRANSFER'
-                       AND operation.operation_status = 'COMPLETED'
-                       AND observation.observation_status = 'CONFIRMED') AS user_transfers,
+                       AND operation.operation_status = 'COMPLETED') AS user_transfers,
                     (SELECT count(DISTINCT operation.operation_id)
                      FROM wallet_transfer_operation operation
-                     JOIN ethereum_wallet_transfer_observation observation
-                       ON observation.operation_id = operation.operation_id
+                     JOIN (
+                         SELECT operation_id FROM ethereum_wallet_transfer_observation
+                         WHERE observation_status = 'CONFIRMED'
+                         UNION
+                         SELECT operation_id FROM solana_mint_observation
+                         WHERE effect_kind = 'TRANSFER'
+                           AND observation_status = 'CONFIRMED'
+                     ) observation ON observation.operation_id = operation.operation_id
                      WHERE operation.transfer_purpose = 'REDEMPTION_CUSTODY'
-                       AND operation.operation_status = 'COMPLETED'
-                       AND observation.observation_status = 'CONFIRMED') AS custody_transfers,
+                       AND operation.operation_status = 'COMPLETED') AS custody_transfers,
                     (SELECT count(*) FROM synthetic_bank_operation
                      WHERE operation_kind = 'DEPOSIT'
                        AND operation_status = 'SUCCEEDED') AS payouts,
                     (SELECT count(DISTINCT operation.operation_id)
                      FROM token_operation operation
-                     JOIN ethereum_burn_observation observation
-                       ON observation.operation_id = operation.operation_id
+                     JOIN (
+                         SELECT operation_id FROM ethereum_burn_observation
+                         WHERE observation_status = 'CONFIRMED'
+                         UNION
+                         SELECT operation_id FROM solana_mint_observation
+                         WHERE effect_kind = 'BURN'
+                           AND observation_status = 'CONFIRMED'
+                     ) observation ON observation.operation_id = operation.operation_id
                      WHERE operation.operation_kind = 'BURN'
-                       AND operation.lifecycle_state = 'COMPLETED'
-                       AND observation.observation_status = 'CONFIRMED') AS burns
+                       AND operation.lifecycle_state = 'COMPLETED') AS burns
                 """).query((row, rowNumber) -> new EffectCounts(
                         row.getLong("withdrawals"), row.getLong("mints"),
                         row.getLong("user_transfers"), row.getLong("custody_transfers"),

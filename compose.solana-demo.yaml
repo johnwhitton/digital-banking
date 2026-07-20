@@ -1,0 +1,23 @@
+name: digital-banking-phase7f-solana
+
+services:
+  postgres:
+    image: postgres:17.10-alpine3.23@sha256:8189a1f6e40904781fc9e2612687877791d21679866db58b1de996b31fc312e4
+    pull_policy: never
+    environment:
+      POSTGRES_DB: digital_banking_demo
+      POSTGRES_USER: digital_banking_demo
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ${SOLANA_DEMO_RUNTIME_DIR}/postgres-password:/run/secrets/postgres-password:ro
+    ports:
+      - "127.0.0.1:${SOLANA_DEMO_POSTGRES_PORT:-15432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U digital_banking_demo -d digital_banking_demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres-data:

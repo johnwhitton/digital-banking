@@ -2,10 +2,11 @@
 
 set -eu
 
-SOLANA_SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+SOLANA_SCRIPT_DIR=$(CDPATH= cd -- "${SOLANA_SCRIPT_DIR_OVERRIDE:-$(dirname -- "$0")}" && pwd -P)
 SOLANA_ROOT=$(CDPATH= cd -- "$SOLANA_SCRIPT_DIR/../.." && pwd -P)
 SOLANA_TOOLS_DIR=$SOLANA_ROOT/.solana-tools
-SOLANA_RUNTIME_DIR=$SOLANA_ROOT/.solana-runtime
+SOLANA_RUNTIME_DIR=${LOCAL_SOLANA_RUNTIME_ROOT:-$SOLANA_ROOT/.solana-runtime}
+SOLANA_RESET_LEDGER=${LOCAL_SOLANA_RESET_LEDGER:-true}
 SOLANA_RPC_URL=http://127.0.0.1:8899
 SOLANA_AGAVE_VERSION=4.1.2
 SOLANA_SPL_TOKEN_VERSION=5.6.1
@@ -29,6 +30,14 @@ for solana_scoped_path in "$SOLANA_TOOLS_DIR" "$SOLANA_RUNTIME_DIR"; do
     esac
 done
 unset solana_scoped_path
+case "$SOLANA_RUNTIME_DIR" in
+    "$SOLANA_ROOT"/.solana-runtime|"$SOLANA_ROOT"/.demo-runtime/solana/validator) ;;
+    *) printf '%s\n' "Refusing unapproved Solana runtime root: $SOLANA_RUNTIME_DIR" >&2; exit 1 ;;
+esac
+case "$SOLANA_RESET_LEDGER" in
+    true|false) ;;
+    *) printf '%s\n' "LOCAL_SOLANA_RESET_LEDGER must be true or false" >&2; exit 1 ;;
+esac
 
 solana_die() {
     printf 'Phase 7A Solana: %s\n' "$1" >&2
@@ -145,7 +154,9 @@ solana_validator_pid_matches() {
     solana_validator_pid_alive || return 1
     validator_pid=$(sed -n '1p' "$SOLANA_PID_FILE")
     validator_command=$(ps -ww -p "$validator_pid" -o command= 2>/dev/null || true)
-    expected_command="$SOLANA_TEST_VALIDATOR --ledger $SOLANA_RUNTIME_DIR/ledger --reset --bind-address 127.0.0.1 --rpc-port 8899 --faucet-port 9900 --quiet"
+    reset_argument=
+    [ "$SOLANA_RESET_LEDGER" = false ] || reset_argument=' --reset'
+    expected_command="$SOLANA_TEST_VALIDATOR --ledger $SOLANA_RUNTIME_DIR/ledger$reset_argument --bind-address 127.0.0.1 --rpc-port 8899 --faucet-port 9900 --quiet"
     [ "$validator_command" = "$expected_command" ]
 }
 
@@ -209,19 +220,31 @@ solana_start_validator() {
         solana_require_safe_path "$validator_path"
     done
     umask 077
-    rm -rf -- "$SOLANA_RUNTIME_DIR/ledger"
+    if [ "$SOLANA_RESET_LEDGER" = true ]; then
+        rm -rf -- "$SOLANA_RUNTIME_DIR/ledger"
+    fi
     rm -f -- "$SOLANA_RUNTIME_DIR/validator.log" "$SOLANA_PID_FILE" \
         "$SOLANA_IDENTITY_FILE" "$SOLANA_STARTING_FILE"
     : > "$SOLANA_RUNTIME_DIR/validator.log"
     chmod 600 "$SOLANA_RUNTIME_DIR/validator.log"
-    nohup "$SOLANA_TEST_VALIDATOR" \
-        --ledger "$SOLANA_RUNTIME_DIR/ledger" \
-        --reset \
-        --bind-address 127.0.0.1 \
-        --rpc-port 8899 \
-        --faucet-port 9900 \
-        --quiet \
-        >"$SOLANA_RUNTIME_DIR/validator.log" 2>&1 &
+    if [ "$SOLANA_RESET_LEDGER" = true ]; then
+        nohup "$SOLANA_TEST_VALIDATOR" \
+            --ledger "$SOLANA_RUNTIME_DIR/ledger" \
+            --reset \
+            --bind-address 127.0.0.1 \
+            --rpc-port 8899 \
+            --faucet-port 9900 \
+            --quiet \
+            >"$SOLANA_RUNTIME_DIR/validator.log" 2>&1 &
+    else
+        nohup "$SOLANA_TEST_VALIDATOR" \
+            --ledger "$SOLANA_RUNTIME_DIR/ledger" \
+            --bind-address 127.0.0.1 \
+            --rpc-port 8899 \
+            --faucet-port 9900 \
+            --quiet \
+            >"$SOLANA_RUNTIME_DIR/validator.log" 2>&1 &
+    fi
     printf '%s\n' "$!" > "$SOLANA_PID_FILE"
     printf '%s\n' "$!" > "$SOLANA_STARTING_FILE"
     chmod 600 "$SOLANA_PID_FILE"

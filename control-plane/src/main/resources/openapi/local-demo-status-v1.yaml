@@ -3,10 +3,12 @@ info:
   title: Local Digital Banking Demo Status API
   version: 1.0.0
   description: >-
-    Read-only, local-profile-only synthetic evidence for the Phase 6D disposable
-    demonstration environment. This is not a production operations or accounting API.
+    Read-only, local-profile-only synthetic evidence for the disposable Ethereum
+    and Solana demonstration environments. This is not a production operations
+    or accounting API.
 servers:
   - url: http://127.0.0.1:8080
+  - url: http://127.0.0.1:18080
 paths:
   /local/v1/demo/status:
     get:
@@ -36,19 +38,25 @@ components:
       additionalProperties: false
       required:
         - network
-        - chainId
-        - blockNumber
-        - contractAddress
+        - networkIdentity
+        - observationHeight
+        - assetReference
         - bankBalancesCents
         - ledgerBalancesCents
         - operationalPositionsCents
         - tokenBalancesAtomic
         - confirmedEffects
       properties:
-        network: {type: string, const: LOCAL_ANVIL}
-        chainId: {type: string, const: '31337'}
-        blockNumber: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
-        contractAddress: {type: string, pattern: '^0x[0-9a-f]{40}$'}
+        network: {type: string, enum: [LOCAL_ANVIL, LOCAL_SOLANA]}
+        networkIdentity: {type: string, minLength: 1, maxLength: 128}
+        observationHeight: {type: string, pattern: '^(0|[1-9][0-9]*)$'}
+        assetReference: {type: string, minLength: 32, maxLength: 64}
+        chainId:
+          oneOf:
+            - {type: string, const: '31337'}
+            - {type: 'null'}
+        blockNumber: {type: [string, 'null'], pattern: '^(0|[1-9][0-9]*)$'}
+        contractAddress: {type: [string, 'null'], pattern: '^0x[0-9a-f]{40}$'}
         bankBalancesCents: {$ref: '#/components/schemas/ExactAmounts'}
         ledgerBalancesCents: {$ref: '#/components/schemas/ExactAmounts'}
         operationalPositionsCents: {$ref: '#/components/schemas/ExactAmounts'}

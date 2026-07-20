@@ -64,10 +64,10 @@ Foundation intentionally does not create mint/burn endpoints, domain lifecycle b
 | 7C. Solana wallet transfer parity      | `verified`    | One internal exact USER_1-to-USER_2 classic-SPL transfer reuses durable ordered signing, submission fencing, inquiry, restart, and finalized independent source/destination/supply evidence. |
 | 7D. Solana redemption and burn parity  | `verified` | One exact USER_1-to-ADMIN redemption-custody transfer gates one separately signed ADMIN burn through V13 one-time finalized evidence and safe same-lineage expiry replacement. |
 | 7E. Solana product orchestration       | `verified` | The existing user-held and settlement-only parents route through the verified Solana primitives under `local-demo,local-solana`; the consolidated PostgreSQL/Agave gate and 538-test offline reactor are green. |
-| 7F. Solana demonstrations              | `planned`     | Both demos run through native Solana while preserving chain-specific evidence. |
+| 7F. Solana demonstrations              | `implemented` | Host-native Agave/Java plus cached digest-pinned PostgreSQL package both existing product paths with exact API assertions, replay, restart recovery, and scoped teardown; final stable-diff reviews/reactor closeout remain. |
 | 8. Final reference review              | `planned`     | Architecture, code, security, recovery, API/demo, and share-readiness review. |
 
-The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil effects, Phase 6A's exact-USD synthetic bank/accounting primitives, Phase 6B's user-held parents, Phase 6C's registered settlement-only companion, Phase 6D's reproducible Ethereum environment, Phase 7A's native semantic gate, Phase 7B-7D's local Solana primitives, and Phase 7E's Solana realization of both existing product parents. `local-demo` alone initializes version-fenced synthetic fixtures and the local mock-bank/accounting boundary. Combined with `local-ethereum` it retains the existing Ethereum handlers and product routes; combined instead with mutually exclusive `local-solana` it routes those same `/v1/usdzelle` and `/v1/transfers` parents through the isolated Sava adapter and configured Ed25519 signer. The server—not callers—resolves immutable wallet alias/address/network/purpose/version context. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. No dynamic wallet management, real bank/reserve, arbitrary settlement routing, automatic compensation, packaged Solana demonstration, or production custody exists. Each planned phase below requires its own separately authorized plan.
+The current executable boundary includes Phase 3C transfer acceptance, Phase 4 signing, Phase 5A-5D's bounded local-Anvil effects, Phase 6A's exact-USD synthetic bank/accounting primitives, Phase 6B's user-held parents, Phase 6C's registered settlement-only companion, Phase 6D's reproducible Ethereum environment, Phase 7A's native semantic gate, Phase 7B-7D's local Solana primitives, Phase 7E's Solana realization of both existing product parents, and Phase 7F's reproducible local Solana packaging. `local-demo` alone initializes version-fenced synthetic fixtures and the local mock-bank/accounting boundary. Combined with `local-ethereum` it retains the existing Ethereum handlers and product routes; combined instead with mutually exclusive `local-solana` it routes those same `/v1/usdzelle` and `/v1/transfers` parents through the isolated Sava adapter and configured Ed25519 signer. The server—not callers—resolves immutable wallet alias/address/network/purpose/version context. The default runtime has no identity provider, signer, chain client, synthetic-bank fixture/controller, accounting service, workflow resource, or enabled worker. No dynamic wallet management, real bank/reserve, arbitrary settlement routing, automatic compensation, or production custody exists. Each planned phase below requires its own separately authorized plan.
 
 ## Phase 1: Foundation
 
@@ -359,17 +359,17 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 **Non-goals:** operator demo packaging, simultaneous cross-chain value movement, bridging, CCTP, public clusters, mainnet/testnet configuration, or one genericized finality model.
 
-### Phase 7F: chain-selectable Solana demonstrations
+### Phase 7F: reproducible local Solana demonstrations
 
-**Status:** `planned`
+**Status:** `verified`
 
 **Dependency:** Phase 7E.
 
-**Plan:** not created until separately authorized.
+**Plan:** completed in [`docs/plans/completed/PHASE_7F_REPRODUCIBLE_LOCAL_SOLANA_DEMONSTRATIONS.md`](plans/completed/PHASE_7F_REPRODUCIBLE_LOCAL_SOLANA_DEMONSTRATIONS.md).
 
-**Deliverables:** native local-validator orchestration, fixtures, cleanup, and evidence that run both accepted product demonstrations through the Phase 7E Solana realization.
+**Deliverables:** one PostgreSQL-only Compose project using the approved cached immutable image; host-native Agave 4.1.2 and packaged Java 25.0.2; mode-restricted ignored credentials, keys, cluster/mint metadata, logs, and evidence; thin prerequisite/bootstrap/start/readiness/status/stop/reset commands; API-driven Demo A user-held and Demo B settlement-only commands; retained-state restart recovery; and one chain-neutral local-only status projection backed by exact finalized classic-SPL balances/supply and chain-discriminated confirmed-effect counts.
 
-**Exit gate:** Demo A and Demo B each run on native local Solana with the same economic before/after states and recovery guarantees as Ethereum while retaining Solana-specific evidence.
+**Exit gate:** all gates are green. Demo A completed exact acquisition, held `10000` atomic units, replayed without a duplicate, paid out before burn, reconciled, and ended at zero supply/custody. After explicit reset, Demo B completed the exact six-effect registered route, replayed without a duplicate, moved bank cents `10000 -> 0` and `0 -> 10000`, reconciled, and ended at zero supply/balances. A separate clean restart proof retained PostgreSQL/private Agave, resumed one durable accepted acquisition after Java restart, and produced one withdrawal/mint. The Ponytail review found no removable complexity. The independent review's two Important local-boundary findings were corrected test-first by rejecting non-loopback status URLs before token access and restricting native runtime roots to the two approved ignored locations. The single final offline reactor discovered 538 tests, executed 536 successfully, and skipped only the separately gated Phase 7B and Phase 7E native-validator tests; Enforcer and the domain/application dependency-direction checks passed.
 
 **Non-goals:** simultaneous cross-chain value movement, bridging, CCTP, public clusters, mainnet/testnet configuration, or one genericized finality model.
 
@@ -486,6 +486,15 @@ Action Request 07 corrects the Phase 3A API boundary without adding capability:
 The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md`](plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md). This correction adds no endpoint, dependency, migration, runtime configuration, worker, external effect, signer, chain adapter, or production-readiness claim.
 
 ## Latest bounded vertical slice
+
+Action Request 27 implements **Phase 7F Reproducible Local Solana Demonstrations**:
+
+- the existing Phase 6B/6C product parents and Phase 7E Solana realization remain unchanged while thin scripts package host-native Agave 4.1.2 and Java 25.0.2 with the cached digest-pinned PostgreSQL image;
+- every listener remains loopback-only, generated credentials and native fixture material remain ignored and mode-restricted, ordinary stop preserves the dedicated database/ledger, and explicit reset removes only the named Phase 7F state;
+- Demo A drives exact user-held acquisition, hold, replay, payout-before-burn redemption, reconciliation, and zero final supply/custody; after reset, Demo B drives the exact six-effect settlement-only route, replay, reconciliation, and zero final chain/accounting positions; and
+- one retained-state proof accepts acquisition with delivery disabled, restarts only Java while PostgreSQL and private Agave remain live, and completes exactly one withdrawal and mint after recovery.
+
+The local-only status route now projects chain-neutral network, observation-height, asset, balance, supply, and confirmed-effect fields while retaining its legacy Ethereum fields. This packaging adds no product behavior, migration, dependency, image, public endpoint, native program, public network, or production custody claim. Phase 8 is the next separately authorized bounded action.
 
 Action Request 26 implements **Phase 7E Solana Product-Path Orchestration**:
 
@@ -693,4 +702,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, Phase 7B-7D local Solana primitives, and Phase 7E local Solana product paths are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). The next recommended bounded action is Phase 7F Solana demonstration packaging; it must preserve both product meanings and native Solana evidence without adding public-network or production-custody behavior.
+The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, Phase 7B-7D local Solana primitives, Phase 7E local Solana product paths, and Phase 7F local Solana demonstration packaging are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). The next recommended bounded action is the Phase 8 final reference review; it must review both product meanings and both local chain realizations without adding public-network or production-custody behavior.

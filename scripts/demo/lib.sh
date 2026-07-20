@@ -2,7 +2,7 @@
 
 set -eu
 
-DEMO_SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+DEMO_SCRIPT_DIR=$(CDPATH= cd -- "${DEMO_SCRIPT_DIR_OVERRIDE:-$(dirname -- "$0")}" && pwd -P)
 DEMO_ROOT=$(CDPATH= cd -- "$DEMO_SCRIPT_DIR/../.." && pwd -P)
 DEMO_PROJECT=digital-banking-phase6d
 DEMO_RUNTIME_DIR=$DEMO_ROOT/.demo-runtime
@@ -264,7 +264,7 @@ demo_assert_clean_initial_state() {
         .latestAcquisition == null and .latestRedemption == null and
         .latestSettlement == null
     ' "$status_file" >/dev/null \
-        || demo_die "demo requires fresh state; run scripts/demo/reset.sh --yes then scripts/demo/start.sh; state was preserved"
+        || demo_die "demo requires fresh state; run $DEMO_SCRIPT_DIR/reset.sh --yes then $DEMO_SCRIPT_DIR/start.sh; state was preserved"
     demo_assert_status_value "$status_file" '.bankBalancesCents.USER_1_BANK_ACCOUNT' 10000 'USER_1 bank cents'
     demo_assert_status_value "$status_file" '.bankBalancesCents.USER_2_BANK_ACCOUNT' 0 'USER_2 bank cents'
     for filter in \

@@ -30,6 +30,29 @@ scripts/solana/reset.sh --yes
 
 `phase7b-fixture.sh` requires the scoped validator to be running on loopback and a fresh ledger. It funds only the disposable fee payer, creates the configured classic two-decimal mint with zero supply and no pre-created token accounts, then prints only the public cluster, mint, USER_1 destination/source owner, USER_2 transfer-destination owner, ADMIN redemption owner, fee-payer, and mint-authority identities needed by the conditional Java integration gate or `local-solana` profile. Use an absolute `LOCAL_SOLANA_RUNTIME_ROOT` and key-file paths when Maven or the packaged application runs from a module or another working directory. The profile additionally requires private/local PostgreSQL and the existing participant identity boundary; it does not create a public signing, wallet-transfer, or chain-control endpoint.
 
+## Phase 7F demonstration packaging
+
+Phase 7F reuses these exact pinned tools and fixture semantics from a separate
+ignored runtime root. It adds no tool download and no Solana image. PostgreSQL
+uses the approved cached immutable image while Agave and Java remain
+host-native and loopback-bound:
+
+```bash
+scripts/demo/solana/prerequisites.sh
+scripts/demo/solana/start.sh
+scripts/demo/solana/demo-user-held.sh       # Demo A
+scripts/demo/solana/reset.sh --yes
+scripts/demo/solana/start.sh
+scripts/demo/solana/demo-settlement-only.sh # Demo B
+scripts/demo/solana/stop.sh
+```
+
+The wrapper supplies an absolute `.demo-runtime/solana/validator` root and
+preserves the default `.solana-runtime/`. Demo A is the user-held lifecycle;
+Demo B is settlement-only. See the
+[local Solana runbook](../../docs/runbooks/LOCAL_SOLANA_DEMO.md) for exact
+prerequisites, ports, assertions, restart recovery, diagnostics, and teardown.
+
 The focused Java gate is disabled unless `LOCAL_SOLANA_REAL_GATE=true` and all printed public identities are supplied explicitly. It first uses the unchanged mint API/lifecycle to create exactly `10000` atomic units in USER_1. It then accepts an exact burn, creates the server-owned USER_1-to-ADMIN redemption-custody transfer, and only after exact finalized custody evidence executes the separate ADMIN-owner burn. It persists each recent blockhash before signing, forces lost mint, custody, and burn submission responses, reconstructs signer/adapter/handler state, observes each effect by its retained public signature, and asserts one mint, one custody transfer, one burn, and final supply/USER_1/ADMIN balances all `0`. Focused PostgreSQL coverage separately proves that proven pre-submission burn expiry may create one parented native replacement under the same stable burn identity while the custody correlation remains consumed exactly once. USER_2 remains a separately configured Phase 7C route but is not used by this redemption gate. Stop the validator afterward with `scripts/solana/stop.sh`; rerun `bootstrap.sh` before another fixture because bootstrap replaces only the ignored local ledger.
 
 Private key material stays under ignored `.solana-runtime/keys/`, is never printed, and must never be staged. Under `local-solana`, only the isolated local signer reads the fee-payer, mint-authority, USER_1 transfer-authority, and ADMIN burn-authority mode-`0600` files; it verifies each configured public identity and exact action/role, signs the bounded message with JDK Ed25519, and gives Sava only public signature material. The signer retains only a bound public signature outcome under ignored `.solana-runtime/signing-results/` using directory mode `0700` and file mode `0600`; restart inquiry re-verifies that signature against the exact durable message and never signs again. The retained evidence contains public local identities, signatures, slots, blockhash observations, instruction types, and exact balances only. The scripts and Java profile contain no mainnet, devnet, testnet, hosted RPC, credential, real asset, or funded production address.

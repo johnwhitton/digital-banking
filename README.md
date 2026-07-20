@@ -59,8 +59,11 @@ Status vocabulary:
 | Phase 7C local Solana wallet transfer   | `verified` | One internal `USER_WALLET_1` to `USER_WALLET_2` classic-SPL `TransferChecked` reuses the provider-neutral transfer boundary, ordered fee-payer/source-owner Ed25519 signing, V12 durable attempt and observation state, response-loss inquiry, restart recovery, and finalized exact source/destination/supply evidence. No public endpoint, redemption, burn, product orchestration, or demo is added. |
 | Phase 7D local Solana redemption/burn   | `verified` | One accepted burn creates or resumes an internal server-resolved USER_1-to-`ADMIN_REDEMPTION` classic-SPL `TransferChecked`, consumes its exact finalized evidence once, then executes one ADMIN-owner `BurnChecked` through separate durable attempts and ordered fee-payer/owner signatures. Response loss, restart, blockhash-expiry replacement within the same burn lineage, replay, and exact zero supply/balances are proven locally; no endpoint, payout/accounting parent, product orchestration, or demo is added. |
 | Phase 7E Solana product orchestration   | `verified` | The existing Phase 6B acquisition/redemption parents and Phase 6C settlement-only companion can select the server-registered `SOLANA` route under `local-demo,local-solana`. They reuse the Phase 7B–7D effects, immutable server-resolved wallet/signer context, one PostgreSQL worker, finalized chain evidence, payout-before-burn, and existing participant-safe APIs. The consolidated PostgreSQL/Agave product-path gate and final offline reactor are green. |
+| Phase 7F reproducible Solana demos      | `verified` | Host-native Agave 4.1.2 and packaged Java 25.0.2 use the approved cached PostgreSQL digest and loopback-only ports. Demo A user-held, explicit reset, Demo B settlement-only, replay, restart recovery, scoped teardown, both stable-diff reviews, and the 538-test offline reactor are green. |
 
 The Phase 7E opt-in PostgreSQL/Agave gate executes both existing product meanings through the Solana path: exact user-held acquisition/replay/redemption and one settlement-only sender-acquisition/transfer/recipient-`AUTO_REDEEM` composition. It finishes with reconciled bank/accounting state and zero token supply and balances. Real-validator execution remains disabled in the ordinary reactor. The final reactor discovered 538 tests, executed 536 successfully, and skipped only the separately gated Phase 7B and Phase 7E native-validator tests. The current Foundry contract suite remains at **nine tests** from Phase 5D; no Solidity file changed. No endpoint was added: the public contracts still accept exact amount/currency, synthetic bank references, and an allowlisted network while wallet identities, key aliases, native authorities, policy, and route versions remain server-resolved. These are synthetic local workflows, not production banking endpoints.
+
+Phase 7F ran Demo A, one explicit scoped reset, Demo B, and one durable restart proof against private host-native Agave and the dedicated PostgreSQL project. The final offline reactor retained the same 538 discovered / 536 executed test count with only those two opt-in native gates skipped.
 
 ## Designed, Not Executable
 
@@ -68,7 +71,7 @@ The Phase 7E opt-in PostgreSQL/Agave gate executes both existing product meaning
 - Phase 6C does not rewrite Phase 3C's historical five-effect aggregate or implement arbitrary institutional routing. Its V10 companion and the Phase 6D environment prove the settlement-only economic outcome with segregated local custody aliases and forced recipient `AUTO_REDEEM`; broader bank-settlement-wallet routing and compensation execution remain absent.
 - Default business endpoints have no runtime identity provider and therefore deny access.
 - The durable provider-neutral signing boundary, session-ephemeral signer, and configured local-custody signer are limited to their explicit local profiles; no production HSM, MPC, secret-manager, or custody signer exists.
-- No public network, hosted RPC provider, API key, dynamic wallet-management service, or production deployment exists. Phase 7E composes the existing local Solana primitives only under explicit profiles; packaged Solana demonstrations remain planned.
+- No public network, hosted RPC provider, API key, dynamic wallet-management service, or production deployment exists. Phase 7F packages the existing local Solana composition only for a private disposable validator.
 - The Anvil mint establishes only narrow technical operation state and blockchain finality; it does not establish accounting, legal, or customer-visible finality.
 
 ## Product paths and delivery roadmap
@@ -77,13 +80,12 @@ The reference architecture supports two distinct USDZELLE outcomes without confl
 
 | Path | Customer outcome | On-chain holders/signers | Current state | Target |
 | --- | --- | --- | --- | --- |
-| Settlement-only | User sends and receives fiat; USDZELLE is transient inside the saga | The bounded local proof uses `ADMIN` plus two server-owned segregated custody aliases; the target model also permits institutional settlement wallets | Phase 7E executes Phase 6C's registered route through native local Solana; Phase 6D packages only the Ethereum demonstration | Packaged Solana demonstration |
-| User-held USDZELLE | User can acquire, hold, optionally transfer, and later redeem USDZELLE | `ADMIN` plus segregated custodial user wallets in the local POC | Phase 7E executes Phase 6B acquisition, held-token checkpoint, payout-before-burn redemption, replay, and reconciliation through native local Solana; Phase 6D packages only the Ethereum demonstration | Packaged Solana demonstration |
+| Settlement-only | User sends and receives fiat; USDZELLE is transient inside the saga | The bounded local proof uses `ADMIN` plus two server-owned segregated custody aliases; the target model also permits institutional settlement wallets | Phase 7F packages Demo B through native local Solana with exact six-effect/replay/recovery assertions | Arbitrary institutional routing remains future work |
+| User-held USDZELLE | User can acquire, hold, optionally transfer, and later redeem USDZELLE | `ADMIN` plus segregated custodial user wallets in the local POC | Phase 7F packages Demo A acquisition/hold/redemption, replay, payout-before-burn, reconciliation, and recovery through native local Solana | Production identity, custody, reserve, and wallet products remain future work |
 
 ```text
-Implemented now: domain + durable API/worker + transfer parents + signing + local Ethereum effects + configured local custody + synthetic finance + user-held and settlement-only workflows + reproducible local Ethereum demos + native Solana semantic gate + local Solana mint, wallet-transfer, redemption-custody, burn, and product-path orchestration
-Next: both Solana demonstrations (Phase 7F)
-Finally: code/security/share-readiness review
+Implemented now: domain + durable API/worker + transfer parents + signing + local Ethereum effects + configured local custody + synthetic finance + user-held and settlement-only workflows + reproducible local Ethereum and Solana demos + native Solana semantic gate + local Solana mint, wallet-transfer, redemption-custody, burn, and product-path orchestration
+Next: final code/security/recovery/API/share-readiness review (Phase 8)
 ```
 
 The authoritative [design](docs/DESIGN.md) owns architecture and custody/reserve boundaries; the [implementation roadmap](docs/IMPLEMENTATION.md) owns phase status and completed-plan links; the [demo contract](docs/TRANSFER_DEMO.md) specifies Demo A and Demo B; and the [plan lifecycle](docs/plans/README.md) governs authorization and closeout. No future phase is active until separately authorized.
@@ -114,7 +116,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ├── contracts/evm/             # Foundry project and minimal role-gated local reference token
 ├── control-plane/             # Spring APIs plus explicit worker/signer/local-chain composition
 ├── docker/demo/               # Fixed local genesis and aggregate demo-only runtime configuration
-├── scripts/demo/              # Start, readiness, status, demos, recovery, stop, and scoped reset
+├── scripts/demo/              # Ethereum commands plus the host-native Solana demo subdirectory
 ├── scripts/solana/            # Pinned native tooling, semantic gate, status, stop, and scoped reset
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
@@ -131,13 +133,14 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ├── .agents/skills/            # Codex repository-skill discovery compatibility
 ├── graphify-out/              # Reviewed portable graph report, JSON, and manifest
 ├── compose.yaml               # Digest-pinned loopback-only Phase 6D environment
+├── compose.solana-demo.yaml   # PostgreSQL-only Phase 7F project; Agave/Java remain host-native
 ├── Dockerfile                 # Minimal packaged non-root control-plane runtime
 ├── AGENTS.md                  # Repository operating rules
 ├── AUTONOMOUS_EXECUTION_POLICY.md
 └── SECURITY.md
 ```
 
-Future executable slices may add Solana demonstration parity, then later production-oriented integrations, only under separate authorization. They remain planned and will not be created empty.
+Future executable slices begin with the Phase 8 final reference review; production-oriented integrations remain separately authorized future work and will not be created empty.
 
 ## Build and Inspect the Current Implementation
 
@@ -160,6 +163,23 @@ scripts/demo/stop.sh
 ```
 
 The [local Ethereum demo runbook](docs/runbooks/LOCAL_ETHEREUM_DEMO.md) records prerequisites, immutable image identities and licenses, exact assertions, restart recovery, troubleshooting, preserved-state behavior, and destructive teardown.
+
+For the corresponding private local Solana demonstrations, use the already
+provisioned pinned Agave/SPL tools, Java 25.0.2, and cached PostgreSQL image.
+Demo A remains user-held and Demo B remains settlement-only:
+
+```bash
+scripts/demo/solana/start.sh
+scripts/demo/solana/demo-user-held.sh
+scripts/demo/solana/reset.sh --yes
+scripts/demo/solana/start.sh
+scripts/demo/solana/demo-settlement-only.sh
+scripts/demo/solana/stop.sh
+```
+
+The [local Solana demo runbook](docs/runbooks/LOCAL_SOLANA_DEMO.md) records the
+host-native topology, exact identities/ports, assertions, restart procedure,
+safe diagnostics, and destructive teardown boundary.
 
 The native Solana tooling uses the approved Apple Silicon Agave archive and repository-local SPL Token CLI build; it does not change Compose. The Phase 7A semantic command rejects redirected scoped paths, resets only ignored `.solana-runtime/`, runs the exact local mint/transfer/redemption/burn proof, retains sanitized evidence, and stops only its exactly identified validator. The public-only fixture supplies both configured user owners plus ADMIN redemption for opt-in Java primitive and product-path gates; the Java adapter still accepts only loopback RPC and explicit server-owned identities. See the [native Solana script guide](scripts/solana/README.md) for immutable artifact identities, prerequisites, profile inputs, and cleanup boundaries.
 
@@ -283,4 +303,4 @@ Graph queries, reports, plugin advice, and agent suggestions are navigation aids
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5 local effects, Phase 6 synthetic finance/workflow/demonstration slices, Phase 7A's native semantic gate, Phase 7B-7D's local Solana primitives, and Phase 7E's reuse of the existing product parents on local Solana. The next bounded recommendation is Phase 7F Solana demonstration packaging—not a public network or production-custody rollout.
+[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5 local effects, Phase 6 synthetic finance/workflow/demonstration slices, Phase 7A's native semantic gate, Phase 7B-7D's local Solana primitives, Phase 7E's reuse of the existing product parents on local Solana, and Phase 7F's reproducible local Solana demonstrations. The next bounded recommendation is the Phase 8 final reference review—not a public network or production-custody rollout.
