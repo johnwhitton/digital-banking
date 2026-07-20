@@ -41,6 +41,21 @@ credentials, disposable keypairs, ledger, cluster/mint metadata, PID ownership
 records, logs, and redacted summaries remain beneath ignored mode-`0700`
 `.demo-runtime/solana/`; secret and evidence files use mode `0600`.
 
+## Environment handoff
+
+Only one local demo environment may run at a time. Before starting Solana,
+preserve and stop the Phase 6D Ethereum project explicitly:
+
+```bash
+scripts/demo/stop.sh
+```
+
+Neither Solana start nor reset stops Ethereum automatically. In particular,
+`scripts/demo/solana/reset.sh --yes` does not stop the Phase 6D project. If
+Solana preflight reports Ethereum as running, the safe correction is
+`scripts/demo/stop.sh`, followed by a new Solana start. Use reset only when
+destructive removal of the selected environment's named state is intended.
+
 ## Prerequisites, start, and status
 
 ```bash
@@ -63,7 +78,23 @@ payout-before-burn ordering, and reconciliation. It excludes credentials,
 private keys, raw messages/transactions, signatures, arbitrary account lookup,
 and unrestricted audit records.
 
-## Demo A — user-held lifecycle
+## What start creates and where state lives
+
+| Runtime or state | Created or used by start | Persistence boundary |
+| --- | --- | --- |
+| PostgreSQL | Docker service in project `digital-banking-phase7f-solana` | Named Phase 7F database volume; ordinary stop preserves it |
+| Private Agave | Host-native loopback validator | Ledger and exact process ownership under ignored `.demo-runtime/solana/` |
+| Classic-SPL asset | Two-decimal mint and canonical USER_1, USER_2, and ADMIN associated accounts | Retained in the private ledger; no custom program is deployed |
+| Spring control plane | Packaged Java 25 host process | Durable business state remains in PostgreSQL |
+| Runtime identity/evidence | Credentials, keypairs, cluster/mint metadata, logs, and redacted summaries | Ignored `.demo-runtime/solana/`; ordinary stop preserves it |
+
+`scripts/demo/solana/stop.sh` stops only the exactly owned Java, Agave, and
+PostgreSQL runtime while preserving the database, ledger, and ignored metadata.
+`scripts/demo/solana/reset.sh --yes` irrecoverably removes only the named Phase
+7F database/network and ignored runtime state. It preserves the approved image,
+pinned tools, source, and Git data.
+
+## Demo A — user-held acquisition, hold, and redemption
 
 Begin from clean initialized state: USER_1 has `10000` synthetic cents, USER_2
 has zero, and all ledger, token, supply, custody, and effect positions are zero.
@@ -93,7 +124,7 @@ ignored `.demo-runtime/solana/` state. It preserves source, Git data, images,
 Maven/dependency caches, `.solana-tools/`, the default `.solana-runtime/`,
 `.env.local-anvil`, and all unrelated Docker resources.
 
-## Demo B — settlement-only transfer
+## Demo B — settlement-only transfer with forced recipient `AUTO_REDEEM`
 
 ```bash
 scripts/demo/solana/demo-settlement-only.sh
@@ -143,7 +174,9 @@ scripts/demo/solana/status.sh
 - Inspect only the relevant scoped local log after confirming no configuration
   value is present. Never attach `.demo-runtime/solana/`, private key files,
   tokens, raw transactions/messages, signatures, or validator ledger data.
-- A prerequisite failure is a stop condition. Do not pull an image, install or
+- A prerequisite failure is a stop condition. Agave, Java, and PostgreSQL may
+  not have started; a subsequent `runtime is absent` message is expected when
+  `start.sh` stopped during preflight. Do not pull an image, install or
   substitute a tool, change a tag, or use a public RPC endpoint.
 - A readiness failure must not be bypassed. Confirm only the documented
   loopback ports, exact PID/command ownership, cluster identity, mint policy,

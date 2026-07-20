@@ -8,12 +8,17 @@ This document is the authoritative detailed specification for two local-only, no
 
 Zelle is a public case study only. `USDZELLE` is a reference asset name and does not assert that Early Warning Services issues a stablecoin, accepts deposits, owns reserves, operates wallets, shares reserve income, or selected this architecture.
 
+For a first-time-reviewer view of runtime topology, exact effects, accounting,
+state preservation, and chain-specific sequences, start with the
+[POC walkthrough](DEMO_WALKTHROUGH.md). This document remains the detailed
+product, authority, evidence, replay, and finality contract.
+
 ## Common product, API, and authority boundary
 
 [ADR 0008](adr/0008-usdzelle-product-paths-ownership-custody-reserve-boundaries.md) supports two product paths:
 
-- **Demo A — user-held USDZELLE lifecycle:** a user can on-ramp, retain tokens, optionally transfer them, and redeem later. Receipt does not force redemption.
-- **Demo B — settlement-only fiat transfer:** customers hold fiat before and after payment; institutional wallets use USDZELLE only inside the settlement saga.
+- **Demo A — user-held acquisition, hold, and redemption:** a user can on-ramp, retain tokens, optionally transfer them, and redeem later. Receipt does not force redemption.
+- **Demo B — settlement-only transfer with forced recipient `AUTO_REDEEM`:** customers hold fiat before and after payment; controlled wallets use USDZELLE only inside the settlement saga.
 
 Economic ownership and private-key custody are independent. Compatible models are self-custody, segregated custodial wallets, and omnibus custody with an internal beneficial-balance ledger. Demo B selects segregated local custodial identities: the internal Phase 5C primitive consumes two named `local-demo` user-wallet identities, but no balance product or public API exposes it. This is not self-custody and not production custody.
 
@@ -39,7 +44,7 @@ Separately, `local-demo` serves a local-only mock-bank OpenAPI and withdrawal, d
 
 The additional `local-demo-environment` profile exists only inside the documented local demonstration topologies. Bootstrap generates distinct sender and operator bearer tokens in ignored mode-restricted files. The sender receives only the existing configured acquisition/redemption and transfer create/read authorities. The operator receives only the aggregate `GET /local/v1/demo/status` and separate `/local/v1/demo/openapi.yaml` resource; it cannot mutate workflow, bank, accounting, chain, fixture, or reset state. The projection is fixed to synthetic demo evidence and excludes keys, tokens, raw transactions, signatures, arbitrary participant lookup, unrestricted journals, and internal policy facts. See the [local Ethereum runbook](runbooks/LOCAL_ETHEREUM_DEMO.md) and [local Solana runbook](runbooks/LOCAL_SOLANA_DEMO.md).
 
-## Demo B — settlement-only fiat transfer
+## Demo B — settlement-only transfer with forced recipient `AUTO_REDEEM`
 
 ### Customer outcome and exact target flow
 
@@ -86,7 +91,7 @@ An exact duplicate command or delivery returns the original durable parent/effec
 
 Phase 6C provides durable parent/child correlation, ordered execution, ambiguity/manual-review projection, and final reconciliation for one hard-bounded local route. Phase 6D Demo B executes that route from a clean named local environment, asserts the six exact confirmed effects and zeroed intermediate positions, and verifies replay and restart behavior. It does not provide arbitrary registered-route administration, the broader institutional bank-settlement-wallet realization, automatic compensation/refund/reversal, or production operator commands. The synthetic proof is not real bank integration, an audited reserve, legal/accounting/customer finality, or production settlement.
 
-## Demo A — user-held USDZELLE lifecycle
+## Demo A — user-held acquisition, hold, and redemption
 
 ### Exact target lifecycle
 

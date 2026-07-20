@@ -28,6 +28,20 @@ The environment is pinned to exactly these approved multi-platform image indexes
 
 Do not substitute a tag, pull another image, install a package, or enable a public registry/network fallback without separate approval.
 
+## Environment handoff
+
+Only one local demo environment may run at a time. Before starting Ethereum,
+preserve and stop the Solana environment explicitly:
+
+```bash
+scripts/demo/solana/stop.sh
+```
+
+Neither Ethereum start nor reset stops Solana automatically. If the other
+environment is reported as running, the corrective action is the command above,
+followed by a new Ethereum start. Use reset only when destructive removal of
+the selected environment's named state is intended.
+
 ## Prepare local identities
 
 Copy the safe field names and expected public addresses, then populate only the standard publicly known Anvil development fixture keys through a trusted local method:
@@ -59,7 +73,24 @@ scripts/demo/status.sh
 
 The expected services are healthy PostgreSQL, Anvil, and control plane; the one-shot deployer is successfully exited. Host ports are exactly `127.0.0.1:8080` and `127.0.0.1:8545`. `status.sh` prints only redacted aggregate bank, ledger, custody, supply, effect-count, latest-workflow, ordering, reconciliation, and local contract/network evidence.
 
-## Demo A — user-held lifecycle
+## What start creates and where state lives
+
+| Runtime or state | Created or used by start | Persistence boundary |
+| --- | --- | --- |
+| PostgreSQL | Docker service on the named internal network | Named Phase 6D database volume; ordinary stop preserves it |
+| Anvil | Docker service with the fixed local genesis | Named Phase 6D chain volume; ordinary stop preserves it |
+| Contract deployer | One-shot Foundry container | Deploys or verifies `LocalReferenceToken` and ADMIN roles, then exits |
+| Spring control plane | Packaged non-root Docker service | Durable business state remains in PostgreSQL |
+| Runtime identity/evidence | Generated credentials, run identity, logs, and redacted summaries | Ignored `.demo-runtime/`; ordinary stop preserves it |
+| Local fixture keys | Read from ignored `.env.local-anvil` | Preserved by both stop and reset |
+
+`scripts/demo/stop.sh` stops the named services and preserves the PostgreSQL and
+Anvil volumes plus ignored runtime files. `scripts/demo/reset.sh --yes`
+irrecoverably removes only the named Phase 6D database, chain, network, and
+runtime evidence. It does not remove approved images, source, Git data, or
+`.env.local-anvil`, and it does not stop the Solana environment.
+
+## Demo A — user-held acquisition, hold, and redemption
 
 Begin from clean initialized state: `USER_1` has `10,000` synthetic cents, `USER_2` has zero, and all ledger/token/effect positions are zero.
 
@@ -88,7 +119,7 @@ JAVA_HOME=/opt/homebrew/opt/openjdk scripts/demo/start.sh
 
 Running `reset.sh` without exactly `--yes` refuses the operation. Reset does not remove images, source, `.env.local-anvil`, Git data, Maven caches, or unrelated Docker resources.
 
-## Demo B — settlement-only transfer
+## Demo B — settlement-only transfer with forced recipient `AUTO_REDEEM`
 
 ```bash
 scripts/demo/demo-settlement-only.sh

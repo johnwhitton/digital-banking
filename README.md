@@ -6,17 +6,46 @@ Reference implementation for a regulated digital-asset settlement control plane.
 
 > **Public-case-study boundary:** Zelle appears only in the supplied publications as a public case study. This repository does not represent Early Warning Services or Zelle production architecture, confidential information, selected vendors, endorsement, or an announced implementation plan.
 
-## BACKGROUND READING - START HERE
+## Background Reading
 
 | Document                                                                                                                                                           | Description                                                                                                                                                                                                          | Audience                                                                                   | Reading Time                       |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------- |
 | [Architecture Slides and John Whitton's Portfolio](https://zelle.johnwhitton.com)                                                                                  | Fast visual introduction to the architecture, project, and author.                                                                                                                                                   | Hiring managers, interviewers, engineering leaders, and architects.                        | `5 mins`                           |
-| [Zelle Executive Briefing](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/zelle-digital-asset-settlement-executive-brief.pdf)             | Executive architecture brief for stablecoin and cross-border settlement.                                                                                                                                             | Executives, hiring managers, principal engineers, product, risk, and architecture leaders. | `15-18 mins`                       |
-| [Digital Banking Reference Architecture](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/stablecoin-settlement-reference-architecture.pdf) | Detailed 112-page reference architecture covering control-plane boundaries, ledger and workflow, signing, native chain integration, finality, reconciliation, security, and delivery.                                | Architects, principal engineers, security, operations, risk, and implementation teams.     | `~30 mins guided / ~180 mins full` |
-| [Digital Banking Engineering Companion — Volume II](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/digital-banking-engineering-companion.pdf)         | Implementation and operations handbook covering durable workflow, Java/Spring, wallets and signing, EVM, Solana, infrastructure, testing, deployment, observability, performance, and runbooks. | Engineers, architects, security reviewers, operators, and technical decision makers.       | `~60-75 mins`                      |
-| [Digital Banking Reference Implementation — Volume III](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/digital-banking-reference-implementation.pdf)   | Code companion mapping architecture to repository modules, APIs, database schema and migrations, implementation excerpts, local build/run/test flows, and the boundary between local demonstrations and production integrations. | Engineers, architects, security reviewers, operators, and technical decision makers.       | `~60-75 mins`                      |
+| [Zelle Executive Briefing](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/zelle-digital-asset-settlement-executive-brief.pdf)             | v1.0.5, 27-page executive architecture brief for stablecoin and cross-border settlement.                                                                                                                              | Executives, hiring managers, principal engineers, product, risk, and architecture leaders. | `15-18 mins`                       |
+| [Digital Banking Reference Architecture](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/stablecoin-settlement-reference-architecture.pdf) | v1.0.5, 152-page reference architecture covering control-plane boundaries, ledger and workflow, signing, native chain integration, finality, reconciliation, security, and delivery.                                 | Architects, principal engineers, security, operations, risk, and implementation teams.     | `~30 mins guided / ~180 mins full` |
+| [Digital Banking Engineering Companion — Volume II](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/digital-banking-engineering-companion.pdf)         | v1.1.0, 46-page implementation and operations handbook covering durable workflow, Java/Spring, signing, native chains, infrastructure, testing, and runbooks.                                                        | Engineers, architects, security reviewers, operators, and technical decision makers.       | `~60-75 mins`                      |
+| [Digital Banking Reference Implementation — Volume III](https://github.com/johnwhitton/digital-banking/blob/main/docs/reference/digital-banking-reference-implementation.pdf)   | v1.0.0, 45-page code companion mapping architecture to modules, APIs, migrations, implementation excerpts, local run flows, and production boundaries.                                                              | Engineers, architects, security reviewers, operators, and technical decision makers.       | `~60-75 mins`                      |
 
-The executive PDF states an 18-minute estimate. The detailed architecture contains approximately 37,700 extracted words and provides a guided reading path, so the table distinguishes a guided route from a complete technical read. Volumes II and III are contextual implementation/code companions, not production certification or runnable releases. A publication's evidence snapshot can lag the live repository; current source, tests, OpenAPI, accepted [ADRs](docs/adr/README.md), [the engineering design](docs/DESIGN.md), and [the implementation plan](docs/IMPLEMENTATION.md) govern current implementation claims. All four PDFs are immutable contextual reference inputs, and their provenance and metadata remain in the [reference index](docs/reference/README.md).
+The executive PDF states an 18-minute estimate. The v1.0.5 release manifest records 49,762 extracted words for the detailed architecture and a guided reading path, so the table distinguishes a guided route from a complete technical read. Volumes II and III are contextual implementation/code companions, not production certification or runnable releases. The v1.0.5 Volume I and Executive Brief are the Ethereum-alignment publications synchronized by PDF-only commit `87f8aadf9f2b520c40631cd236eb0a5d91417e95`; they predate the current Solana implementation evidence at `173ebcbb002cacad479c7ced4361106e7c6f21dc`. Publication snapshots may lag the live repository, and a future Solana publication alignment will be separately versioned when published. Current source, tests, OpenAPI, accepted [ADRs](docs/adr/README.md), [the engineering design](docs/DESIGN.md), and [the implementation plan](docs/IMPLEMENTATION.md) govern current implementation claims. All four PDFs are immutable contextual reference inputs, and their provenance and metadata remain in the [reference index](docs/reference/README.md).
+
+## Understand and Run the POC — Start Here
+
+Demo A proves one synthetic user-held acquisition, hold, and later redemption.
+Demo B proves one synthetic settlement-only transfer whose recipient is forced
+through server-resolved `AUTO_REDEEM`. Both move exact `USD 100.00` / `10,000`
+two-decimal atomic units and can use the same durable PostgreSQL workflows on
+either local chain.
+
+| Concern | Ethereum | Solana |
+| --- | --- | --- |
+| Native runtime | Dockerized Anvil | Host-native private Agave validator |
+| Token | Deployed custom `LocalReferenceToken` Solidity contract | Classic-SPL mint using the standard SPL Token Program; no custom Rust program |
+| Java adapter | Web3j | Sava |
+| Business truth | PostgreSQL | PostgreSQL |
+
+| Start here | Use it for |
+| --- | --- |
+| [POC walkthrough](docs/DEMO_WALKTHROUGH.md) | Runtime topology, exact effects, accounting, signing, persistence, and diagrams |
+| [Demo contract](docs/TRANSFER_DEMO.md) | Detailed product, authority, evidence, replay, and finality semantics |
+| [Ethereum runbook](docs/runbooks/LOCAL_ETHEREUM_DEMO.md) | Prerequisites and exact Phase 6D operating commands |
+| [Solana runbook](docs/runbooks/LOCAL_SOLANA_DEMO.md) | Prerequisites and exact Phase 7F operating commands |
+| [Design](docs/DESIGN.md) | Architecture, trust boundaries, and invariants |
+| [Implementation roadmap](docs/IMPLEMENTATION.md) | Verified status, evidence, and remaining work |
+
+Only one local demo environment may run at a time. Before starting Solana,
+preserve and stop Ethereum with `scripts/demo/stop.sh`. Before starting
+Ethereum, preserve and stop Solana with `scripts/demo/solana/stop.sh`. Use reset
+only when destructive removal of that demo's named state is intended.
 
 ## What This Demonstrates
 
@@ -85,7 +114,8 @@ The reference architecture supports two distinct USDZELLE outcomes without confl
 
 ```text
 Implemented now: domain + durable API/worker + transfer parents + signing + local Ethereum effects + configured local custody + synthetic finance + user-held and settlement-only workflows + reproducible local Ethereum and Solana demos + native Solana semantic gate + local Solana mint, wallet-transfer, redemption-custody, burn, and product-path orchestration
-Next: final code/security/recovery/API/share-readiness review (Phase 8)
+Completed documentation slice: share-ready walkthrough and publication reconciliation (Phase 8A)
+Next: final code/security/recovery/API/share-readiness review (Phase 8B)
 ```
 
 The authoritative [design](docs/DESIGN.md) owns architecture and custody/reserve boundaries; the [implementation roadmap](docs/IMPLEMENTATION.md) owns phase status and completed-plan links; the [demo contract](docs/TRANSFER_DEMO.md) specifies Demo A and Demo B; and the [plan lifecycle](docs/plans/README.md) governs authorization and closeout. No future phase is active until separately authorized.
@@ -120,6 +150,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 ├── scripts/solana/            # Pinned native tooling, semantic gate, status, stop, and scoped reset
 ├── docs/
 │   ├── DESIGN.md              # Canonical engineering architecture
+│   ├── DEMO_WALKTHROUGH.md     # First-time-reviewer topology and functional demo guide
 │   ├── IMPLEMENTATION.md      # Living delivery plan and current state
 │   ├── TRANSFER_DEMO.md       # Implemented acceptance mapping and remaining flow contract
 │   ├── runbooks/              # Reproducible local operator procedures
@@ -140,7 +171,7 @@ Direct issuer-authority mint/burn and CCTP cross-chain burn/attestation/mint are
 └── SECURITY.md
 ```
 
-Future executable slices begin with the Phase 8 final reference review; production-oriented integrations remain separately authorized future work and will not be created empty.
+The remaining review begins with Phase 8B; production-oriented integrations remain separately authorized future work and will not be created empty.
 
 ## Build and Inspect the Current Implementation
 
@@ -151,7 +182,7 @@ JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw --version
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw clean verify
 ```
 
-For the bounded local demonstrations, prepare the ignored mode-`0600` `.env.local-anvil` from [`.env.example`](.env.example), ensure the three approved digest-pinned images are cached, then use the safe commands below. Demo A is the user-held acquisition/hold/redemption lifecycle; reset is explicit before Demo B, the settlement-only six-effect transfer. `reset.sh --yes` irreversibly removes only the named Phase 6D database/chain volumes and ignored runtime evidence.
+For the bounded local demonstrations, first read the [POC walkthrough](docs/DEMO_WALKTHROUGH.md), then choose one environment. To run Ethereum, prepare the ignored mode-`0600` `.env.local-anvil` from [`.env.example`](.env.example), ensure the three approved digest-pinned images are cached, and use the safe commands below. Demo A is the user-held acquisition/hold/redemption lifecycle; reset is explicit before Demo B, the settlement-only six-effect transfer. `reset.sh --yes` irreversibly removes only the named Phase 6D database/chain volumes and ignored runtime evidence.
 
 ```bash
 scripts/demo/start.sh
@@ -164,7 +195,9 @@ scripts/demo/stop.sh
 
 The [local Ethereum demo runbook](docs/runbooks/LOCAL_ETHEREUM_DEMO.md) records prerequisites, immutable image identities and licenses, exact assertions, restart recovery, troubleshooting, preserved-state behavior, and destructive teardown.
 
-For the corresponding private local Solana demonstrations, use the already
+Before switching to Solana, preserve and stop Ethereum with
+`scripts/demo/stop.sh`; do not use reset unless its named state should be
+destroyed. For the private local Solana demonstrations, use the already
 provisioned pinned Agave/SPL tools, Java 25.0.2, and cached PostgreSQL image.
 Demo A remains user-held and Demo B remains settlement-only:
 
@@ -180,6 +213,10 @@ scripts/demo/solana/stop.sh
 The [local Solana demo runbook](docs/runbooks/LOCAL_SOLANA_DEMO.md) records the
 host-native topology, exact identities/ports, assertions, restart procedure,
 safe diagnostics, and destructive teardown boundary.
+
+Before switching back to Ethereum, preserve and stop Solana with
+`scripts/demo/solana/stop.sh`. The runbooks own the detailed state-preservation,
+readiness, restart, and reset procedures; the README does not duplicate them.
 
 The native Solana tooling uses the approved Apple Silicon Agave archive and repository-local SPL Token CLI build; it does not change Compose. The Phase 7A semantic command rejects redirected scoped paths, resets only ignored `.solana-runtime/`, runs the exact local mint/transfer/redemption/burn proof, retains sanitized evidence, and stops only its exactly identified validator. The public-only fixture supplies both configured user owners plus ADMIN redemption for opt-in Java primitive and product-path gates; the Java adapter still accepts only loopback RPC and explicit server-owned identities. See the [native Solana script guide](scripts/solana/README.md) for immutable artifact identities, prerequisites, profile inputs, and cleanup boundaries.
 
@@ -303,4 +340,4 @@ Graph queries, reports, plugin advice, and agent suggestions are navigation aids
 
 Never commit private keys, seed phrases, tokens, RPC credentials, HSM/custody credentials, funded addresses, or environment files. Defaults and tests must remain local-only. See [SECURITY.md](SECURITY.md).
 
-[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5 local effects, Phase 6 synthetic finance/workflow/demonstration slices, Phase 7A's native semantic gate, Phase 7B-7D's local Solana primitives, Phase 7E's reuse of the existing product parents on local Solana, and Phase 7F's reproducible local Solana demonstrations. The next bounded recommendation is the Phase 8 final reference review—not a public network or production-custody rollout.
+[The implementation plan](docs/IMPLEMENTATION.md) records the Phase 3 acceptance slices, Phase 4 signing controls, bounded Phase 5 local effects, Phase 6 synthetic finance/workflow/demonstration slices, Phase 7A's native semantic gate, Phase 7B-7D's local Solana primitives, Phase 7E's reuse of the existing product parents on local Solana, Phase 7F's reproducible local Solana demonstrations, and Phase 8A's documentation/share-readiness work. The next bounded recommendation is the Phase 8B final code, security, recovery, API, and share-readiness review—not a public network or production-custody rollout.

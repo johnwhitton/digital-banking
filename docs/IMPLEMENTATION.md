@@ -19,14 +19,14 @@ This is the living delivery plan and current-state record. It turns `docs/DESIGN
 
 ## Repository baseline discovered on 2026-07-16
 
-- Target: `/Users/johnwhitton/dev/johnwhitton/digital-banking`.
+- Target: the repository root.
 - Starting branch/SHA: `main` at `2e7ec1f0fe700de3b7072b7995371b4727b2c535`.
 - Starting state: clean worktree with one tracked `README.md` containing `# settlement`.
 - Remote: `git@github.com:johnwhitton/digital-banking.git`; live `origin/HEAD` was `main` at the same SHA.
 - Toolchain: Homebrew OpenJDK 25.0.2 existed at `/opt/homebrew/opt/openjdk` but was not linked onto `PATH`; Maven and Gradle were absent; Docker 28.5.1 and Compose 2.40.3 were available.
 - Framework evidence: Spring Boot 4.0.6 is the requested baseline and was available from Spring Initializr/Maven Central; it manages Spring Framework 7.0.x.
 - Build decision: Maven Wrapper 3.3.4 with Apache Maven 3.9.16; see [ADR 0001](adr/0001-maven-reactor-and-module-boundaries.md).
-- Revised source baseline: commit `84b2ff350639f537adddd2fc1695e09bae5375b4` supplied both exact PDFs. They are now normalized under `docs/reference/`, byte-compared with the source blobs, rendered for visual review, and indexed with SHA-256 provenance.
+- Publication history: commit `84b2ff350639f537adddd2fc1695e09bae5375b4` supplied the original two PDFs; PDF-only commit `87f8aadf9f2b520c40631cd236eb0a5d91417e95` later synchronized their published v1.0.5 Ethereum-alignment replacements. The [reference index](reference/README.md) owns current hashes, blobs, metadata, and immutable release provenance.
 - Read-only tooling source: Salus `main` at `fd9ffaf0d569ebaa232575d143e00488d31a2974`; no Salus file was changed.
 
 ## Bootstrap action: actual scope
@@ -373,15 +373,41 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 **Non-goals:** simultaneous cross-chain value movement, bridging, CCTP, public clusters, mainnet/testnet configuration, or one genericized finality model.
 
-## Phase 8: Final reference review and share readiness
+## Phase 8: Share readiness and final review
 
-**Status:** `planned`
+### Phase 8A: share-ready demo documentation and publication reconciliation
+
+**Status:** `verified`
 
 **Dependency:** Phase 7F.
 
+**Plan:** [completed Phase 8A plan](plans/completed/PHASE_8A_SHARE_READY_DEMO_DOCUMENTATION.md).
+
+**Baseline/evidence:** PDF-sync baseline
+`87f8aadf9f2b520c40631cd236eb0a5d91417e95`; executable Solana evidence
+`173ebcbb002cacad479c7ced4361106e7c6f21dc`. The PDF-only baseline is not an
+implementation-evidence commit.
+
+**Deliverables:** the [canonical POC walkthrough](DEMO_WALKTHROUGH.md), one
+topology and two workflow sequence diagrams, compact README onboarding, exact
+Ethereum/Solana runtime handoff, runbook state boundaries, synchronized living
+documentation, and reconciled four-PDF metadata/provenance. Volume I and the
+Executive Brief remain the published v1.0.5 Ethereum-alignment snapshot; a
+future Solana publication alignment is separately versioned work.
+
+**Exit gate:** focused metadata/provenance, changed-document link, navigation,
+Mermaid-source, terminology, exact-quantity, accounting-map, safe-claim, and
+diff/allowlist checks pass without changing or running executable behavior.
+
+### Phase 8B: final code, security, recovery, API, and share-readiness review
+
+**Status:** `planned`
+
+**Dependency:** Phase 8A.
+
 **Plan:** not created until separately authorized.
 
-**Deliverables:** architecture-to-code and implementation-standards audits; threat/security and dependency review; database concurrency, recovery, backup/restore, and reconciliation review; API/OpenAPI and demo-usability review; deterministic clean-room evidence for both demos on both local chains; and reconciliation of README, design, roadmap, ADR, limitation, and operator documentation.
+**Deliverables:** architecture-to-code and implementation-standards audits; threat/security and dependency review; database concurrency, recovery, backup/restore, and reconciliation review; API/OpenAPI and demo-usability review; deterministic clean-room evidence for both demos on both local chains; and final reconciliation of README, design, roadmap, ADR, limitation, and operator documentation.
 
 **Exit gate:** all Critical and Important findings are resolved or explicitly accepted; both chain realizations of both demos have reproducible evidence; documentation accurately distinguishes verified capability, planned work, limitations, and non-production status.
 
@@ -389,10 +415,14 @@ Direct issuer-authority mint/burn remains distinct from Circle CCTP. A future CC
 
 ## Publications
 
-- **Volume II - [Digital Banking Engineering Companion](reference/digital-banking-engineering-companion.pdf)** (`published`): vendor-neutral implementation and operations guidance covering durable workflow, Java/Spring, wallets and signing, EVM, Solana, submission and observation, infrastructure, testing, performance, and delivery. It is not production certification or a runnable implementation. Its code-status discussion is pinned to `e921fcb1877b46a6881437f46b1a6ebfa115ae58`; use this current plan, the README, accepted ADRs, source, and tests for live repository status.
-- **Volume III - [Digital Banking Reference Implementation](reference/digital-banking-reference-implementation.pdf)** (`published`): code companion mapping architecture to repository modules, APIs, database schema and migrations, implementation excerpts, local build/run/test flows, and the boundary between local demonstrations and production integrations. Current design, ADRs, contracts, source, tests, and this living plan remain authoritative for implementation status.
+- **Volume I - [Digital Banking Reference Architecture](reference/stablecoin-settlement-reference-architecture.pdf)** (`published`, v1.0.5, 152 pages): Ethereum-alignment architecture snapshot synchronized in PDF-only commit `87f8aadf9f2b520c40631cd236eb0a5d91417e95`.
+- **Executive Brief - [Digital Asset Settlement for Zelle](reference/zelle-digital-asset-settlement-executive-brief.pdf)** (`published`, v1.0.5, 27 pages): executive companion from the same immutable Ethereum-alignment release.
+- **Volume II - [Digital Banking Engineering Companion](reference/digital-banking-engineering-companion.pdf)** (`published`, v1.1.0, 46 pages): vendor-neutral implementation and operations guidance covering durable workflow, Java/Spring, wallets and signing, EVM, Solana, submission and observation, infrastructure, testing, performance, and delivery. It is not production certification or a runnable implementation. Its code-status discussion is pinned to `e921fcb1877b46a6881437f46b1a6ebfa115ae58`; use this current plan, the README, accepted ADRs, source, and tests for live repository status.
+- **Volume III - [Digital Banking Reference Implementation](reference/digital-banking-reference-implementation.pdf)** (`published`, v1.0.0, 45 pages): code companion mapping architecture to repository modules, APIs, database schema and migrations, implementation excerpts, local build/run/test flows, and the boundary between local demonstrations and production integrations. Current design, ADRs, contracts, source, tests, and this living plan remain authoritative for implementation status.
 
-Publishing Volumes II and III does not change executable phase status, replace a focused implementation plan or acceptance test, complete Phase 8, or imply production readiness.
+Publishing or synchronizing any volume does not change executable phase status,
+replace a focused implementation plan or acceptance test, complete Phase 8B,
+or imply production readiness. Publication snapshots may lag the live code.
 
 ## Plans and ADRs
 
@@ -416,6 +446,9 @@ Publishing Volumes II and III does not change executable phase status, replace a
 - Completed Phase 7B Java/Sava compatibility and Solana mint-parity plan: [`docs/plans/completed/PHASE_7B_JAVA_SAVA_COMPATIBILITY_AND_SOLANA_MINT_PARITY.md`](plans/completed/PHASE_7B_JAVA_SAVA_COMPATIBILITY_AND_SOLANA_MINT_PARITY.md).
 - Completed Phase 7C Solana wallet-transfer-parity plan: [`docs/plans/completed/PHASE_7C_SOLANA_WALLET_TRANSFER_PARITY.md`](plans/completed/PHASE_7C_SOLANA_WALLET_TRANSFER_PARITY.md).
 - Completed Phase 7D Solana redemption-custody and ADMIN-burn-parity plan: [`docs/plans/completed/PHASE_7D_SOLANA_REDEMPTION_CUSTODY_AND_BURN_PARITY.md`](plans/completed/PHASE_7D_SOLANA_REDEMPTION_CUSTODY_AND_BURN_PARITY.md).
+- Completed Phase 7E Solana product-orchestration plan: [`docs/plans/completed/PHASE_7E_SOLANA_PRODUCT_PATH_ORCHESTRATION.md`](plans/completed/PHASE_7E_SOLANA_PRODUCT_PATH_ORCHESTRATION.md).
+- Completed Phase 7F reproducible local Solana demonstrations plan: [`docs/plans/completed/PHASE_7F_REPRODUCIBLE_LOCAL_SOLANA_DEMONSTRATIONS.md`](plans/completed/PHASE_7F_REPRODUCIBLE_LOCAL_SOLANA_DEMONSTRATIONS.md).
+- Completed Phase 8A share-ready documentation plan: [`docs/plans/completed/PHASE_8A_SHARE_READY_DEMO_DOCUMENTATION.md`](plans/completed/PHASE_8A_SHARE_READY_DEMO_DOCUMENTATION.md).
 - Completed dual-product-path and delivery-roadmap alignment: [`docs/plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md`](plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md).
 - Completed Zelle share-readiness and transfer-roadmap plan: [`docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
@@ -487,6 +520,25 @@ The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A
 
 ## Latest bounded vertical slice
 
+Action Request 28 completes **Phase 8A Share-Ready Demo Documentation and
+Publication Reconciliation**:
+
+- the [POC walkthrough](DEMO_WALKTHROUGH.md) explains the two product meanings,
+  runtime topology, exact synthetic accounting, server-resolved signers,
+  PostgreSQL business truth, native evidence, replay, and stop/reset behavior;
+- one topology and two sequence diagrams distinguish outward commands from
+  independently observed evidence without implying a global transaction;
+- README and both runbooks give a first-time reviewer an explicit, mutually
+  exclusive Ethereum/Solana operating and state-preservation path; and
+- all four publication records are reconciled, with v1.0.5 Volume I/Executive
+  PDFs synchronized at `87f8aadf9f2b520c40631cd236eb0a5d91417e95` and the
+  current Solana implementation evidence retained at
+  `173ebcbb002cacad479c7ced4361106e7c6f21dc`.
+
+This slice changes no executable file, PDF byte, endpoint, authority, native
+effect, or production-readiness claim. Phase 8B remains the next separately
+authorized code, security, recovery, API, and final share-readiness review.
+
 Action Request 27 implements **Phase 7F Reproducible Local Solana Demonstrations**:
 
 - the existing Phase 6B/6C product parents and Phase 7E Solana realization remain unchanged while thin scripts package host-native Agave 4.1.2 and Java 25.0.2 with the cached digest-pinned PostgreSQL image;
@@ -494,7 +546,7 @@ Action Request 27 implements **Phase 7F Reproducible Local Solana Demonstrations
 - Demo A drives exact user-held acquisition, hold, replay, payout-before-burn redemption, reconciliation, and zero final supply/custody; after reset, Demo B drives the exact six-effect settlement-only route, replay, reconciliation, and zero final chain/accounting positions; and
 - one retained-state proof accepts acquisition with delivery disabled, restarts only Java while PostgreSQL and private Agave remain live, and completes exactly one withdrawal and mint after recovery.
 
-The local-only status route now projects chain-neutral network, observation-height, asset, balance, supply, and confirmed-effect fields while retaining its legacy Ethereum fields. This packaging adds no product behavior, migration, dependency, image, public endpoint, native program, public network, or production custody claim. Phase 8 is the next separately authorized bounded action.
+The local-only status route now projects chain-neutral network, observation-height, asset, balance, supply, and confirmed-effect fields while retaining its legacy Ethereum fields. This packaging adds no product behavior, migration, dependency, image, public endpoint, native program, public network, or production custody claim. Phase 8A now documents this verified behavior; Phase 8B retains the broader final review.
 
 Action Request 26 implements **Phase 7E Solana Product-Path Orchestration**:
 
@@ -702,4 +754,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, Phase 7B-7D local Solana primitives, Phase 7E local Solana product paths, and Phase 7F local Solana demonstration packaging are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md). The next recommended bounded action is the Phase 8 final reference review; it must review both product meanings and both local chain realizations without adding public-network or production-custody behavior.
+The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, Phase 7B-7D local Solana primitives, Phase 7E local Solana product paths, and Phase 7F local Solana demonstration packaging are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md) and introduced in the [POC walkthrough](DEMO_WALKTHROUGH.md). The next recommended bounded action is the Phase 8B final code, security, recovery, API, and share-readiness review; it must review both product meanings and both local chain realizations without adding public-network or production-custody behavior.

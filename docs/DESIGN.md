@@ -84,6 +84,11 @@ Trust does not flow transitively. The API authenticates a caller but does not gr
 
 Personal, sanctions, fraud, case, and policy data remain inside controlled systems. If a chain reference is required, it is an opaque correlation value with no direct personal meaning.
 
+The [POC walkthrough](DEMO_WALKTHROUGH.md) gives first-time reviewers the
+runtime topology, exact synthetic accounting entries, chain-specific bootstrap,
+and command-versus-observation sequences without replacing this design's trust
+and authority boundaries.
+
 ### Durable transfer context
 
 ```mermaid
@@ -104,6 +109,10 @@ The transfer is an asynchronous saga/workflow. Phase 6C implements one bounded l
 ## 4A. USDZELLE product paths, ownership, custody, and reserves
 
 [ADR 0008](adr/0008-usdzelle-product-paths-ownership-custody-reserve-boundaries.md) accepts two organization-neutral product paths. `USDZELLE` is a reference asset name; it does not identify a real issuer, deposit product, reserve, or announced Zelle/Early Warning Services service.
+
+The [functional walkthrough](DEMO_WALKTHROUGH.md) shows both paths end to end;
+[`TRANSFER_DEMO.md`](TRANSFER_DEMO.md) remains their detailed product and
+evidence contract.
 
 ### Settlement-only path (Demo B)
 
@@ -568,8 +577,15 @@ Phase 6D adds a separate local operator topology without changing the default. R
 
 Phase 7F packages the same product paths without changing them. A PostgreSQL-only Compose project uses the approved cached digest and an exact loopback host port; Agave 4.1.2 and the Java 25 packaged control plane remain host-native and loopback-bound. Generated bearer credentials, key files, cluster/mint metadata, logs, and sanitized summaries stay beneath ignored mode-restricted `.demo-runtime/solana/`. The status boundary remains the same local-only route while its chain evidence is projected through neutral network identity, observation height, asset reference, balances, supply, and confirmed-effect fields. Stop preserves the dedicated database and ledger; explicit reset destroys only that named Phase 7F state.
 
-The next bounded phase is the final architecture, security, recovery, API, and
-share-readiness review after the verified Phase 7F demonstrations.
+Across both environments PostgreSQL remains the durable business system of
+record; native transactions are external-effect evidence. Ethereum deploys the
+custom two-decimal `LocalReferenceToken` Solidity contract to Anvil. Solana
+creates a two-decimal classic-SPL mint governed by the standard SPL Token
+Program on private Agave and deploys no custom Rust/Anchor program.
+
+The next bounded phase is the Phase 8B final architecture, security, recovery,
+API, and share-readiness review after the verified demonstrations and Phase 8A
+documentation reconciliation.
 
 Local chains use disposable deterministic fixtures and no public RPC credentials. Tests must cover restarts, duplicate delivery, timeouts, ambiguous effects, reorg/commitment changes, and reconciliation breaks before a slice is verified.
 

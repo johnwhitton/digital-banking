@@ -6,14 +6,27 @@ Zelle is used only as a public case study. Neither the publications nor this rep
 
 ## Integrity and review status
 
-The architecture and executive files were supplied by the user at the repository `docs/` root in commit `84b2ff350639f537adddd2fc1695e09bae5375b4` and moved without content modification on 16 July 2026. Their destination bytes compare equal to the source blobs in that commit. The Engineering Companion was committed directly at its indexed path in `cb1f1164bb1d604dbfbaec6727ed2f899231c812`, and the Reference Implementation was committed directly at its indexed path in `113c0f90bf21590501d0c62dab693176dedb195f`. All four committed files have non-executable repository mode `0644`.
+PDF-only commit `87f8aadf9f2b520c40631cd236eb0a5d91417e95`
+synchronized Volume I and the Executive Brief to the published v1.0.5 Ethereum
+alignment release. It is not implementation evidence. The executable Solana
+baseline immediately before it is
+`173ebcbb002cacad479c7ced4361106e7c6f21dc`.
 
-| Publication | Repository file | Recorded integrity identity |
-| --- | --- | --- |
-| *Designing a Stablecoin Settlement Platform for Existing Real-Time Payment Networks* | [`stablecoin-settlement-reference-architecture.pdf`](stablecoin-settlement-reference-architecture.pdf) | `8a61ab83b427ef587d80edb59feb612a23a4af2497e7e0cda31a4ea30d201e77` |
-| *Digital Asset Settlement for Zelle* | [`zelle-digital-asset-settlement-executive-brief.pdf`](zelle-digital-asset-settlement-executive-brief.pdf) | `90b5e0b0ebaaae40dd43ce0adfdbfcd1d44a0cd9de45692428bfe7a990dbb6cd` |
-| *Digital Banking Engineering Companion* | [`digital-banking-engineering-companion.pdf`](digital-banking-engineering-companion.pdf) | `9448c01a27810a4d15d59c7bf8ef4e56246c5719abb4b9567f178dd2abec9223` |
-| *Digital Banking Reference Implementation* | [`digital-banking-reference-implementation.pdf`](digital-banking-reference-implementation.pdf) | Not separately recorded; approved Git blob `b3b907c414a7c4a68741ad63bd2279d5ea007c6b` |
+The v1.0.5 source authority is the immutable prep tag
+`digital-banking-v1.0.5-ethereum`, which resolves to publication commit
+`d367698c9aa1396c5d87102e9bab975982501192`. Release records were reconciled at
+`484d6635c705f3e43a7835111930e615109c2938`. The prep worktree and mutable build
+directories are not provenance evidence. The two changed repository PDFs have
+the same Git blob as both the tag's canonical `dist` output and primary review
+copy. Volumes II and III retain their separately governed tagged blobs. All four
+committed files have non-executable Git mode `100644`.
+
+| Publication | Version / pages | Bytes | Git blob | SHA-256 |
+| --- | --- | ---: | --- | --- |
+| [*Designing a Stablecoin Settlement Platform for Existing Real-Time Payment Networks*](stablecoin-settlement-reference-architecture.pdf) | 1.0.5 / 152 | 4,963,702 | `515d621b6d024eb6d40d7258564b1436c6738892` | `a2a451d2830b1aef2dc6efe47110322be0e76f508d99feeaf5c61e6c82b1777b` |
+| [*Digital Asset Settlement for Zelle*](zelle-digital-asset-settlement-executive-brief.pdf) | 1.0.5 / 27 | 1,358,915 | `c3d1a431ebb5870a9c6f0f790e7e9bdb55954699` | `96f5b8301406328b6e896a7d8dc0903d472cb07bdcc81157254c8d6e2af8aad1` |
+| [*Digital Banking Engineering Companion*](digital-banking-engineering-companion.pdf) | 1.1.0 / 46 | 373,792 | `2b36c73cd47953bfd690b6db2e7d4317b8fff04d` | `9448c01a27810a4d15d59c7bf8ef4e56246c5719abb4b9567f178dd2abec9223` |
+| [*Digital Banking Reference Implementation*](digital-banking-reference-implementation.pdf) | 1.0.0 / 45 | 345,440 | `b3b907c414a7c4a68741ad63bd2279d5ea007c6b` | `d7b5aa6218df3d1ef6c7cddd6e9c1e05bf6da25cbdbed670b7eccabd7cba8ca3` |
 
 ## Stablecoin settlement reference architecture
 
@@ -21,10 +34,13 @@ The architecture and executive files were supplied by the user at the repository
 | --- | --- |
 | Full title | *Designing a Stablecoin Settlement Platform for Existing Real-Time Payment Networks: A Reference Architecture Using Zelle as a Public Case Study* |
 | Author | John Whitton |
-| Version | 1.0.1 |
-| Publication date | 16 July 2026 |
-| Source | Supplied directly by the user |
-| Review date | 16 July 2026 |
+| Version | 1.0.5 |
+| Publication date | 18 July 2026 |
+| Page count | 152 portrait US Letter pages |
+| Source | `digital-banking-v1.0.5-ethereum:architecture/digital-banking/volume1/dist/stablecoin-settlement-reference-architecture.pdf` |
+| Publication commit | `d367698c9aa1396c5d87102e9bab975982501192` |
+| Repository sync | PDF-only commit `87f8aadf9f2b520c40631cd236eb0a5d91417e95` |
+| Evidence snapshot | `johnwhitton/digital-banking@f744fe619de0d6cf1fc295cd4116e880aa00d803` (local Ethereum POC) |
 | Purpose | Detailed reference architecture for obligation ownership, layered trust boundaries, authoritative ledger/state, failure containment, four finalities, signing, Java/native boundaries, technology evaluation, and evidence-gated delivery. |
 
 Design traceability:
@@ -40,10 +56,13 @@ Design traceability:
 | --- | --- |
 | Full title | *Digital Asset Settlement for Zelle: Executive Architecture Brief for Stablecoin and Cross-Border Settlement* |
 | Author | John Whitton |
-| Version | 1.0.1 |
-| Publication date | 16 July 2026 |
-| Source | Supplied directly by the user |
-| Review date | 16 July 2026 |
+| Version | 1.0.5 |
+| Publication date | 18 July 2026 |
+| Page count | 27 portrait US Letter pages |
+| Source | `digital-banking-v1.0.5-ethereum:architecture/digital-banking/executive/zelle/dist/zelle-digital-asset-settlement-executive-brief.pdf` |
+| Publication commit | `d367698c9aa1396c5d87102e9bab975982501192` |
+| Repository sync | PDF-only commit `87f8aadf9f2b520c40631cd236eb0a5d91417e95` |
+| Evidence snapshot | `johnwhitton/digital-banking@f744fe619de0d6cf1fc295cd4116e880aa00d803` (local Ethereum POC) |
 | Purpose | Executive framing for the control-plane thesis, governable decisions, bounded pilot, custody roles, Java/native boundary, independent finalities, evidence-first roadmap, and principal risks. |
 
 Design traceability:
@@ -60,9 +79,11 @@ Design traceability:
 | Full title | *Digital Banking Engineering Companion* |
 | Series position | Volume II of the Digital Banking Engineering Series |
 | Author | John Whitton |
-| Version | 1.0.0 |
+| Version | 1.1.0 |
 | Publication date | 2026-07-16 |
-| Page count | 40 |
+| Page count | 46 |
+| Git blob | `2b36c73cd47953bfd690b6db2e7d4317b8fff04d` |
+| SHA-256 | `9448c01a27810a4d15d59c7bf8ef4e56246c5719abb4b9567f178dd2abec9223` |
 | Evidence snapshot | Repository commit `e921fcb1877b46a6881437f46b1a6ebfa115ae58` |
 | Source | Committed directly by the user in `cb1f1164bb1d604dbfbaec6727ed2f899231c812` |
 | Audience | Engineers, architects, security reviewers, operators, and technical decision makers. |
@@ -77,12 +98,26 @@ The live repository has advanced since the companion's evidence snapshot. Use th
 | --- | --- |
 | Full title | *Digital Banking Reference Implementation* |
 | Series position | Volume III of the Digital Banking Engineering Series |
+| Author | John Whitton |
+| Version | 1.0.0 |
+| Page count | 45 |
+| Git blob | `b3b907c414a7c4a68741ad63bd2279d5ea007c6b` |
+| SHA-256 | `d7b5aa6218df3d1ef6c7cddd6e9c1e05bf6da25cbdbed670b7eccabd7cba8ca3` |
 | Source | Committed directly by the user in `113c0f90bf21590501d0c62dab693176dedb195f` |
 | Audience | Engineers, architects, security reviewers, operators, and technical decision makers. |
 | Reading time | Approximately 60-75 minutes. |
 | Purpose | Code companion mapping architecture to repository modules, APIs, database schema and migrations, implementation excerpts, local build/run/test flows, and the boundary between local demonstrations and production integrations. It is contextual guidance rather than current executable status authority. |
 
 The live repository may advance beyond any evidence snapshot described in this volume. Use current source, tests, OpenAPI, accepted ADRs, `docs/DESIGN.md`, and `docs/IMPLEMENTATION.md` for implementation claims.
+
+## Publication snapshot boundary
+
+Volume I and the Executive Brief v1.0.5 align to the local Ethereum evidence
+snapshot named above. They do not describe the later local Solana implementation
+completed at `173ebcbb002cacad479c7ced4361106e7c6f21dc`. Publication snapshots may
+lag the live implementation. A future Solana publication alignment will be a
+separately versioned publication and will be synchronized only after it is
+published; no such release is claimed here.
 
 ## Interpretation boundary
 
