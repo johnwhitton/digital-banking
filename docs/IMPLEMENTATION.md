@@ -401,15 +401,26 @@ diff/allowlist checks pass without changing or running executable behavior.
 
 ### Phase 8B: final code, security, recovery, API, and share-readiness review
 
-**Status:** `planned`
+**Status:** `verified`
 
 **Dependency:** Phase 8A.
 
-**Plan:** not created until separately authorized.
+**Plan:** [completed Phase 8B plan](plans/completed/PHASE_8B_FINAL_REVIEW_AND_DUAL_CHAIN_POC_RELEASE.md).
 
 **Deliverables:** architecture-to-code and implementation-standards audits; threat/security and dependency review; database concurrency, recovery, backup/restore, and reconciliation review; API/OpenAPI and demo-usability review; deterministic clean-room evidence for both demos on both local chains; and final reconciliation of README, design, roadmap, ADR, limitation, and operator documentation.
 
 **Exit gate:** all Critical and Important findings are resolved or explicitly accepted; both chain realizations of both demos have reproducible evidence; documentation accurately distinguishes verified capability, planned work, limitations, and non-production status.
+
+**Current review result:** no Critical issue was found. One Important contract
+completeness defect was corrected test-first: the USDZELLE OpenAPI now lists
+the existing classified `415`, `500`, `503`, and malformed-ID `400` outcomes
+for both product parents. A second Important operational defect was corrected
+at the existing Solana readiness seam: transient health, status, and port
+failures remain inside the bounded polling loop. Both local chain release
+sequences now pass Demo A, Demo B, replay, restart recovery, exact accounting,
+and safe stop. Large cohesive adapter classes, remaining explicit JDBC
+wildcard projections, and production integrations/operations remain
+non-blocking advisories in the [Phase 8B final review](reviews/PHASE_8B_FINAL_REFERENCE_REVIEW.md).
 
 **Non-goals:** production certification, regulatory/legal approval, real-fund deployment, vendor selection, cloud/mainnet/testnet rollout, or a claim of operational readiness.
 
@@ -519,6 +530,26 @@ Action Request 07 corrects the Phase 3A API boundary without adding capability:
 The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md`](plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md). This correction adds no endpoint, dependency, migration, runtime configuration, worker, external effect, signer, chain adapter, or production-readiness claim.
 
 ## Latest bounded vertical slice
+
+Action Request 29 completes **Phase 8B Final Review and Dual-Chain POC
+Release**:
+
+- one final architecture, security, API, persistence, recovery, accounting,
+  chain-semantics, and operations review leaves no unresolved Critical or
+  Important finding;
+- the USDZELLE OpenAPI enumerates the runtime's classified failure responses,
+  and Solana readiness now contains transient probe failures inside its bounded
+  polling loop;
+- the final offline Maven, Foundry, Enforcer, `jdeps`, Ethereum, and Solana
+  gates pass with exact replay, reconciliation, payout-before-burn, and restart
+  evidence; and
+- the README quick start, final review, release notes, and completed evidence
+  preserve the local-only, synthetic, non-production boundary.
+
+No dependency, migration, endpoint, authority, PDF, public-network behavior,
+or production claim was added. Future production identity, custody, bank,
+accounting-close, operations, or publication alignment remains separately
+authorized work.
 
 Action Request 28 completes **Phase 8A Share-Ready Demo Documentation and
 Publication Reconciliation**:
@@ -754,4 +785,4 @@ The previously verified Phase 2 slice supplies:
 
 Those contracts preserve opaque native identity and separate prepare, submit-once, inquiry, observation, lifetime/retry, and evidence semantics without implementing either chain adapter.
 
-The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, Phase 7B-7D local Solana primitives, Phase 7E local Solana product paths, and Phase 7F local Solana demonstration packaging are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md) and introduced in the [POC walkthrough](DEMO_WALKTHROUGH.md). The next recommended bounded action is the Phase 8B final code, security, recovery, API, and share-readiness review; it must review both product meanings and both local chain realizations without adding public-network or production-custody behavior.
+The implemented transfer/signing boundaries, bounded local-Ethereum effects, configured local custody, synthetic bank/accounting primitives, Phase 6B user-held parents, Phase 6C settlement-only companion, Phase 6D operator environment, Phase 7A native semantic gate, Phase 7B-7D local Solana primitives, Phase 7E local Solana product paths, and Phase 7F local Solana demonstration packaging are mapped in [`docs/TRANSFER_DEMO.md`](TRANSFER_DEMO.md) and introduced in the [POC walkthrough](DEMO_WALKTHROUGH.md). Phase 8B closes the current dual-chain POC release evidence. No further executable slice is authorized; production integrations and future publication alignment each require a separately approved bounded action.

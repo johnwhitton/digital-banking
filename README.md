@@ -42,10 +42,53 @@ either local chain.
 | [Design](docs/DESIGN.md) | Architecture, trust boundaries, and invariants |
 | [Implementation roadmap](docs/IMPLEMENTATION.md) | Verified status, evidence, and remaining work |
 
-Only one local demo environment may run at a time. Before starting Solana,
-preserve and stop Ethereum with `scripts/demo/stop.sh`. Before starting
-Ethereum, preserve and stop Solana with `scripts/demo/solana/stop.sh`. Use reset
-only when destructive removal of that demo's named state is intended.
+### Quick start
+
+Run these commands from the repository root. Both demonstrations require Java
+25.0.2, Docker with Compose v2, `curl`, `jq`, and OpenSSL. Ethereum additionally
+requires Foundry 1.5.1, local Solidity 0.8.25, the three documented cached
+images, and the ignored mode-`0600` `.env.local-anvil`; Solana requires the
+already provisioned repository-local Agave 4.1.2 and SPL Token CLI 5.6.1 plus
+the cached PostgreSQL image. The [Ethereum](docs/runbooks/LOCAL_ETHEREUM_DEMO.md)
+and [Solana](docs/runbooks/LOCAL_SOLANA_DEMO.md) runbooks own exact prerequisite,
+readiness, recovery, and troubleshooting details.
+
+Demo A is user-held acquisition, hold, and later redemption. Demo B is the
+settlement-only transfer with forced recipient `AUTO_REDEEM`. The reset commands
+below are intentionally destructive: each irreversibly removes only its named
+local environment's database, chain/ledger, and ignored runtime evidence.
+Ordinary stop preserves that state.
+
+Run both demos on local Ethereum:
+
+```bash
+scripts/demo/solana/stop.sh
+scripts/demo/reset.sh --yes
+JAVA_HOME=/opt/homebrew/opt/openjdk scripts/demo/start.sh
+scripts/demo/status.sh
+scripts/demo/demo-user-held.sh
+scripts/demo/reset.sh --yes
+JAVA_HOME=/opt/homebrew/opt/openjdk scripts/demo/start.sh
+scripts/demo/demo-settlement-only.sh
+scripts/demo/stop.sh
+```
+
+Then keep Ethereum stopped and run both demos on local Solana:
+
+```bash
+scripts/demo/stop.sh
+scripts/demo/solana/reset.sh --yes
+scripts/demo/solana/start.sh
+scripts/demo/solana/status.sh
+scripts/demo/solana/demo-user-held.sh
+scripts/demo/solana/reset.sh --yes
+scripts/demo/solana/start.sh
+scripts/demo/solana/demo-settlement-only.sh
+scripts/demo/solana/stop.sh
+```
+
+Only one local demo environment may run at a time; the command sequences above
+stop the other environment before switching.
 
 ## What This Demonstrates
 
@@ -89,6 +132,7 @@ Status vocabulary:
 | Phase 7D local Solana redemption/burn   | `verified` | One accepted burn creates or resumes an internal server-resolved USER_1-to-`ADMIN_REDEMPTION` classic-SPL `TransferChecked`, consumes its exact finalized evidence once, then executes one ADMIN-owner `BurnChecked` through separate durable attempts and ordered fee-payer/owner signatures. Response loss, restart, blockhash-expiry replacement within the same burn lineage, replay, and exact zero supply/balances are proven locally; no endpoint, payout/accounting parent, product orchestration, or demo is added. |
 | Phase 7E Solana product orchestration   | `verified` | The existing Phase 6B acquisition/redemption parents and Phase 6C settlement-only companion can select the server-registered `SOLANA` route under `local-demo,local-solana`. They reuse the Phase 7B–7D effects, immutable server-resolved wallet/signer context, one PostgreSQL worker, finalized chain evidence, payout-before-burn, and existing participant-safe APIs. The consolidated PostgreSQL/Agave product-path gate and final offline reactor are green. |
 | Phase 7F reproducible Solana demos      | `verified` | Host-native Agave 4.1.2 and packaged Java 25.0.2 use the approved cached PostgreSQL digest and loopback-only ports. Demo A user-held, explicit reset, Demo B settlement-only, replay, restart recovery, scoped teardown, both stable-diff reviews, and the 538-test offline reactor are green. |
+| Phase 8B final dual-chain POC review    | `verified` | The final architecture/security/API/recovery review, 538-test offline reactor, Foundry suite, and clean Ethereum and Solana Demo A/Demo B/replay/restart gates are green. No unresolved Critical or Important finding remains; production integrations and certification remain out of scope. |
 
 The Phase 7E opt-in PostgreSQL/Agave gate executes both existing product meanings through the Solana path: exact user-held acquisition/replay/redemption and one settlement-only sender-acquisition/transfer/recipient-`AUTO_REDEEM` composition. It finishes with reconciled bank/accounting state and zero token supply and balances. Real-validator execution remains disabled in the ordinary reactor. The final reactor discovered 538 tests, executed 536 successfully, and skipped only the separately gated Phase 7B and Phase 7E native-validator tests. The current Foundry contract suite remains at **nine tests** from Phase 5D; no Solidity file changed. No endpoint was added: the public contracts still accept exact amount/currency, synthetic bank references, and an allowlisted network while wallet identities, key aliases, native authorities, policy, and route versions remain server-resolved. These are synthetic local workflows, not production banking endpoints.
 
@@ -115,7 +159,8 @@ The reference architecture supports two distinct USDZELLE outcomes without confl
 ```text
 Implemented now: domain + durable API/worker + transfer parents + signing + local Ethereum effects + configured local custody + synthetic finance + user-held and settlement-only workflows + reproducible local Ethereum and Solana demos + native Solana semantic gate + local Solana mint, wallet-transfer, redemption-custody, burn, and product-path orchestration
 Completed documentation slice: share-ready walkthrough and publication reconciliation (Phase 8A)
-Next: final code/security/recovery/API/share-readiness review (Phase 8B)
+Completed release slice: final code/security/recovery/API/share-readiness review (Phase 8B)
+Next: separately authorized production integration or publication-alignment work
 ```
 
 The authoritative [design](docs/DESIGN.md) owns architecture and custody/reserve boundaries; the [implementation roadmap](docs/IMPLEMENTATION.md) owns phase status and completed-plan links; the [demo contract](docs/TRANSFER_DEMO.md) specifies Demo A and Demo B; and the [plan lifecycle](docs/plans/README.md) governs authorization and closeout. No future phase is active until separately authorized.
@@ -182,41 +227,9 @@ JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw --version
 JAVA_HOME=/opt/homebrew/opt/openjdk ./mvnw clean verify
 ```
 
-For the bounded local demonstrations, first read the [POC walkthrough](docs/DEMO_WALKTHROUGH.md), then choose one environment. To run Ethereum, prepare the ignored mode-`0600` `.env.local-anvil` from [`.env.example`](.env.example), ensure the three approved digest-pinned images are cached, and use the safe commands below. Demo A is the user-held acquisition/hold/redemption lifecycle; reset is explicit before Demo B, the settlement-only six-effect transfer. `reset.sh --yes` irreversibly removes only the named Phase 6D database/chain volumes and ignored runtime evidence.
-
-```bash
-scripts/demo/start.sh
-scripts/demo/demo-user-held.sh
-scripts/demo/reset.sh --yes
-scripts/demo/start.sh
-scripts/demo/demo-settlement-only.sh
-scripts/demo/stop.sh
-```
-
-The [local Ethereum demo runbook](docs/runbooks/LOCAL_ETHEREUM_DEMO.md) records prerequisites, immutable image identities and licenses, exact assertions, restart recovery, troubleshooting, preserved-state behavior, and destructive teardown.
-
-Before switching to Solana, preserve and stop Ethereum with
-`scripts/demo/stop.sh`; do not use reset unless its named state should be
-destroyed. For the private local Solana demonstrations, use the already
-provisioned pinned Agave/SPL tools, Java 25.0.2, and cached PostgreSQL image.
-Demo A remains user-held and Demo B remains settlement-only:
-
-```bash
-scripts/demo/solana/start.sh
-scripts/demo/solana/demo-user-held.sh
-scripts/demo/solana/reset.sh --yes
-scripts/demo/solana/start.sh
-scripts/demo/solana/demo-settlement-only.sh
-scripts/demo/solana/stop.sh
-```
-
-The [local Solana demo runbook](docs/runbooks/LOCAL_SOLANA_DEMO.md) records the
-host-native topology, exact identities/ports, assertions, restart procedure,
-safe diagnostics, and destructive teardown boundary.
-
-Before switching back to Ethereum, preserve and stop Solana with
-`scripts/demo/solana/stop.sh`. The runbooks own the detailed state-preservation,
-readiness, restart, and reset procedures; the README does not duplicate them.
+For the bounded local demonstrations, use the [quick start](#quick-start), then
+follow the owning Ethereum or Solana runbook for detailed state preservation,
+readiness, restart recovery, assertions, and teardown.
 
 The native Solana tooling uses the approved Apple Silicon Agave archive and repository-local SPL Token CLI build; it does not change Compose. The Phase 7A semantic command rejects redirected scoped paths, resets only ignored `.solana-runtime/`, runs the exact local mint/transfer/redemption/burn proof, retains sanitized evidence, and stops only its exactly identified validator. The public-only fixture supplies both configured user owners plus ADMIN redemption for opt-in Java primitive and product-path gates; the Java adapter still accepts only loopback RPC and explicit server-owned identities. See the [native Solana script guide](scripts/solana/README.md) for immutable artifact identities, prerequisites, profile inputs, and cleanup boundaries.
 
