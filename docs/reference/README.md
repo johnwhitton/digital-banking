@@ -8,23 +8,28 @@ Zelle is used only as a public case study. Neither the publications nor this rep
 
 PDF-only commit `87f8aadf9f2b520c40631cd236eb0a5d91417e95`
 synchronized Volume I and the Executive Brief to the published v1.0.5 Ethereum
-alignment release. It is not implementation evidence. The executable Solana
-baseline immediately before it is
+alignment release. User commit
+`645290c9df0fc67cc45aa473228e4ac53cdc55f6` subsequently synchronized only the
+Executive Brief to v1.0.6. Neither PDF commit is implementation evidence. The
+executable Solana profile remains pinned to
 `173ebcbb002cacad479c7ced4361106e7c6f21dc`.
 
-The v1.0.5 source authority is the immutable prep tag
+Volume I's v1.0.5 source authority is the immutable prep tag
 `digital-banking-v1.0.5-ethereum`, which resolves to publication commit
 `d367698c9aa1396c5d87102e9bab975982501192`. Release records were reconciled at
-`484d6635c705f3e43a7835111930e615109c2938`. The prep worktree and mutable build
-directories are not provenance evidence. The two changed repository PDFs have
-the same Git blob as both the tag's canonical `dist` output and primary review
-copy. Volumes II and III retain their separately governed tagged blobs. All four
-committed files have non-executable Git mode `100644`.
+`484d6635c705f3e43a7835111930e615109c2938`. The Executive Brief's v1.0.6
+authority is prep implementation commit
+`9d459e777961527467f8fdf04959c0790ec91568`, release-metadata commit
+`e070c9509bf65d777034f2d3570bf964db42ab86`, and immutable prep tag
+`digital-banking-v1.0.6-solana`, which resolves to the latter commit. The prep
+worktree and mutable build directories are not provenance evidence. Each
+repository PDF matches its governed Git object; Volumes I-III retain their
+prior blobs. All four committed files have non-executable Git mode `100644`.
 
 | Publication | Version / pages | Bytes | Git blob | SHA-256 |
 | --- | --- | ---: | --- | --- |
 | [*Designing a Stablecoin Settlement Platform for Existing Real-Time Payment Networks*](stablecoin-settlement-reference-architecture.pdf) | 1.0.5 / 152 | 4,963,702 | `515d621b6d024eb6d40d7258564b1436c6738892` | `a2a451d2830b1aef2dc6efe47110322be0e76f508d99feeaf5c61e6c82b1777b` |
-| [*Digital Asset Settlement for Zelle*](zelle-digital-asset-settlement-executive-brief.pdf) | 1.0.5 / 27 | 1,358,915 | `c3d1a431ebb5870a9c6f0f790e7e9bdb55954699` | `96f5b8301406328b6e896a7d8dc0903d472cb07bdcc81157254c8d6e2af8aad1` |
+| [*Digital Asset Settlement for Zelle*](zelle-digital-asset-settlement-executive-brief.pdf) | 1.0.6 / 27 | 1,372,799 | `5c9a83061e03a603fd641187661ee06608c44bc9` | `a7a06a38a1de51d807d249e580f8882a2510b8196b24000893ef9c92015e023d` |
 | [*Digital Banking Engineering Companion*](digital-banking-engineering-companion.pdf) | 1.1.0 / 46 | 373,792 | `2b36c73cd47953bfd690b6db2e7d4317b8fff04d` | `9448c01a27810a4d15d59c7bf8ef4e56246c5719abb4b9567f178dd2abec9223` |
 | [*Digital Banking Reference Implementation*](digital-banking-reference-implementation.pdf) | 1.0.0 / 45 | 345,440 | `b3b907c414a7c4a68741ad63bd2279d5ea007c6b` | `d7b5aa6218df3d1ef6c7cddd6e9c1e05bf6da25cbdbed670b7eccabd7cba8ca3` |
 
@@ -56,14 +61,19 @@ Design traceability:
 | --- | --- |
 | Full title | *Digital Asset Settlement for Zelle: Executive Architecture Brief for Stablecoin and Cross-Border Settlement* |
 | Author | John Whitton |
-| Version | 1.0.5 |
-| Publication date | 18 July 2026 |
+| Version | 1.0.6 |
+| Publication date | 19 July 2026 |
 | Page count | 27 portrait US Letter pages |
-| Source | `digital-banking-v1.0.5-ethereum:architecture/digital-banking/executive/zelle/dist/zelle-digital-asset-settlement-executive-brief.pdf` |
-| Publication commit | `d367698c9aa1396c5d87102e9bab975982501192` |
-| Repository sync | PDF-only commit `87f8aadf9f2b520c40631cd236eb0a5d91417e95` |
-| Evidence snapshot | `johnwhitton/digital-banking@f744fe619de0d6cf1fc295cd4116e880aa00d803` (local Ethereum POC) |
-| Purpose | Executive framing for the control-plane thesis, governable decisions, bounded pilot, custody roles, Java/native boundary, independent finalities, evidence-first roadmap, and principal risks. |
+| Source | `digital-banking-v1.0.6-solana:architecture/digital-banking/executive/zelle/dist/zelle-digital-asset-settlement-executive-brief.pdf` |
+| PDF Git blob | `5c9a83061e03a603fd641187661ee06608c44bc9` |
+| PDF SHA-256 | `a7a06a38a1de51d807d249e580f8882a2510b8196b24000893ef9c92015e023d` |
+| Source archive SHA-256 | `e9f0a1cd3e916ae383739ed4291c1ab12a48242c786f9ffdb2ce4122fbe06284` |
+| Prep implementation commit | `9d459e777961527467f8fdf04959c0790ec91568` |
+| Prep release-metadata commit | `e070c9509bf65d777034f2d3570bf964db42ab86` |
+| Publication tag | `digital-banking-v1.0.6-solana` |
+| Repository sync | User PDF commit `645290c9df0fc67cc45aa473228e4ac53cdc55f6` |
+| Implementation evidence | `johnwhitton/digital-banking@173ebcbb002cacad479c7ced4361106e7c6f21dc` (completed local Solana profile) |
+| Purpose | Concise dual-chain alignment of the control-plane thesis, product paths, custody roles, Java/native boundary, independent finalities, evidence-first delivery, and principal risks. |
 
 Design traceability:
 
@@ -112,12 +122,13 @@ The live repository may advance beyond any evidence snapshot described in this v
 
 ## Publication snapshot boundary
 
-Volume I and the Executive Brief v1.0.5 align to the local Ethereum evidence
-snapshot named above. They do not describe the later local Solana implementation
-completed at `173ebcbb002cacad479c7ced4361106e7c6f21dc`. Publication snapshots may
-lag the live implementation. A future Solana publication alignment will be a
-separately versioned publication and will be synchronized only after it is
-published; no such release is claimed here.
+Volume I v1.0.5 remains the detailed Ethereum-aligned architecture snapshot.
+The Executive Brief alone advanced to v1.0.6 to concisely align the publication
+set with the completed local Solana profile at
+`173ebcbb002cacad479c7ced4361106e7c6f21dc`; it does not turn that local evidence
+into production readiness. Volume II v1.1.0 and Volume III v1.0.0 are unchanged.
+Publication snapshots may lag the live implementation, and any broader Solana
+alignment of Volumes I-III remains separately governed publication work.
 
 ## Interpretation boundary
 

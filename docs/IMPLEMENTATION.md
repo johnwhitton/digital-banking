@@ -427,13 +427,17 @@ non-blocking advisories in the [Phase 8B final review](reviews/PHASE_8B_FINAL_RE
 ## Publications
 
 - **Volume I - [Digital Banking Reference Architecture](reference/stablecoin-settlement-reference-architecture.pdf)** (`published`, v1.0.5, 152 pages): Ethereum-alignment architecture snapshot synchronized in PDF-only commit `87f8aadf9f2b520c40631cd236eb0a5d91417e95`.
-- **Executive Brief - [Digital Asset Settlement for Zelle](reference/zelle-digital-asset-settlement-executive-brief.pdf)** (`published`, v1.0.5, 27 pages): executive companion from the same immutable Ethereum-alignment release.
+- **Executive Brief - [Digital Asset Settlement for Zelle](reference/zelle-digital-asset-settlement-executive-brief.pdf)** (`published`, v1.0.6, 27 pages): concise Solana/dual-chain alignment synchronized after Phase 8B and pinned to implementation evidence `173ebcbb002cacad479c7ced4361106e7c6f21dc`.
 - **Volume II - [Digital Banking Engineering Companion](reference/digital-banking-engineering-companion.pdf)** (`published`, v1.1.0, 46 pages): vendor-neutral implementation and operations guidance covering durable workflow, Java/Spring, wallets and signing, EVM, Solana, submission and observation, infrastructure, testing, performance, and delivery. It is not production certification or a runnable implementation. Its code-status discussion is pinned to `e921fcb1877b46a6881437f46b1a6ebfa115ae58`; use this current plan, the README, accepted ADRs, source, and tests for live repository status.
 - **Volume III - [Digital Banking Reference Implementation](reference/digital-banking-reference-implementation.pdf)** (`published`, v1.0.0, 45 pages): code companion mapping architecture to repository modules, APIs, database schema and migrations, implementation excerpts, local build/run/test flows, and the boundary between local demonstrations and production integrations. Current design, ADRs, contracts, source, tests, and this living plan remain authoritative for implementation status.
 
-Publishing or synchronizing any volume does not change executable phase status,
-replace a focused implementation plan or acceptance test, complete Phase 8B,
-or imply production readiness. Publication snapshots may lag the live code.
+The v1.0.6 synchronization changes only the Executive Brief. Volume I remains
+v1.0.5, Volume II remains v1.1.0, and Volume III remains v1.0.0. It changes no
+executable capability or Phase 8B evidence. Publishing or synchronizing any
+volume does not change executable phase status, replace a focused implementation
+plan or acceptance test, or imply production readiness. Publication snapshots
+may lag the live code; broader Solana alignment of Volumes I-III remains
+separately governed future publication work.
 
 ## Plans and ADRs
 
@@ -460,6 +464,7 @@ or imply production readiness. Publication snapshots may lag the live code.
 - Completed Phase 7E Solana product-orchestration plan: [`docs/plans/completed/PHASE_7E_SOLANA_PRODUCT_PATH_ORCHESTRATION.md`](plans/completed/PHASE_7E_SOLANA_PRODUCT_PATH_ORCHESTRATION.md).
 - Completed Phase 7F reproducible local Solana demonstrations plan: [`docs/plans/completed/PHASE_7F_REPRODUCIBLE_LOCAL_SOLANA_DEMONSTRATIONS.md`](plans/completed/PHASE_7F_REPRODUCIBLE_LOCAL_SOLANA_DEMONSTRATIONS.md).
 - Completed Phase 8A share-ready documentation plan: [`docs/plans/completed/PHASE_8A_SHARE_READY_DEMO_DOCUMENTATION.md`](plans/completed/PHASE_8A_SHARE_READY_DEMO_DOCUMENTATION.md).
+- Completed Executive Brief v1.0.6 synchronization and release reconciliation: [`docs/plans/completed/EXECUTIVE_BRIEF_V1_0_6_SYNC_AND_RELEASE_RECONCILIATION.md`](plans/completed/EXECUTIVE_BRIEF_V1_0_6_SYNC_AND_RELEASE_RECONCILIATION.md).
 - Completed dual-product-path and delivery-roadmap alignment: [`docs/plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md`](plans/completed/DUAL_PRODUCT_PATHS_AND_DELIVERY_ROADMAP.md).
 - Completed Zelle share-readiness and transfer-roadmap plan: [`docs/plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md`](plans/completed/ZELLE_SHARE_READINESS_AND_TRANSFER_ROADMAP.md).
 - ADR process and index: [`docs/adr/README.md`](adr/README.md).
@@ -530,6 +535,22 @@ Action Request 07 corrects the Phase 3A API boundary without adding capability:
 The completed RED-GREEN and validation record is [`docs/plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md`](plans/completed/PHASE_3A_API_BOUNDARY_CORRECTIONS.md). This correction adds no endpoint, dependency, migration, runtime configuration, worker, external effect, signer, chain adapter, or production-readiness claim.
 
 ## Latest bounded vertical slice
+
+Action Request 30 completes **Executive Brief v1.0.6 Synchronization and
+Release Reconciliation**:
+
+- the user-committed Executive Brief is reconciled by immutable Git object and
+  SHA-256 identity with the prep v1.0.6 release tag and records;
+- README, publication index, current implementation status, and v1.0.1 patch
+  notes now distinguish the Solana-aligned Executive Brief from unchanged
+  Volumes I-III; and
+- the existing immutable Phase 8B v1.0.0 release remains historical evidence,
+  while one documentation-only v1.0.1 prerelease records the publication sync.
+
+No executable file, test, PDF byte, dependency, endpoint, authority, native
+effect, or production-readiness claim changed. The current implementation
+evidence remains `173ebcbb002cacad479c7ced4361106e7c6f21dc`; no Maven,
+Foundry, Ethereum, Solana, or demo gate was rerun for this metadata-only patch.
 
 Action Request 29 completes **Phase 8B Final Review and Dual-Chain POC
 Release**:
