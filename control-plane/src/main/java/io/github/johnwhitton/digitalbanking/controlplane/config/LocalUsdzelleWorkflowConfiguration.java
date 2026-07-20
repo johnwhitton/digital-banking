@@ -45,6 +45,7 @@ import io.github.johnwhitton.digitalbanking.ethereum.web3j.Web3jEthereumMintChai
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresUsdzelleWorkflowRepository;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresSettlementInstructionRegistry;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresSettlementTransferRepository;
+import io.github.johnwhitton.digitalbanking.solana.sava.PostgresSavaUsdzelleChainEvidenceAdapter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -55,10 +56,9 @@ import org.springframework.context.annotation.Primary;
 
 /** Explicit local-only composition for Phase 6B user-held workflows. */
 @Configuration(proxyBeanMethods = false)
-@Profile("local-demo & local-ethereum & !local-signer")
+@Profile("local-demo & !local-signer & (local-ethereum | local-solana)")
 @EnableConfigurationProperties({
         UsdzelleWorkflowProperties.class,
-        LocalEthereumProperties.class,
         LocalFinancialProperties.class})
 public class LocalUsdzelleWorkflowConfiguration {
 
@@ -83,7 +83,8 @@ public class LocalUsdzelleWorkflowConfiguration {
 
     @Bean
     @Primary
-    SettlementInstructionResolver localSettlementInstructionResolver(
+    @Profile("local-ethereum")
+    SettlementInstructionResolver localEthereumSettlementInstructionResolver(
             SettlementInstructionRegistry instructions,
             WalletIdentityRegistry wallets,
             MockBankApplicationService banks,
@@ -115,6 +116,37 @@ public class LocalUsdzelleWorkflowConfiguration {
     }
 
     @Bean
+    @Primary
+    @Profile("local-solana")
+    SettlementInstructionResolver localSolanaSettlementInstructionResolver(
+            SettlementInstructionRegistry instructions,
+            WalletIdentityRegistry wallets,
+            MockBankApplicationService banks,
+            UsdzelleWorkflowProperties workflowProperties,
+            LocalSolanaProperties solana,
+            LocalFinancialProperties finance,
+            ClockPort clock) {
+        return new RegisteredSettlementInstructionResolver(
+                instructions, wallets, banks,
+                new RegisteredSettlementInstructionResolver.Policy(
+                        ADMIN, "phase-6c-v1", solana.mintAddress(),
+                        versions(workflowProperties.payoutPolicyVersion(),
+                                finance.bankPolicyVersion()),
+                        workflowProperties.conversionPolicyVersion(),
+                        versions(finance.accountingPolicyVersion(),
+                                finance.mintEvidencePolicyVersion(),
+                                finance.custodyEvidencePolicyVersion(),
+                                finance.burnEvidencePolicyVersion()),
+                        versions(workflowProperties.feePolicyVersion(),
+                                solana.policyVersion()),
+                        versions(workflowProperties.finalityPolicyVersion(),
+                                solana.policyVersion()),
+                        versions(workflowProperties.reconciliationPolicyVersion(),
+                                finance.accountingPolicyVersion())),
+                clock);
+    }
+
+    @Bean
     SettlementTransferRepository settlementTransferRepository(DataSource dataSource) {
         return new PostgresSettlementTransferRepository(dataSource);
     }
@@ -140,7 +172,8 @@ public class LocalUsdzelleWorkflowConfiguration {
     }
 
     @Bean
-    UsdzelleWorkflowContextResolver usdzelleWorkflowContextResolver(
+    @Profile("local-ethereum")
+    UsdzelleWorkflowContextResolver localEthereumUsdzelleWorkflowContextResolver(
             UsdzelleWorkflowProperties workflowProperties,
             LocalEthereumProperties ethereum,
             LocalFinancialProperties finance,
@@ -210,6 +243,76 @@ public class LocalUsdzelleWorkflowConfiguration {
     }
 
     @Bean
+    @Profile("local-solana")
+    UsdzelleWorkflowContextResolver localSolanaUsdzelleWorkflowContextResolver(
+            UsdzelleWorkflowProperties workflowProperties,
+            LocalSolanaProperties solana,
+            LocalFinancialProperties finance,
+            WalletIdentityRegistry wallets,
+            MockBankApplicationService banks,
+            ClockPort clock) {
+        AssetUnit unit = new AssetUnit(
+                solana.assetId(), solana.unitId(), solana.unitVersion(),
+                solana.decimals(), solana.maxAtomicUnits());
+        return (kind, participant, bankReference, currency, requestedNetwork) -> {
+            if (!"USD".equals(currency)
+                    || requestedNetwork.filter(network ->
+                            network != SettlementNetwork.SOLANA).isPresent()) {
+                throw new IllegalArgumentException(
+                        "workflow currency or network is unsupported");
+            }
+            UsdzelleWorkflowProperties.ParticipantMapping mapping =
+                    workflowProperties.participants().stream()
+                            .filter(candidate -> candidate.tenantId().equals(
+                                            participant.tenantId())
+                                    && candidate.participantId().equals(
+                                            participant.participantId())
+                                    && candidate.bankAccountReference().equals(
+                                            bankReference.value()))
+                            .findFirst()
+                            .orElseThrow(() -> new IllegalArgumentException(
+                                    "participant workflow mapping is unavailable"));
+            SyntheticBankAccount.BankId bankId =
+                    new SyntheticBankAccount.BankId(mapping.bankId());
+            SyntheticBankAccount.AccountId accountId =
+                    new SyntheticBankAccount.AccountId(mapping.bankAccountId());
+            banks.findAccount(participant, bankId, accountId);
+            WalletReference userReference =
+                    new WalletReference(mapping.userWalletReference());
+            WalletIdentityRegistry.WalletIdentity user = wallets.resolve(userReference);
+            WalletIdentityRegistry.WalletIdentity admin = wallets.resolve(ADMIN);
+            if (user.ownerCategory() != WalletIdentityRegistry.OwnerCategory.USER_CUSTODY
+                    || admin.ownerCategory() != WalletIdentityRegistry.OwnerCategory.ADMIN
+                    || user.network() != SettlementNetwork.SOLANA
+                    || admin.network() != SettlementNetwork.SOLANA
+                    || (kind == UsdzelleWorkflow.Kind.ACQUISITION
+                        && !user.normalizedAddress().equals(solana.destinationOwner()))) {
+                throw new IllegalArgumentException(
+                        "workflow wallet authority mapping is invalid");
+            }
+            return new UsdzelleWorkflowContextResolver.Resolution(
+                    unit, bankId, accountId, userReference,
+                    user.registryVersion() + ':' + user.keyVersion(),
+                    ADMIN, admin.registryVersion() + ':' + admin.keyVersion(),
+                    SettlementNetwork.SOLANA, solana.mintAddress(),
+                    versions(workflowProperties.payoutPolicyVersion(),
+                            finance.bankPolicyVersion()),
+                    workflowProperties.workflowVersion(),
+                    workflowProperties.conversionPolicyVersion(),
+                    versions(finance.accountingPolicyVersion(),
+                            finance.mintEvidencePolicyVersion(),
+                            finance.custodyEvidencePolicyVersion(),
+                            finance.burnEvidencePolicyVersion()),
+                    versions(workflowProperties.feePolicyVersion(),
+                            solana.policyVersion()),
+                    versions(workflowProperties.finalityPolicyVersion(),
+                            solana.policyVersion()),
+                    versions(workflowProperties.reconciliationPolicyVersion(),
+                            finance.accountingPolicyVersion()), clock.now());
+        };
+    }
+
+    @Bean
     UsdzelleWorkflowApplicationService usdzelleWorkflowApplicationService(
             UsdzelleWorkflowRepository workflows,
             UsdzelleWorkflowContextResolver resolver,
@@ -218,7 +321,8 @@ public class LocalUsdzelleWorkflowConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    UsdzelleChainEvidencePort usdzelleChainEvidencePort(
+    @Profile("local-ethereum")
+    UsdzelleChainEvidencePort localEthereumUsdzelleChainEvidencePort(
             DataSource dataSource,
             LocalEthereumProperties ethereum,
             UsdzelleWorkflowProperties workflows,
@@ -250,7 +354,43 @@ public class LocalUsdzelleWorkflowConfiguration {
                 Clock.systemUTC());
     }
 
+    @Bean
+    @Profile("local-solana")
+    UsdzelleChainEvidencePort localSolanaUsdzelleChainEvidencePort(
+            DataSource dataSource,
+            LocalSolanaProperties solana,
+            UsdzelleWorkflowProperties workflows,
+            WalletIdentityRegistry wallets) {
+        WalletIdentityRegistry.WalletIdentity admin = wallets.resolve(ADMIN);
+        java.util.Map<String,
+                PostgresSavaUsdzelleChainEvidenceAdapter.UserConfiguration> users =
+                workflows.participants().stream().collect(
+                        java.util.stream.Collectors.toUnmodifiableMap(
+                                UsdzelleWorkflowProperties.ParticipantMapping
+                                        ::userWalletReference,
+                                mapping -> {
+                                    WalletIdentityRegistry.WalletIdentity user =
+                                            wallets.resolve(new WalletReference(
+                                                    mapping.userWalletReference()));
+                                    return new PostgresSavaUsdzelleChainEvidenceAdapter
+                                            .UserConfiguration(
+                                                    user.normalizedAddress(),
+                                                    mapping.userWalletReference(),
+                                                    user.registryVersion() + ':'
+                                                            + user.keyVersion());
+                                }));
+        return new PostgresSavaUsdzelleChainEvidenceAdapter(
+                dataSource,
+                new PostgresSavaUsdzelleChainEvidenceAdapter.Configuration(
+                        solana.clusterIdentity(), solana.mintAddress(), users,
+                        admin.normalizedAddress(), ADMIN.value(),
+                        admin.registryVersion() + ':' + admin.keyVersion(),
+                        solana.policyVersion()),
+                Clock.systemUTC());
+    }
+
     @Bean(destroyMethod = "close")
+    @Profile("local-ethereum")
     Web3jEthereumMintChainAdapter usdzelleMintChainAdapter(
             DataSource dataSource,
             WalletIdentityRegistry wallets,
@@ -273,6 +413,7 @@ public class LocalUsdzelleWorkflowConfiguration {
     }
 
     @Bean("localUsdzelleMintHandler")
+    @Profile("local-ethereum")
     OperationDeliveryHandler localUsdzelleMintHandler(
             OperationRepository operations,
             Web3jEthereumMintChainAdapter chain,

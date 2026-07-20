@@ -28,6 +28,9 @@ public record LocalSolanaProperties(
         Path transferAuthorityKeyFile,
         String transferAuthorityKeyAlias,
         String transferAuthorityKeyVersion,
+        Path transferDestinationAuthorityKeyFile,
+        String transferDestinationAuthorityKeyAlias,
+        String transferDestinationAuthorityKeyVersion,
         String redemptionOwner,
         Path burnAuthorityKeyFile,
         String burnAuthorityKeyAlias,
@@ -50,6 +53,9 @@ public record LocalSolanaProperties(
         Objects.requireNonNull(feePayerKeyFile, "feePayerKeyFile");
         Objects.requireNonNull(mintAuthorityKeyFile, "mintAuthorityKeyFile");
         Objects.requireNonNull(transferAuthorityKeyFile, "transferAuthorityKeyFile");
+        Objects.requireNonNull(
+                transferDestinationAuthorityKeyFile,
+                "transferDestinationAuthorityKeyFile");
         Objects.requireNonNull(burnAuthorityKeyFile, "burnAuthorityKeyFile");
         if (maxAtomicUnits == null || maxAtomicUnits.signum() <= 0) {
             throw new IllegalArgumentException(
@@ -61,6 +67,8 @@ public record LocalSolanaProperties(
                 mintAuthorityPublicKey, mintAuthorityKeyAlias, mintAuthorityKeyVersion,
                 transferDestinationOwner, transferAuthorityKeyAlias,
                 transferAuthorityKeyVersion,
+                transferDestinationAuthorityKeyAlias,
+                transferDestinationAuthorityKeyVersion,
                 redemptionOwner, burnAuthorityKeyAlias, burnAuthorityKeyVersion,
                 walletRegistryVersion,
                 assetId, unitId, unitVersion, decimals, policyVersion,

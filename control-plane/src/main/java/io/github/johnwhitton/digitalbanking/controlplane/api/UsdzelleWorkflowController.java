@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("local-demo & local-ethereum & !local-signer")
+@Profile("local-demo & !local-signer & (local-ethereum | local-solana)")
 @RequestMapping("/v1/usdzelle")
 public final class UsdzelleWorkflowController {
 
@@ -137,7 +137,7 @@ public final class UsdzelleWorkflowController {
             @NotBlank @Pattern(regexp = "USD") String currency,
             @NotBlank @Size(max = 128) @Pattern(regexp = BANK_REFERENCE)
             String bankAccountReference,
-            @Pattern(regexp = "ETHEREUM") String settlementNetwork) {
+            @Pattern(regexp = "^(ETHEREUM|SOLANA)$") String settlementNetwork) {
 
         UsdzelleWorkflowApplicationService.AcceptanceRequest toApplication() {
             return new UsdzelleWorkflowApplicationService.AcceptanceRequest(

@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -16,7 +17,12 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.github.johnwhitton.digitalbanking.application.IdempotencyConflictException;
 import io.github.johnwhitton.digitalbanking.application.UsdzelleWorkflowAcceptance;
+import io.github.johnwhitton.digitalbanking.application.OperationAcceptance;
+import io.github.johnwhitton.digitalbanking.application.command.CanonicalCommandMetadata;
+import io.github.johnwhitton.digitalbanking.application.command.CommandDigest;
 import io.github.johnwhitton.digitalbanking.application.command.IdempotencyKey;
+import io.github.johnwhitton.digitalbanking.application.command.IdempotencyResource;
+import io.github.johnwhitton.digitalbanking.application.command.IdempotencyScope;
 import io.github.johnwhitton.digitalbanking.application.command.ParticipantScope;
 import io.github.johnwhitton.digitalbanking.application.delivery.DeliveryOutcome;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryQueue;
@@ -25,6 +31,10 @@ import io.github.johnwhitton.digitalbanking.domain.accounting.UsdCents;
 import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
 import io.github.johnwhitton.digitalbanking.domain.asset.TokenQuantity;
 import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationAcceptanceContext;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationId;
+import io.github.johnwhitton.digitalbanking.domain.operation.OperationKind;
+import io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation;
 import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
 import io.github.johnwhitton.digitalbanking.domain.workflow.UsdzelleWorkflow;
@@ -81,7 +91,14 @@ class PostgresUsdzelleWorkflowRepositoryTest {
     @BeforeEach
     void clearWorkflowRows() {
         jdbc.sql("DELETE FROM operation_delivery_attempt").update();
-        jdbc.sql("DELETE FROM operation_outbox WHERE workflow_id IS NOT NULL").update();
+        jdbc.sql("DELETE FROM operation_outbox").update();
+        jdbc.sql("DELETE FROM operation_finality_evidence").update();
+        jdbc.sql("DELETE FROM operation_finality").update();
+        jdbc.sql("DELETE FROM operation_attempt").update();
+        jdbc.sql("DELETE FROM operation_transition_evidence").update();
+        jdbc.sql("DELETE FROM operation_transition").update();
+        jdbc.sql("DELETE FROM operation_idempotency").update();
+        jdbc.sql("DELETE FROM token_operation").update();
         jdbc.sql("DELETE FROM usdzelle_workflow_conclusion").update();
         jdbc.sql("DELETE FROM usdzelle_chain_state_observation").update();
         jdbc.sql("DELETE FROM usdzelle_workflow_evidence").update();
@@ -93,8 +110,8 @@ class PostgresUsdzelleWorkflowRepositoryTest {
     }
 
     @Test
-    void v9MigratesNormalizedWorkflowStateAndExtendsTheExistingOutbox() {
-        assertEquals(8, jdbc.sql(
+    void v14RetainsNormalizedWorkflowStateAndExtendsTheExistingOutbox() {
+        assertEquals(9, jdbc.sql(
                 "SELECT count(*) FROM flyway_schema_history WHERE success")
                 .query(Integer.class).single());
         assertEquals(1, jdbc.sql("""
@@ -158,6 +175,82 @@ class PostgresUsdzelleWorkflowRepositoryTest {
                 PARTICIPANT, UsdzelleWorkflow.Kind.ACQUISITION, KEY, "c".repeat(64),
                 () -> workflow(UsdzelleWorkflow.Kind.ACQUISITION, new UUID(10, 99))));
         assertEquals(1, count("usdzelle_workflow"));
+    }
+
+    @Test
+    void persistsAndClaimsAnImmutableSolanaWorkflowWithoutEthereumOwnership() {
+        PostgresUsdzelleWorkflowRepository repository =
+                new PostgresUsdzelleWorkflowRepository(dataSource);
+
+        UsdzelleWorkflowAcceptance accepted = repository.accept(
+                PARTICIPANT, UsdzelleWorkflow.Kind.ACQUISITION, KEY,
+                REQUEST_DIGEST, () -> workflow(
+                        UsdzelleWorkflow.Kind.ACQUISITION,
+                        new UUID(10, 50), SettlementNetwork.SOLANA));
+        UsdzelleWorkflowAcceptance replayed = repository.accept(
+                PARTICIPANT, UsdzelleWorkflow.Kind.ACQUISITION, KEY,
+                REQUEST_DIGEST, () -> workflow(
+                        UsdzelleWorkflow.Kind.ACQUISITION,
+                        new UUID(10, 51), SettlementNetwork.ETHEREUM));
+
+        assertTrue(replayed.replayed());
+        assertEquals(accepted.workflow().id(), replayed.workflow().id());
+        assertEquals(SettlementNetwork.SOLANA,
+                repository.findById(accepted.workflow().id()).orElseThrow()
+                        .context().network());
+        assertTrue(PostgresOperationDeliveryQueue.localEthereumDemo(dataSource)
+                .claim("ethereum-worker", accepted.workflow().context().acceptedAt(),
+                        Duration.ofSeconds(30), 1)
+                .deliveries().isEmpty());
+        var solanaClaim = PostgresOperationDeliveryQueue.localSolana(dataSource)
+                .claim("solana-worker", accepted.workflow().context().acceptedAt(),
+                        Duration.ofSeconds(30), 1);
+        assertEquals(1, solanaClaim.deliveries().size());
+        assertEquals(accepted.workflow().id().value(),
+                solanaClaim.deliveries().getFirst().aggregateId());
+    }
+
+    @Test
+    void productMintAndBurnChildrenRemainOwnedByTheirRetainedParentNetwork() {
+        PostgresUsdzelleWorkflowRepository workflows =
+                new PostgresUsdzelleWorkflowRepository(dataSource);
+        PostgresOperationRepository operations = new PostgresOperationRepository(dataSource);
+        UsdzelleWorkflow ethereum = workflows.accept(
+                PARTICIPANT, UsdzelleWorkflow.Kind.REDEMPTION,
+                KEY, REQUEST_DIGEST,
+                () -> workflow(UsdzelleWorkflow.Kind.REDEMPTION,
+                        new UUID(10, 60), SettlementNetwork.ETHEREUM)).workflow();
+        UsdzelleWorkflow solana = workflows.accept(
+                PARTICIPANT, UsdzelleWorkflow.Kind.ACQUISITION,
+                KEY, REQUEST_DIGEST,
+                () -> workflow(UsdzelleWorkflow.Kind.ACQUISITION,
+                        new UUID(10, 61), SettlementNetwork.SOLANA)).workflow();
+        jdbc.sql("""
+                UPDATE operation_outbox
+                SET status = 'DELIVERED', delivered_at = :at, updated_at = :at
+                WHERE workflow_id IS NOT NULL
+                """).param("at", ethereum.context().acceptedAt()
+                        .atOffset(java.time.ZoneOffset.UTC)).update();
+
+        List<OperationId> ethereumChildren = List.of(
+                tokenChild(operations, ethereum, OperationKind.MINT),
+                tokenChild(operations, ethereum, OperationKind.BURN));
+        List<OperationId> solanaChildren = List.of(
+                tokenChild(operations, solana, OperationKind.MINT),
+                tokenChild(operations, solana, OperationKind.BURN));
+        Instant claimedAt = ethereum.context().acceptedAt().plusSeconds(1);
+
+        List<OperationId> claimedByEthereum = PostgresOperationDeliveryQueue
+                .localEthereumDemo(dataSource)
+                .claim("ethereum-worker", claimedAt, Duration.ofSeconds(30), 10)
+                .deliveries().stream().map(delivery -> delivery.operationId()).toList();
+        List<OperationId> claimedBySolana = PostgresOperationDeliveryQueue
+                .localSolana(dataSource)
+                .claim("solana-worker", claimedAt, Duration.ofSeconds(30), 10)
+                .deliveries().stream().map(delivery -> delivery.operationId()).toList();
+
+        assertEquals(Set.copyOf(ethereumChildren), Set.copyOf(claimedByEthereum));
+        assertEquals(Set.copyOf(solanaChildren), Set.copyOf(claimedBySolana));
     }
 
     @Test
@@ -261,8 +354,42 @@ class PostgresUsdzelleWorkflowRepositoryTest {
         return jdbc.sql("SELECT count(*) FROM " + table).query(Integer.class).single();
     }
 
+    private static OperationId tokenChild(
+            PostgresOperationRepository operations,
+            UsdzelleWorkflow workflow,
+            OperationKind kind) {
+        String suffix = kind.name().toLowerCase(java.util.Locale.ROOT);
+        IdempotencyKey key = new IdempotencyKey(
+                workflow.context().network().name().toLowerCase(java.util.Locale.ROOT)
+                        + "-" + suffix);
+        CanonicalCommandMetadata canonical = new CanonicalCommandMetadata(
+                1, new CommandDigest((kind == OperationKind.MINT ? "e" : "f").repeat(64)));
+        OperationAcceptance accepted = operations.accept(
+                new IdempotencyScope(PARTICIPANT,
+                        IdempotencyResource.TOKEN_OPERATION, kind),
+                key, canonical,
+                () -> TokenOperation.requested(
+                        new OperationId(UUID.randomUUID()),
+                        new OperationAcceptanceContext(
+                                PARTICIPANT.tenantId(), PARTICIPANT.participantId(),
+                                IdempotencyResource.TOKEN_OPERATION.name(), key.sha256(), 1,
+                                canonical.canonicalizationVersion(),
+                                canonical.digest().value(),
+                                "usdzelle:" + workflow.id().value() + ":" + suffix),
+                        kind, workflow.context().tokenQuantity(),
+                        workflow.context().acceptedAt(),
+                        new EvidenceRef("internal:test:workflow-child-accepted")));
+        return accepted.operation().operationId();
+    }
+
     private static UsdzelleWorkflow workflow(
             UsdzelleWorkflow.Kind kind, UUID workflowId) {
+        return workflow(kind, workflowId, SettlementNetwork.ETHEREUM);
+    }
+
+    private static UsdzelleWorkflow workflow(
+            UsdzelleWorkflow.Kind kind, UUID workflowId,
+            SettlementNetwork network) {
         AssetUnit unit = new AssetUnit(
                 "USDZELLE", "CENT", 1, 2, new BigInteger("999999999999999999"));
         UsdzelleWorkflow.AcceptedContext context = new UsdzelleWorkflow.AcceptedContext(
@@ -272,7 +399,7 @@ class PostgresUsdzelleWorkflowRepositoryTest {
                 new SyntheticBankAccount.AccountId("USER_1_BANK_ACCOUNT"),
                 new WalletReference("synthetic-wallet:USER_WALLET_1"), "user-wallet-v1",
                 new WalletReference("synthetic-wallet:ADMIN_REDEMPTION"), "admin-wallet-v1",
-                SettlementNetwork.ETHEREUM, "local-token-v1",
+                network, "local-token-v1",
                 "payout-before-burn-v1", "one-to-one-v1",
                 "accounting-v1", "fee-v1", "finality-v1", "reconciliation-v1",
                 KEY.sha256(), "a".repeat(64), Instant.parse("2026-07-18T18:00:00Z"));

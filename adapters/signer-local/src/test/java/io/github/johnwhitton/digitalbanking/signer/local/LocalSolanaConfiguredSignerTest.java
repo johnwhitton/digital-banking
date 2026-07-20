@@ -133,6 +133,46 @@ class LocalSolanaConfiguredSignerTest {
     }
 
     @Test
+    void selectsEitherConfiguredTransferAuthorityByServerResolvedAlias()
+            throws Exception {
+        Fixture fixture = fixture();
+        TestKey secondTransfer = key(
+                fixture.root().resolve("second-transfer-authority.json"),
+                "local-solana:second-transfer-authority");
+        byte[] message = "one exact second-user transfer message"
+                .getBytes(StandardCharsets.UTF_8);
+        try (LocalSolanaConfiguredSigner signer = new LocalSolanaConfiguredSigner(
+                new LocalSolanaConfiguredSigner.Configuration(
+                        fixture.root(), List.of(
+                                configured(fixture.fee(), SigningRequest.KeyRole.FEE_PAYER,
+                                        "fee-v1"),
+                                configured(fixture.authority(),
+                                        SigningRequest.KeyRole.MINT_AUTHORITY,
+                                        "authority-v1"),
+                                configured(fixture.transfer(),
+                                        SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                        "transfer-v1"),
+                                configured(secondTransfer,
+                                        SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                        "second-transfer-v1"),
+                                configured(fixture.burn(),
+                                        SigningRequest.KeyRole.BURN_AUTHORITY,
+                                        "burn-v1"))))) {
+            SignerPort.Signed signed = assertInstanceOf(
+                    SignerPort.Signed.class, signer.signSolanaMessage(command(
+                            signer, secondTransfer,
+                            SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                            message, "second-transfer-provider", secondTransfer.address(),
+                            SigningRequest.Action.TRANSFER)));
+            assertTrue(verify(secondTransfer.pair(), message, signed.signature()));
+            assertEquals(SigningRequest.KeyStatus.ACTIVE, signer.resolve(
+                    fixture.transfer().alias(), SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                    SigningRequest.Algorithm.ED25519,
+                    SettlementNetwork.SOLANA).status());
+        }
+    }
+
+    @Test
     void signsBurnOnlyWithTheConfiguredAdminRedemptionAuthority() throws Exception {
         Fixture fixture = fixture();
         byte[] message = "one exact burn message".getBytes(StandardCharsets.UTF_8);

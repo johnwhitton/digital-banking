@@ -9,6 +9,14 @@ digital-banking:
         worker-id: local-solana-worker
     transfer:
         default-network: SOLANA
+    usdzelle-workflow:
+        finality-policy-version: local-solana-finality-v1
+    local-finance:
+        mint-evidence-policy-version: local-solana-mint-v1
+        custody-evidence-policy-version: local-solana-mint-v1
+        burn-evidence-policy-version: local-solana-mint-v1
+        settlement-network: LOCAL_SOLANA
+        contract-reference: ${LOCAL_SOLANA_MINT_ADDRESS:}
     local-solana:
         rpc-uri: ${LOCAL_SOLANA_RPC_URI:http://127.0.0.1:8899}
         cluster-identity: ${LOCAL_SOLANA_CLUSTER_IDENTITY:}
@@ -27,6 +35,9 @@ digital-banking:
         transfer-authority-key-file: ${LOCAL_SOLANA_TRANSFER_AUTHORITY_KEY_FILE:.solana-runtime/keys/user-1.json}
         transfer-authority-key-alias: local-solana:user-1-transfer-authority
         transfer-authority-key-version: local-solana-user-1-v1
+        transfer-destination-authority-key-file: ${LOCAL_SOLANA_TRANSFER_DESTINATION_AUTHORITY_KEY_FILE:.solana-runtime/keys/user-2.json}
+        transfer-destination-authority-key-alias: local-solana:user-2-transfer-authority
+        transfer-destination-authority-key-version: local-solana-user-2-v1
         redemption-owner: ${LOCAL_SOLANA_REDEMPTION_OWNER:}
         burn-authority-key-file: ${LOCAL_SOLANA_BURN_AUTHORITY_KEY_FILE:.solana-runtime/keys/admin-redemption-owner.json}
         burn-authority-key-alias: local-solana:admin-redemption-burn-authority

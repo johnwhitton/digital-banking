@@ -166,6 +166,7 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
                         SELECT EXISTS (
                             SELECT 1 FROM usdzelle_chain_state_observation
                             WHERE workflow_id = :workflowId
+                              AND settlement_network = 'ETHEREUM'
                               AND effect_type = 'REDEMPTION_CUSTODY'
                               AND child_operation_id = :custodyId
                               AND evidence_reference = :evidence
@@ -249,12 +250,13 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
         int inserted = jdbc.sql("""
                         INSERT INTO usdzelle_chain_state_observation (
                             workflow_id, step_id, effect_type, child_operation_id,
-                            evidence_reference, block_number, block_hash,
+                            settlement_network, evidence_reference,
+                            block_number, block_hash,
                             user_balance_atomic, admin_balance_atomic,
                             total_supply_atomic, observed_at)
                         VALUES (
                             :workflowId, :stepId, :effectType, :childId,
-                            :evidenceReference, :blockNumber, :blockHash,
+                            'ETHEREUM', :evidenceReference, :blockNumber, :blockHash,
                             :userBalance, :adminBalance, :totalSupply, :observedAt)
                         ON CONFLICT DO NOTHING
                         """)
@@ -276,10 +278,12 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
         }
         int pointer = jdbc.sql("""
                         INSERT INTO accounting_confirmed_evidence (
-                            evidence_id, evidence_type, operation_id, attempt_id,
+                            evidence_id, evidence_type, settlement_network,
+                            operation_id, attempt_id,
                             observation_sequence, observed_supply_cents, recorded_at)
                         VALUES (
-                            :evidenceId, :evidenceType, :operationId, :attemptId,
+                            :evidenceId, :evidenceType, 'ETHEREUM',
+                            :operationId, :attemptId,
                             :sequence, :supply, :recordedAt)
                         ON CONFLICT DO NOTHING
                         """)
@@ -307,6 +311,7 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
                         FROM usdzelle_chain_state_observation
                         WHERE workflow_id = :workflowId
                           AND step_id = :stepId
+                          AND settlement_network = 'ETHEREUM'
                           AND effect_type = :effectType
                           AND child_operation_id = :childId
                         """)
@@ -375,6 +380,7 @@ public final class PostgresWeb3jUsdzelleChainEvidenceAdapter
                             SELECT 1 FROM accounting_confirmed_evidence
                             WHERE evidence_id = :evidenceId
                               AND evidence_type = :evidenceType
+                              AND settlement_network = 'ETHEREUM'
                               AND operation_id = :operationId
                               AND attempt_id = :attemptId
                               AND observation_sequence = :sequence

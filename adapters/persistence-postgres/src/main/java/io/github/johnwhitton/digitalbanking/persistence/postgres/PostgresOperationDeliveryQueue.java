@@ -117,21 +117,74 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                     WHERE supported_transfer.operation_id =
                                             candidate.wallet_transfer_id
                                       AND supported_transfer.network = 'SOLANA'))
+                            OR (candidate.event_type = 'UsdzelleWorkflowAccepted'
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM usdzelle_workflow supported_workflow
+                                    WHERE supported_workflow.workflow_id =
+                                            candidate.workflow_id
+                                      AND supported_workflow.settlement_network =
+                                            'SOLANA'))
+                            OR (candidate.event_type = 'SettlementTransferAccepted'
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM settlement_transfer supported_transfer
+                                    WHERE supported_transfer.transfer_id =
+                                            candidate.transfer_id
+                                      AND supported_transfer.settlement_network =
+                                            'SOLANA'))
                             OR (candidate.event_type = 'TokenOperationAccepted'
                                 AND EXISTS (
                                     SELECT 1 FROM token_operation supported_operation
                                     WHERE supported_operation.operation_id = candidate.operation_id
                                       AND supported_operation.operation_kind IN (
-                                          'MINT', 'BURN')))))
+                                          'MINT', 'BURN')
+                                      AND (supported_operation.business_correlation
+                                                NOT LIKE 'usdzelle:%'
+                                        OR EXISTS (
+                                            SELECT 1 FROM usdzelle_workflow parent
+                                            WHERE supported_operation.business_correlation
+                                                LIKE 'usdzelle:'
+                                                    || parent.workflow_id::text || ':%'
+                                              AND parent.settlement_network = 'SOLANA'))))))
                       OR (:filter = 'LOCAL_ETHEREUM_DEMO'
-                          AND (candidate.event_type IN (
-                                'WalletTransferAccepted', 'UsdzelleWorkflowAccepted',
-                                'SettlementTransferAccepted')
+                          AND ((candidate.event_type = 'WalletTransferAccepted'
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM wallet_transfer_operation supported_transfer
+                                    WHERE supported_transfer.operation_id =
+                                            candidate.wallet_transfer_id
+                                      AND supported_transfer.network = 'ETHEREUM'))
+                            OR (candidate.event_type = 'UsdzelleWorkflowAccepted'
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM usdzelle_workflow supported_workflow
+                                    WHERE supported_workflow.workflow_id =
+                                            candidate.workflow_id
+                                      AND supported_workflow.settlement_network =
+                                            'ETHEREUM'))
+                            OR (candidate.event_type = 'SettlementTransferAccepted'
+                                AND EXISTS (
+                                    SELECT 1
+                                    FROM settlement_transfer supported_transfer
+                                    WHERE supported_transfer.transfer_id =
+                                            candidate.transfer_id
+                                      AND supported_transfer.settlement_network =
+                                            'ETHEREUM'))
                             OR (candidate.event_type = 'TokenOperationAccepted'
                                 AND EXISTS (
                                     SELECT 1 FROM token_operation supported_operation
                                     WHERE supported_operation.operation_id = candidate.operation_id
-                                      AND supported_operation.operation_kind IN ('MINT', 'BURN'))))))
+                                      AND supported_operation.operation_kind IN ('MINT', 'BURN')
+                                      AND (supported_operation.business_correlation
+                                                NOT LIKE 'usdzelle:%'
+                                        OR EXISTS (
+                                            SELECT 1 FROM usdzelle_workflow parent
+                                            WHERE supported_operation.business_correlation
+                                                LIKE 'usdzelle:'
+                                                    || parent.workflow_id::text || ':%'
+                                              AND parent.settlement_network =
+                                                    'ETHEREUM')))))))
                   AND NOT EXISTS (
                       SELECT 1
                       FROM operation_outbox prior
@@ -575,17 +628,82 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                         AND supported_operation.operation_kind = 'MINT'))
                               OR (:filter = 'WALLET_TRANSFER'
                                   AND candidate.event_type = 'WalletTransferAccepted')
+                              OR (:filter = 'LOCAL_SOLANA'
+                                  AND ((candidate.event_type = 'WalletTransferAccepted'
+                                        AND EXISTS (
+                                            SELECT 1 FROM wallet_transfer_operation w
+                                            WHERE w.operation_id =
+                                                candidate.wallet_transfer_id
+                                              AND w.network = 'SOLANA'))
+                                    OR (candidate.event_type = 'UsdzelleWorkflowAccepted'
+                                        AND EXISTS (
+                                            SELECT 1 FROM usdzelle_workflow workflow
+                                            WHERE workflow.workflow_id =
+                                                candidate.workflow_id
+                                              AND workflow.settlement_network = 'SOLANA'))
+                                    OR (candidate.event_type = 'SettlementTransferAccepted'
+                                        AND EXISTS (
+                                            SELECT 1 FROM settlement_transfer transfer
+                                            WHERE transfer.transfer_id = candidate.transfer_id
+                                              AND transfer.settlement_network = 'SOLANA'))
+                                    OR (candidate.event_type = 'TokenOperationAccepted'
+                                        AND EXISTS (
+                                            SELECT 1 FROM token_operation operation
+                                            WHERE operation.operation_id =
+                                                candidate.operation_id
+                                              AND operation.operation_kind
+                                                  IN ('MINT', 'BURN')
+                                              AND (operation.business_correlation
+                                                        NOT LIKE 'usdzelle:%'
+                                                OR EXISTS (
+                                                    SELECT 1
+                                                    FROM usdzelle_workflow parent
+                                                    WHERE operation.business_correlation
+                                                        LIKE 'usdzelle:'
+                                                            || parent.workflow_id::text
+                                                            || ':%'
+                                                      AND parent.settlement_network =
+                                                            'SOLANA'))))))
                               OR (:filter = 'LOCAL_ETHEREUM_DEMO'
-                                  AND (candidate.event_type IN (
-                                        'WalletTransferAccepted',
-                                        'UsdzelleWorkflowAccepted',
-                                        'SettlementTransferAccepted')
+                                  AND (((candidate.event_type = 'WalletTransferAccepted'
+                                            AND EXISTS (
+                                                SELECT 1 FROM wallet_transfer_operation w
+                                                WHERE w.operation_id =
+                                                    candidate.wallet_transfer_id
+                                                  AND w.network = 'ETHEREUM'))
+                                        OR (candidate.event_type = 'UsdzelleWorkflowAccepted'
+                                            AND EXISTS (
+                                                SELECT 1 FROM usdzelle_workflow workflow
+                                                WHERE workflow.workflow_id =
+                                                    candidate.workflow_id
+                                                  AND workflow.settlement_network =
+                                                    'ETHEREUM'))
+                                        OR (candidate.event_type =
+                                                'SettlementTransferAccepted'
+                                            AND EXISTS (
+                                                SELECT 1 FROM settlement_transfer transfer
+                                                WHERE transfer.transfer_id =
+                                                    candidate.transfer_id
+                                                  AND transfer.settlement_network =
+                                                    'ETHEREUM')))
                                     OR (candidate.event_type = 'TokenOperationAccepted'
                                         AND EXISTS (
                                             SELECT 1 FROM token_operation supported_operation
                                             WHERE supported_operation.operation_id = candidate.operation_id
                                               AND supported_operation.operation_kind
-                                                  IN ('MINT', 'BURN'))))))
+                                                  IN ('MINT', 'BURN')
+                                              AND (supported_operation.business_correlation
+                                                        NOT LIKE 'usdzelle:%'
+                                                OR EXISTS (
+                                                    SELECT 1
+                                                    FROM usdzelle_workflow parent
+                                                    WHERE supported_operation
+                                                            .business_correlation
+                                                        LIKE 'usdzelle:'
+                                                            || parent.workflow_id::text
+                                                            || ':%'
+                                                      AND parent.settlement_network =
+                                                            'ETHEREUM')))))))
                           AND NOT EXISTS (
                               SELECT 1 FROM operation_outbox prior
                               WHERE ((prior.operation_id = candidate.operation_id
@@ -625,17 +743,70 @@ public final class PostgresOperationDeliveryQueue implements OperationDeliveryQu
                                     AND supported_operation.operation_kind = 'MINT'))
                           OR (:filter = 'WALLET_TRANSFER'
                               AND candidate.event_type = 'WalletTransferAccepted')
+                          OR (:filter = 'LOCAL_SOLANA'
+                              AND ((candidate.event_type = 'WalletTransferAccepted'
+                                    AND EXISTS (
+                                        SELECT 1 FROM wallet_transfer_operation w
+                                        WHERE w.operation_id = candidate.wallet_transfer_id
+                                          AND w.network = 'SOLANA'))
+                                OR (candidate.event_type = 'UsdzelleWorkflowAccepted'
+                                    AND EXISTS (
+                                        SELECT 1 FROM usdzelle_workflow workflow
+                                        WHERE workflow.workflow_id = candidate.workflow_id
+                                          AND workflow.settlement_network = 'SOLANA'))
+                                OR (candidate.event_type = 'SettlementTransferAccepted'
+                                    AND EXISTS (
+                                        SELECT 1 FROM settlement_transfer transfer
+                                        WHERE transfer.transfer_id = candidate.transfer_id
+                                          AND transfer.settlement_network = 'SOLANA'))
+                                OR (candidate.event_type = 'TokenOperationAccepted'
+                                    AND EXISTS (
+                                        SELECT 1 FROM token_operation operation
+                                        WHERE operation.operation_id = candidate.operation_id
+                                          AND operation.operation_kind
+                                              IN ('MINT', 'BURN')
+                                          AND (operation.business_correlation
+                                                    NOT LIKE 'usdzelle:%'
+                                            OR EXISTS (
+                                                SELECT 1 FROM usdzelle_workflow parent
+                                                WHERE operation.business_correlation
+                                                    LIKE 'usdzelle:'
+                                                        || parent.workflow_id::text || ':%'
+                                                  AND parent.settlement_network =
+                                                        'SOLANA'))))))
                           OR (:filter = 'LOCAL_ETHEREUM_DEMO'
-                              AND (candidate.event_type IN (
-                                    'WalletTransferAccepted',
-                                    'UsdzelleWorkflowAccepted',
-                                    'SettlementTransferAccepted')
+                              AND (((candidate.event_type = 'WalletTransferAccepted'
+                                        AND EXISTS (
+                                            SELECT 1 FROM wallet_transfer_operation w
+                                            WHERE w.operation_id =
+                                                candidate.wallet_transfer_id
+                                              AND w.network = 'ETHEREUM'))
+                                    OR (candidate.event_type = 'UsdzelleWorkflowAccepted'
+                                        AND EXISTS (
+                                            SELECT 1 FROM usdzelle_workflow workflow
+                                            WHERE workflow.workflow_id =
+                                                candidate.workflow_id
+                                              AND workflow.settlement_network = 'ETHEREUM'))
+                                    OR (candidate.event_type = 'SettlementTransferAccepted'
+                                        AND EXISTS (
+                                            SELECT 1 FROM settlement_transfer transfer
+                                            WHERE transfer.transfer_id = candidate.transfer_id
+                                              AND transfer.settlement_network = 'ETHEREUM')))
                                 OR (candidate.event_type = 'TokenOperationAccepted'
                                     AND EXISTS (
                                         SELECT 1 FROM token_operation supported_operation
                                         WHERE supported_operation.operation_id = candidate.operation_id
                                           AND supported_operation.operation_kind
-                                              IN ('MINT', 'BURN'))))))
+                                              IN ('MINT', 'BURN')
+                                          AND (supported_operation.business_correlation
+                                                    NOT LIKE 'usdzelle:%'
+                                            OR EXISTS (
+                                                SELECT 1 FROM usdzelle_workflow parent
+                                                WHERE supported_operation.business_correlation
+                                                    LIKE 'usdzelle:'
+                                                        || parent.workflow_id::text || ':%'
+                                                  AND parent.settlement_network =
+                                                        'ETHEREUM')))))))
                     """)
                     .param("now", utc(measuredAt))
                     .param("filter", filter.name())

@@ -528,9 +528,11 @@ class PostgresReserveAccountingAdapterTest {
         UUID attemptId = UUID.nameUUIDFromBytes((id + "-attempt").getBytes());
         jdbc.sql("""
                 INSERT INTO accounting_confirmed_evidence (
-                    evidence_id, evidence_type, operation_id, attempt_id,
+                    evidence_id, evidence_type, settlement_network,
+                    operation_id, attempt_id,
                     observation_sequence, observed_supply_cents, recorded_at)
-                VALUES (:id, :type, :operationId, :attemptId, 1, :supply, :recordedAt)
+                VALUES (:id, :type, 'ETHEREUM', :operationId, :attemptId,
+                    1, :supply, :recordedAt)
                 """)
                 .param("id", id).param("type", type)
                 .param("operationId", operationId)

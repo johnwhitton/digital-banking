@@ -385,10 +385,7 @@ public final class SavaSolanaMintChainAdapter
                         SigningRequest.KeyRole.FEE_PAYER,
                         configuration.feePayerKeyVersion(),
                         configuration.feePayerPublicKey()),
-                signer(configuration.transferAuthorityKeyAlias(),
-                        SigningRequest.KeyRole.TRANSFER_AUTHORITY,
-                        configuration.transferAuthorityKeyVersion(),
-                        sourceOwner.toBase58()),
+                transferSigner(operation),
                 configuration.policyVersion(), configuration.maximumFeeLamports(),
                 latest.blockHash(), latest.lastValidBlockHeight(),
                 message.unsignedTransaction(), message.messageSha256(),
@@ -1059,12 +1056,38 @@ public final class SavaSolanaMintChainAdapter
                 new KeyAlias(alias), role, version, publicKey);
     }
 
+    private SolanaMintAttemptStore.SignerContext transferSigner(
+            WalletTransferOperation operation) {
+        boolean primary = configuration.destinationOwner().equals(
+                operation.source().normalizedAddress());
+        return signer(
+                primary ? configuration.transferAuthorityKeyAlias()
+                        : configuration.transferDestinationAuthorityKeyAlias(),
+                SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                primary ? configuration.transferAuthorityKeyVersion()
+                        : configuration.transferDestinationAuthorityKeyVersion(),
+                operation.source().normalizedAddress());
+    }
+
     private void validateTransfer(WalletTransferOperation operation) {
         var unit = operation.quantity().unit();
         String expectedDestination = operation.purpose()
                 == WalletTransferOperation.Purpose.REDEMPTION_CUSTODY
                 ? configuration.redemptionOwner()
                 : configuration.transferDestinationOwner();
+        boolean primarySource = configuration.destinationOwner().equals(
+                operation.source().normalizedAddress());
+        boolean registeredSource = primarySource
+                || (operation.purpose()
+                        == WalletTransferOperation.Purpose.REDEMPTION_CUSTODY
+                    && configuration.transferDestinationOwner().equals(
+                            operation.source().normalizedAddress()));
+        String expectedAlias = primarySource
+                ? configuration.transferAuthorityKeyAlias()
+                : configuration.transferDestinationAuthorityKeyAlias();
+        String expectedVersion = primarySource
+                ? configuration.transferAuthorityKeyVersion()
+                : configuration.transferDestinationAuthorityKeyVersion();
         if (operation.network() != SettlementNetwork.SOLANA
                 || !configuration.assetId().equals(unit.assetId())
                 || !configuration.unitId().equals(unit.unitId())
@@ -1074,13 +1097,12 @@ public final class SavaSolanaMintChainAdapter
                 || !configuration.mintAddress().equals(operation.contractAddress())
                 || !configuration.policyVersion().equals(
                         operation.finalityPolicyVersion())
-                || !configuration.destinationOwner().equals(
-                        operation.source().normalizedAddress())
+                || !registeredSource
                 || !expectedDestination.equals(
                         operation.destination().normalizedAddress())
-                || !new KeyAlias(configuration.transferAuthorityKeyAlias()).equals(
+                || !new KeyAlias(expectedAlias).equals(
                         operation.source().keyReference())
-                || !configuration.transferAuthorityKeyVersion().equals(
+                || !expectedVersion.equals(
                         operation.source().keyVersion())) {
             throw new IllegalArgumentException(
                     "wallet transfer does not match the retained local Solana policy");
@@ -1306,6 +1328,8 @@ public final class SavaSolanaMintChainAdapter
             String transferDestinationOwner,
             String transferAuthorityKeyAlias,
             String transferAuthorityKeyVersion,
+            String transferDestinationAuthorityKeyAlias,
+            String transferDestinationAuthorityKeyVersion,
             String redemptionOwner,
             String burnAuthorityKeyAlias,
             String burnAuthorityKeyVersion,
@@ -1320,6 +1344,46 @@ public final class SavaSolanaMintChainAdapter
             BigInteger minimumFeePayerLamports,
             BigInteger maximumFeeLamports,
             Duration requestTimeout) {
+
+        public Configuration(
+                URI rpcUri,
+                String clusterIdentity,
+                String mintAddress,
+                String destinationOwner,
+                String feePayerPublicKey,
+                String feePayerKeyAlias,
+                String feePayerKeyVersion,
+                String mintAuthorityPublicKey,
+                String mintAuthorityKeyAlias,
+                String mintAuthorityKeyVersion,
+                String transferDestinationOwner,
+                String transferAuthorityKeyAlias,
+                String transferAuthorityKeyVersion,
+                String redemptionOwner,
+                String burnAuthorityKeyAlias,
+                String burnAuthorityKeyVersion,
+                String walletRegistryVersion,
+                String assetId,
+                String unitId,
+                int unitVersion,
+                int decimals,
+                String policyVersion,
+                CommitmentLevel preparationCommitment,
+                CommitmentLevel observationCommitment,
+                BigInteger minimumFeePayerLamports,
+                BigInteger maximumFeeLamports,
+                Duration requestTimeout) {
+            this(rpcUri, clusterIdentity, mintAddress, destinationOwner,
+                    feePayerPublicKey, feePayerKeyAlias, feePayerKeyVersion,
+                    mintAuthorityPublicKey, mintAuthorityKeyAlias,
+                    mintAuthorityKeyVersion, transferDestinationOwner,
+                    transferAuthorityKeyAlias, transferAuthorityKeyVersion,
+                    transferAuthorityKeyAlias, transferAuthorityKeyVersion,
+                    redemptionOwner, burnAuthorityKeyAlias, burnAuthorityKeyVersion,
+                    walletRegistryVersion, assetId, unitId, unitVersion, decimals,
+                    policyVersion, preparationCommitment, observationCommitment,
+                    minimumFeePayerLamports, maximumFeeLamports, requestTimeout);
+        }
 
         public Configuration(
                 URI rpcUri,
@@ -1347,6 +1411,8 @@ public final class SavaSolanaMintChainAdapter
                     mintAuthorityPublicKey, mintAuthorityKeyAlias,
                     mintAuthorityKeyVersion,
                     "86Cud6zB3MZRYcCBgYftqoZRZw1jVqQfDkobchgk9vir",
+                    "local-solana:transfer-authority",
+                    "local-solana-transfer-authority-v1",
                     "local-solana:transfer-authority",
                     "local-solana-transfer-authority-v1",
                     "9xQeWvG816bUx9EPfEZvT9YcDT4VQ5cMfbX6LEK2q4H",
@@ -1383,6 +1449,10 @@ public final class SavaSolanaMintChainAdapter
             requireText(mintAuthorityKeyVersion, "mintAuthorityKeyVersion", 256);
             requireText(transferAuthorityKeyAlias, "transferAuthorityKeyAlias", 128);
             requireText(transferAuthorityKeyVersion, "transferAuthorityKeyVersion", 256);
+            requireText(transferDestinationAuthorityKeyAlias,
+                    "transferDestinationAuthorityKeyAlias", 128);
+            requireText(transferDestinationAuthorityKeyVersion,
+                    "transferDestinationAuthorityKeyVersion", 256);
             requireText(burnAuthorityKeyAlias, "burnAuthorityKeyAlias", 128);
             requireText(burnAuthorityKeyVersion, "burnAuthorityKeyVersion", 256);
             requireText(walletRegistryVersion, "walletRegistryVersion", 128);

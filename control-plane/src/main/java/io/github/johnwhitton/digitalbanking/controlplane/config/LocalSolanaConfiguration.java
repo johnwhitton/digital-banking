@@ -14,7 +14,9 @@ import io.github.johnwhitton.digitalbanking.application.WalletTransferAcceptance
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.OperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.application.delivery.RedemptionAcceptedDeliveryHandler;
+import io.github.johnwhitton.digitalbanking.application.delivery.SettlementTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
+import io.github.johnwhitton.digitalbanking.application.delivery.UsdzelleWorkflowAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.WalletTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.port.AssetUnitCatalog;
 import io.github.johnwhitton.digitalbanking.application.port.ClockPort;
@@ -24,6 +26,8 @@ import io.github.johnwhitton.digitalbanking.application.port.SigningAuthorizatio
 import io.github.johnwhitton.digitalbanking.application.port.SigningIdentityGenerator;
 import io.github.johnwhitton.digitalbanking.application.port.SigningRequestRepository;
 import io.github.johnwhitton.digitalbanking.application.port.TransferIdentityGenerator;
+import io.github.johnwhitton.digitalbanking.application.port.UsdzelleWorkflowContextResolver;
+import io.github.johnwhitton.digitalbanking.application.port.UsdzelleWorkflowRepository;
 import io.github.johnwhitton.digitalbanking.application.port.WalletIdentityRegistry;
 import io.github.johnwhitton.digitalbanking.application.port.WalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
@@ -35,26 +39,28 @@ import io.github.johnwhitton.digitalbanking.domain.signing.SigningAttemptId;
 import io.github.johnwhitton.digitalbanking.domain.signing.SigningRequest;
 import io.github.johnwhitton.digitalbanking.domain.transfer.SettlementNetwork;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
+import io.github.johnwhitton.digitalbanking.domain.workflow.UsdzelleWorkflow;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationDeliveryQueue;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresSigningRequestRepository;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresWalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.signer.local.LocalSolanaConfiguredSigner;
 import io.github.johnwhitton.digitalbanking.solana.sava.SavaSolanaMintChainAdapter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 
 @Configuration(proxyBeanMethods = false)
-@Profile("local-solana & !local-ethereum & !local-demo & !local-signer")
+@Profile("local-solana & !local-ethereum & !local-signer")
 @EnableConfigurationProperties(LocalSolanaProperties.class)
 public class LocalSolanaConfiguration {
 
     static final WalletReference USER_1 =
-            new WalletReference("synthetic-wallet:USER_1");
+            new WalletReference("synthetic-wallet:USER_WALLET_1");
     static final WalletReference USER_2 =
-            new WalletReference("synthetic-wallet:USER_2");
+            new WalletReference("synthetic-wallet:USER_WALLET_2");
     static final WalletReference ADMIN =
             new WalletReference("synthetic-wallet:ADMIN");
     static final WalletReference ADMIN_REDEMPTION =
@@ -85,6 +91,14 @@ public class LocalSolanaConfiguration {
                                         properties.transferAuthorityKeyFile(),
                                         properties.destinationOwner(),
                                         properties.transferAuthorityKeyVersion()),
+                                new LocalSolanaConfiguredSigner.ConfiguredKey(
+                                        new KeyAlias(properties
+                                                .transferDestinationAuthorityKeyAlias()),
+                                        SigningRequest.KeyRole.TRANSFER_AUTHORITY,
+                                        properties.transferDestinationAuthorityKeyFile(),
+                                        properties.transferDestinationOwner(),
+                                        properties
+                                                .transferDestinationAuthorityKeyVersion()),
                                 new LocalSolanaConfiguredSigner.ConfiguredKey(
                                         new KeyAlias(properties.burnAuthorityKeyAlias()),
                                         SigningRequest.KeyRole.BURN_AUTHORITY,
@@ -143,6 +157,8 @@ public class LocalSolanaConfiguration {
                         properties.transferDestinationOwner(),
                         properties.transferAuthorityKeyAlias(),
                         properties.transferAuthorityKeyVersion(),
+                        properties.transferDestinationAuthorityKeyAlias(),
+                        properties.transferDestinationAuthorityKeyVersion(),
                         properties.redemptionOwner(),
                         properties.burnAuthorityKeyAlias(),
                         properties.burnAuthorityKeyVersion(),
@@ -212,8 +228,8 @@ public class LocalSolanaConfiguration {
                         properties.walletRegistryVersion()),
                 USER_2, userIdentity(
                         USER_2, properties.transferDestinationOwner(),
-                        new KeyAlias("local-solana:user-2-public"),
-                        "local-solana-user-2-v1",
+                        new KeyAlias(properties.transferDestinationAuthorityKeyAlias()),
+                        properties.transferDestinationAuthorityKeyVersion(),
                         properties.walletRegistryVersion()),
                 ADMIN, new WalletIdentityRegistry.WalletIdentity(
                         ADMIN, Set.of(ADMIN_REDEMPTION),
@@ -227,7 +243,8 @@ public class LocalSolanaConfiguration {
                         WalletIdentityRegistry.Status.ENABLED));
         return new WalletIdentityRegistry() {
             @Override public WalletIdentity resolve(WalletReference reference) {
-                WalletIdentity identity = identities.get(reference);
+                WalletIdentity identity = ADMIN_REDEMPTION.equals(reference)
+                        ? identities.get(ADMIN) : identities.get(reference);
                 if (identity == null) {
                     throw new IllegalArgumentException("unknown local Solana wallet");
                 }
@@ -283,19 +300,60 @@ public class LocalSolanaConfiguration {
     @Primary
     OperationDeliveryHandler localSolanaDeliveryHandler(
             TokenOperationAcceptedDeliveryHandler localSolanaMintDeliveryHandler,
+            TokenOperationAcceptedDeliveryHandler localSolanaBurnDeliveryHandler,
+            WalletTransferAcceptedDeliveryHandler custody,
             RedemptionAcceptedDeliveryHandler redemption,
-            OperationRepository operations) {
+            OperationRepository operations,
+            ObjectProvider<UsdzelleWorkflowRepository> workflows,
+            ObjectProvider<UsdzelleWorkflowContextResolver> workflowContexts,
+            ObjectProvider<UsdzelleWorkflowAcceptedDeliveryHandler> workflowHandlers,
+            ObjectProvider<SettlementTransferAcceptedDeliveryHandler>
+                    settlementHandlers) {
         return delivery -> {
+            if (SettlementTransferAcceptedDeliveryHandler.EVENT_TYPE.equals(
+                    delivery.eventType())) {
+                return settlementHandlers.getObject().handle(delivery);
+            }
+            if (UsdzelleWorkflowAcceptedDeliveryHandler.EVENT_TYPE.equals(
+                    delivery.eventType())) {
+                return workflowHandlers.getObject().handle(delivery);
+            }
             if (WalletTransferAcceptedDeliveryHandler.EVENT_TYPE.equals(
                     delivery.eventType())) {
-                return redemption.handle(delivery);
+                return custody.handle(delivery);
             }
-            return operations.findById(delivery.operationId())
-                    .filter(operation -> operation.kind() == OperationKind.BURN)
-                    .isPresent()
-                    ? redemption.handle(delivery)
-                    : localSolanaMintDeliveryHandler.handle(delivery);
+            var operation = operations.findById(delivery.operationId())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "token operation was not found"));
+            if (operation.acceptanceContext().businessCorrelation()
+                    .startsWith("usdzelle:")) {
+                verifyWorkflowContext(
+                        operation, workflows.getObject(), workflowContexts.getObject());
+            }
+            if (operation.kind() == OperationKind.MINT) {
+                return localSolanaMintDeliveryHandler.handle(delivery);
+            }
+            return operation.acceptanceContext().businessCorrelation()
+                    .startsWith("usdzelle:")
+                    ? localSolanaBurnDeliveryHandler.handle(delivery)
+                    : redemption.handle(delivery);
         };
+    }
+
+    private static void verifyWorkflowContext(
+            io.github.johnwhitton.digitalbanking.domain.operation.TokenOperation operation,
+            UsdzelleWorkflowRepository workflows,
+            UsdzelleWorkflowContextResolver contexts) {
+        String[] correlation = operation.acceptanceContext()
+                .businessCorrelation().split(":", 3);
+        if (correlation.length != 3) {
+            throw new IllegalStateException("workflow child correlation is invalid");
+        }
+        UsdzelleWorkflow workflow = workflows.findById(new UsdzelleWorkflow.Id(
+                        UUID.fromString(correlation[1])))
+                .orElseThrow(() -> new IllegalStateException(
+                        "workflow child parent is unavailable"));
+        contexts.verifyAccepted(workflow);
     }
 
     @Bean

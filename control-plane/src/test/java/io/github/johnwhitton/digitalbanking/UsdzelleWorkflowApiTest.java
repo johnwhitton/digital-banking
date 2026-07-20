@@ -122,6 +122,16 @@ class UsdzelleWorkflowApiTest {
                                         + "  \"senderWalletReference\": "
                                         + "\"synthetic-wallet:CALLER_CONTROLLED\"")))
                 .andExpect(status().isBadRequest());
+        mvc.perform(post("/v1/usdzelle/acquisitions")
+                        .with(participant("usdzelle:acquire"))
+                        .header("Idempotency-Key", "caller-key-alias")
+                        .contentType("application/json")
+                        .content(REQUEST.replace(
+                                "\"settlementNetwork\": \"ETHEREUM\"",
+                                "\"settlementNetwork\": \"SOLANA\",\n"
+                                        + "  \"transferAuthorityKeyAlias\": "
+                                        + "\"caller-selected\"")))
+                .andExpect(status().isBadRequest());
 
         mvc.perform(get("/v1/usdzelle/acquisitions/{workflowId}", ACQUISITION_ID)
                         .with(participant("usdzelle:acquire")))
@@ -142,6 +152,16 @@ class UsdzelleWorkflowApiTest {
                             .content(REQUEST.replace("\"10\"", "\"" + amount + "\"")))
                     .andExpect(status().isBadRequest());
         }
+    }
+
+    @Test
+    void acceptsTheExistingProviderNeutralSolanaSelection() throws Exception {
+        mvc.perform(post("/v1/usdzelle/acquisitions")
+                        .with(participant("usdzelle:acquire"))
+                        .header("Idempotency-Key", "solana-acquisition")
+                        .contentType("application/json")
+                        .content(REQUEST.replace("ETHEREUM", "SOLANA")))
+                .andExpect(status().isAccepted());
     }
 
     private static RequestPostProcessor participant(String authority) {

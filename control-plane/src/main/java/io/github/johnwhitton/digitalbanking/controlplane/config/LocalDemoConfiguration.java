@@ -31,7 +31,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 @Configuration(proxyBeanMethods = false)
-@Profile("local-demo & !local-signer")
+@Profile("local-demo & !local-solana & !local-signer")
 @EnableConfigurationProperties(LocalDemoProperties.class)
 public class LocalDemoConfiguration {
 

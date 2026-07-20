@@ -50,6 +50,7 @@ class UsdzelleOpenApiContractTest {
 
         for (String forbidden : Set.of(
                 "privateKey", "walletAddress", "adminWallet", "contractAddress",
+                "transferAuthorityKeyAlias",
                 "chainId", "rpcUrl", "nonce", "gas", "calldata", "journalLines",
                 "evidenceReference", "finalityConclusion", "retry")) {
             assertFalse(text.contains(forbidden), forbidden);

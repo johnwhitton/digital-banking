@@ -22,7 +22,7 @@ import java.security.spec.EdECPublicKeySpec;
 import java.security.spec.NamedParameterSpec;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -64,23 +64,23 @@ public final class LocalSolanaConfiguredSigner
         Objects.requireNonNull(configuration, "configuration");
         Path root = validatedRoot(configuration.runtimeRoot());
         resultsRoot = validatedResultsRoot(root);
-        EnumMap<SigningRequest.KeyRole, Boolean> roles =
-                new EnumMap<>(SigningRequest.KeyRole.class);
+        EnumSet<SigningRequest.KeyRole> roles =
+                EnumSet.noneOf(SigningRequest.KeyRole.class);
         java.util.LinkedHashMap<KeyAlias, ActiveKey> loaded = new java.util.LinkedHashMap<>();
         try {
             for (ConfiguredKey configured : configuration.keys()) {
-                if (!SUPPORTED_ROLES.contains(configured.role())
-                        || roles.putIfAbsent(configured.role(), Boolean.TRUE) != null) {
+                if (!SUPPORTED_ROLES.contains(configured.role())) {
                     throw new IllegalArgumentException(
-                            "local Solana signer roles must be unique and supported");
+                            "local Solana signer roles must be supported");
                 }
+                roles.add(configured.role());
                 ActiveKey key = load(root, configured);
                 if (loaded.putIfAbsent(configured.alias(), key) != null) {
                     key.destroy();
                     throw new IllegalArgumentException("local Solana key alias is duplicated");
                 }
             }
-            if (!roles.keySet().equals(SUPPORTED_ROLES)) {
+            if (!roles.equals(SUPPORTED_ROLES)) {
                 throw new IllegalArgumentException(
                         "fee-payer, mint, transfer, and burn authority keys are required");
             }

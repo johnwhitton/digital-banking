@@ -133,7 +133,7 @@ class PostgresTransferRepositoryTest {
                 () -> transfer(1, PARTICIPANT, "transfer-key", metadata('a')));
 
         assertFalse(accepted.replayed());
-        assertEquals(8, jdbc.sql("SELECT count(*) FROM flyway_schema_history WHERE success")
+        assertEquals(9, jdbc.sql("SELECT count(*) FROM flyway_schema_history WHERE success")
                 .query(Integer.class).single());
         assertEquals(1L, count("banking_transfer"));
         assertEquals(1L, count("transfer_idempotency"));
@@ -216,6 +216,51 @@ class PostgresTransferRepositoryTest {
                 WHERE instruction_id = 'ambiguous-recipient'
                   AND instruction_version = 'phase-6c-v2'
                 """).update();
+    }
+
+    @Test
+    void solanaSettlementUsesVersionedInstructionsAndOneOwningQueue() {
+        ParticipantScope sender = new ParticipantScope("local-demo", "USER_1");
+        Transfer transfer = settlementBaseTransfer(
+                72, sender, "settlement-solana", SettlementNetwork.SOLANA,
+                "100");
+        SettlementTransfer settlement = settlement(
+                transfer, SettlementNetwork.SOLANA, "phase-7e-solana-v1",
+                "83wQsbSD89is8SVPAR325f5qXPhg5hdTuJfbwotqRsnT");
+
+        TransferAcceptance accepted = repository.accept(
+                sender, IdempotencyKey.of("settlement-solana"), metadata('a'),
+                () -> new TransferAcceptancePlan(
+                        transfer, Optional.of(settlement)));
+        TransferAcceptance replayed = repository.accept(
+                sender, IdempotencyKey.of("settlement-solana"), metadata('a'),
+                () -> { throw new AssertionError("replay must not rebuild the parent"); });
+
+        assertTrue(replayed.replayed());
+        assertEquals(SettlementNetwork.SOLANA,
+                accepted.settlement().orElseThrow().context().network());
+        assertEquals(Optional.of(settlement), repository.findSettlementById(
+                transfer.transferId(), sender));
+        assertTrue(PostgresOperationDeliveryQueue.localEthereumDemo(dataSource)
+                .claim("ethereum-worker", NOW.plusSeconds(1),
+                        Duration.ofSeconds(10), 1)
+                .deliveries().isEmpty());
+        var claim = PostgresOperationDeliveryQueue.localSolana(dataSource)
+                .claim("solana-worker", NOW.plusSeconds(1),
+                        Duration.ofSeconds(10), 1);
+        assertEquals(1, claim.deliveries().size());
+        assertEquals("SettlementTransferAccepted",
+                claim.deliveries().getFirst().eventType());
+        assertEquals(transfer.transferId().value(),
+                claim.deliveries().getFirst().aggregateId());
+        assertTrue(new PostgresSettlementInstructionRegistry(dataSource)
+                .findSender(sender, transfer.acceptanceContext().sourceBankAccount(),
+                        "USD", SettlementNetwork.SOLANA, NOW)
+                .isPresent());
+        assertTrue(new PostgresSettlementInstructionRegistry(dataSource)
+                .findRecipient(transfer.acceptanceContext().destinationBankAccount(),
+                        "USD", SettlementNetwork.SOLANA, NOW)
+                .isPresent());
     }
 
     @Test
@@ -557,6 +602,13 @@ class PostgresTransferRepositoryTest {
 
     private static Transfer settlementBaseTransfer(
             long seed, ParticipantScope sender, String key) {
+        return settlementBaseTransfer(
+                seed, sender, key, SettlementNetwork.ETHEREUM, "12.34");
+    }
+
+    private static Transfer settlementBaseTransfer(
+            long seed, ParticipantScope sender, String key,
+            SettlementNetwork network, String amount) {
         CanonicalCommandMetadata request = metadata('a');
         List<TransferEffect.Id> effects = java.util.stream.LongStream.range(1, 6)
                 .mapToObj(index -> effectId(seed * 10 + index)).toList();
@@ -570,18 +622,26 @@ class PostgresTransferRepositoryTest {
                                 "synthetic-bank:USER_2_BANK_ACCOUNT"),
                         new WalletReference("synthetic-wallet:USER_WALLET_1"),
                         new WalletReference("synthetic-wallet:USER_WALLET_2"),
-                        SettlementNetwork.ETHEREUM, "USD", "route-v10",
+                        network, "USD", "route-v10",
                         "phase-6c-v1", request.canonicalizationVersion(),
                         request.digest().value(), 1, "f".repeat(64),
                         IdempotencyKey.of(key).sha256()),
-                TokenQuantity.parse("12.34", UNIT), effects,
+                TokenQuantity.parse(amount, UNIT), effects,
                 transitionId(seed), NOW,
                 new EvidenceRef("participant:transfer:accepted:" + seed));
     }
 
     private static SettlementTransfer settlement(Transfer transfer) {
+        return settlement(
+                transfer, SettlementNetwork.ETHEREUM, "phase-6c-v1",
+                "0x0000000000000000000000000000000000000001");
+    }
+
+    private static SettlementTransfer settlement(
+            Transfer transfer, SettlementNetwork network,
+            String instructionVersion, String contractReference) {
         var sender = new SettlementTransfer.RouteSnapshot(
-                "local-user-1-acquisition", "phase-6c-v1",
+                "local-user-1-acquisition", instructionVersion,
                 new SettlementTransfer.Participant("local-demo", "USER_1"),
                 new SyntheticBankAccount.BankId("BANK_1"),
                 new SyntheticBankAccount.AccountId("USER_1_BANK_ACCOUNT"),
@@ -589,7 +649,7 @@ class PostgresTransferRepositoryTest {
                 transfer.acceptanceContext().senderWallet(),
                 "sender-wallet-v1", SettlementTransfer.InstructionMode.ACQUISITION);
         var recipient = new SettlementTransfer.RouteSnapshot(
-                "local-user-2-auto-redeem", "phase-6c-v1",
+                "local-user-2-auto-redeem", instructionVersion,
                 new SettlementTransfer.Participant("local-demo", "USER_2"),
                 new SyntheticBankAccount.BankId("BANK_2"),
                 new SyntheticBankAccount.AccountId("USER_2_BANK_ACCOUNT"),
@@ -603,8 +663,7 @@ class PostgresTransferRepositoryTest {
                         transfer.quantity(), sender, recipient,
                         new WalletReference("synthetic-wallet:ADMIN_REDEMPTION"),
                         "admin-wallet-v1",
-                        SettlementNetwork.ETHEREUM,
-                        "0x0000000000000000000000000000000000000001",
+                        network, contractReference,
                         "payout-before-burn-v1", "usd-usdzelle-cent-v1",
                         "reserve-accounting-v1", "no-fee-local-v1",
                         "local-ethereum-finality-v1",

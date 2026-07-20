@@ -55,6 +55,7 @@ import io.github.johnwhitton.digitalbanking.application.delivery.RedemptionAccep
 import io.github.johnwhitton.digitalbanking.application.delivery.TokenOperationAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.delivery.WalletTransferAcceptedDeliveryHandler;
 import io.github.johnwhitton.digitalbanking.application.port.IdGenerator;
+import io.github.johnwhitton.digitalbanking.application.port.ReserveAccountingPort;
 import io.github.johnwhitton.digitalbanking.application.port.ChainPort;
 import io.github.johnwhitton.digitalbanking.application.port.SigningAuthorizationPort;
 import io.github.johnwhitton.digitalbanking.application.port.SigningIdentityGenerator;
@@ -63,6 +64,9 @@ import io.github.johnwhitton.digitalbanking.application.port.WalletIdentityRegis
 import io.github.johnwhitton.digitalbanking.application.port.WalletTransferChainPort;
 import io.github.johnwhitton.digitalbanking.domain.asset.AssetUnit;
 import io.github.johnwhitton.digitalbanking.domain.asset.TokenQuantity;
+import io.github.johnwhitton.digitalbanking.domain.accounting.SyntheticBankAccount;
+import io.github.johnwhitton.digitalbanking.domain.accounting.UsdCents;
+import io.github.johnwhitton.digitalbanking.domain.accounting.ReserveAccounting;
 import io.github.johnwhitton.digitalbanking.domain.operation.AttemptId;
 import io.github.johnwhitton.digitalbanking.domain.operation.EvidenceRef;
 import io.github.johnwhitton.digitalbanking.domain.operation.FinalityStatus;
@@ -81,9 +85,12 @@ import io.github.johnwhitton.digitalbanking.domain.transfer.TransferEffect;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferId;
 import io.github.johnwhitton.digitalbanking.domain.transfer.TransferTransition;
 import io.github.johnwhitton.digitalbanking.domain.transfer.WalletReference;
+import io.github.johnwhitton.digitalbanking.domain.workflow.UsdzelleWorkflow;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationRepository;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresOperationDeliveryQueue;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresReserveAccountingAdapter;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresSigningRequestRepository;
+import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresUsdzelleWorkflowRepository;
 import io.github.johnwhitton.digitalbanking.persistence.postgres.PostgresWalletTransferRepository;
 import io.github.johnwhitton.digitalbanking.signer.local.LocalSolanaConfiguredSigner;
 import org.flywaydb.core.Flyway;
@@ -227,6 +234,214 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
     }
 
     @Test
+    void registersOnlyFinalizedMatchingSolanaMintEvidenceForAccounting()
+            throws Exception {
+        try (Scenario scenario = scenario(false)) {
+            OperationAcceptance accepted = scenario.accept(
+                    "solana-workflow-evidence", "100");
+            assertEquals(DeliveryOutcome.Classification.DELIVERED,
+                    scenario.handler().handle(
+                            scenario.delivery(accepted.operation().operationId()))
+                            .classification());
+
+            WalletReference user =
+                    new WalletReference("synthetic-wallet:USER_WALLET_1");
+            WalletReference admin =
+                    new WalletReference("synthetic-wallet:ADMIN_REDEMPTION");
+            IdempotencyKey workflowKey =
+                    new IdempotencyKey("solana-workflow-evidence-parent");
+            UsdzelleWorkflow workflow = UsdzelleWorkflow.accepted(
+                    new UsdzelleWorkflow.Id(UUID.randomUUID()),
+                    UsdzelleWorkflow.Kind.ACQUISITION,
+                    new UsdzelleWorkflow.Participant(
+                            PARTICIPANT.tenantId(), PARTICIPANT.participantId()),
+                    new UsdzelleWorkflow.AcceptedContext(
+                            "phase-6b-v1", new UsdCents(BigInteger.valueOf(10_000)),
+                            TokenQuantity.parse("100", UNIT),
+                            new SyntheticBankAccount.BankId("BANK_1"),
+                            new SyntheticBankAccount.AccountId("USER_1_BANK_ACCOUNT"),
+                            user, "registry-v1:user-v1", admin, "registry-v1:admin-v1",
+                            SettlementNetwork.SOLANA,
+                            scenario.configuration().mintAddress(),
+                            "payout-before-burn-v1", "usd-usdzelle-cent-v1",
+                            "accounting-v1", "fee-v1", "finality-v1",
+                            "reconciliation-v1", workflowKey.sha256(),
+                            "b".repeat(64),
+                            NOW.minusSeconds(20)),
+                    java.util.stream.IntStream.rangeClosed(1, 5)
+                            .mapToObj(index -> new UsdzelleWorkflow.StepId(
+                                    new UUID(90, index))).toList(),
+                    new UsdzelleWorkflow.TransitionId(new UUID(91, 1)),
+                    new EvidenceRef("internal:test:solana-workflow:accepted"));
+            PostgresUsdzelleWorkflowRepository workflows =
+                    new PostgresUsdzelleWorkflowRepository(dataSource);
+            UsdzelleWorkflow acceptedWorkflow = workflow;
+            workflows.accept(PARTICIPANT, UsdzelleWorkflow.Kind.ACQUISITION,
+                    workflowKey, "b".repeat(64), () -> acceptedWorkflow);
+            long previousVersion = workflow.version();
+            workflow = completeWorkflowStep(workflow, 2, UUID.randomUUID().toString());
+            workflows.save(workflow, previousVersion);
+            previousVersion = workflow.version();
+            workflow = completeWorkflowStep(workflow, 4, UUID.randomUUID().toString());
+            workflows.save(workflow, previousVersion);
+            previousVersion = workflow.version();
+            workflow = completeWorkflowStep(
+                    workflow, 6, accepted.operation().operationId().toString());
+            workflows.save(workflow, previousVersion);
+            jdbc.sql("""
+                    UPDATE operation_outbox
+                    SET status = 'DELIVERED', delivered_at = :at, updated_at = :at
+                    WHERE workflow_id = :workflowId
+                    """)
+                    .param("at", NOW.atOffset(ZoneOffset.UTC))
+                    .param("workflowId", workflow.id().value())
+                    .update();
+
+            PostgresSavaUsdzelleChainEvidenceAdapter evidence =
+                    new PostgresSavaUsdzelleChainEvidenceAdapter(
+                            dataSource,
+                            new PostgresSavaUsdzelleChainEvidenceAdapter.Configuration(
+                                    scenario.configuration().clusterIdentity(),
+                                    scenario.configuration().mintAddress(),
+                                    java.util.Map.of(user.value(),
+                                            new PostgresSavaUsdzelleChainEvidenceAdapter
+                                                    .UserConfiguration(
+                                                    scenario.configuration()
+                                                            .destinationOwner(),
+                                                    user.value(),
+                                                    "registry-v1:user-v1")),
+                                    scenario.configuration().redemptionOwner(),
+                                    admin.value(), "registry-v1:admin-v1",
+                                    scenario.configuration().policyVersion()),
+                            CLOCK);
+            var registered = evidence.register(
+                    io.github.johnwhitton.digitalbanking.application.port
+                            .UsdzelleChainEvidencePort.Effect.MINT,
+                    workflow, accepted.operation().operationId());
+            assertEquals(registered, evidence.register(
+                    io.github.johnwhitton.digitalbanking.application.port
+                            .UsdzelleChainEvidencePort.Effect.MINT,
+                    workflow, accepted.operation().operationId()));
+            assertEquals("SOLANA", jdbc.sql("""
+                    SELECT settlement_network FROM accounting_confirmed_evidence
+                    WHERE evidence_id = :evidence
+                    """).param("evidence", registered.value())
+                    .query(String.class).single());
+            jdbc.sql("""
+                    UPDATE accounting_ledger_account
+                    SET balance_cents = 10000
+                    WHERE account_type IN (
+                        'RESERVE_CASH_ASSET',
+                        'FIAT_RECEIVED_PENDING_MINT_LIABILITY')
+                    """).update();
+            ReserveAccountingPort accounting =
+                    new PostgresReserveAccountingAdapter(dataSource);
+            ReserveAccountingPort.PostCommand command =
+                    new ReserveAccountingPort.PostCommand(
+                            registered, ReserveAccounting.PostingType.MINT_CONFIRMED,
+                            new ReserveAccounting.JournalId(UUID.randomUUID()),
+                            new ReserveAccounting.JournalLineId(UUID.randomUUID()),
+                            new ReserveAccounting.JournalLineId(UUID.randomUUID()),
+                            new ReserveAccountingPort.EvidencePolicy(
+                                    new ReserveAccounting.PolicyVersion("accounting-v1"),
+                                    "bank-v1", scenario.configuration().policyVersion(),
+                                    scenario.configuration().policyVersion(),
+                                    scenario.configuration().policyVersion(),
+                                    UNIT.assetId(), "LOCAL_SOLANA",
+                                    scenario.configuration().mintAddress(),
+                                    Duration.ofHours(1)),
+                            "c".repeat(64), NOW);
+            assertFalse(accounting.post(command).replayed());
+            assertTrue(accounting.post(command).replayed());
+            assertEquals(BigInteger.valueOf(10_000), accounting.snapshot()
+                    .positions().confirmedChainTotalSupply().value());
+
+            String supersedingEvidence =
+                    "internal:test:solana-workflow:superseding-observation";
+            jdbc.sql("""
+                    INSERT INTO solana_mint_observation (
+                        operation_id, operation_attempt_id, observation_sequence,
+                        observation_status, transaction_signature, commitment, slot,
+                        block_time, transaction_error_code, expected_instructions,
+                        observed_mint_supply, observed_destination_balance,
+                        mint_delta, destination_delta, evidence_ref, observed_at,
+                        effect_kind, observed_source_balance, source_delta,
+                        transaction_pre_source_balance,
+                        transaction_post_source_balance,
+                        transaction_pre_destination_balance,
+                        transaction_post_destination_balance)
+                    SELECT operation_id, operation_attempt_id,
+                           observation_sequence + 1, observation_status,
+                           transaction_signature, commitment, slot + 1,
+                           block_time, transaction_error_code, expected_instructions,
+                           observed_mint_supply, observed_destination_balance,
+                           mint_delta, destination_delta, :supersedingEvidence,
+                           observed_at + INTERVAL '1 second', effect_kind,
+                           observed_source_balance, source_delta,
+                           transaction_pre_source_balance,
+                           transaction_post_source_balance,
+                           transaction_pre_destination_balance,
+                           transaction_post_destination_balance
+                    FROM solana_mint_observation
+                    WHERE operation_id = :operationId
+                    """)
+                    .param("supersedingEvidence", supersedingEvidence)
+                    .param("operationId", accepted.operation().operationId().value())
+                    .update();
+            jdbc.sql("""
+                    UPDATE operation_finality_evidence
+                    SET evidence_ref = :supersedingEvidence
+                    WHERE operation_id = :operationId
+                      AND finality_type = 'BLOCKCHAIN'
+                      AND history_order = (
+                          SELECT max(history_order)
+                          FROM operation_finality
+                          WHERE operation_id = :operationId
+                            AND finality_type = 'BLOCKCHAIN')
+                    """)
+                    .param("supersedingEvidence", supersedingEvidence)
+                    .param("operationId", accepted.operation().operationId().value())
+                    .update();
+            UsdzelleWorkflow retainedWorkflow = workflow;
+            assertThrows(IllegalStateException.class, () -> evidence.register(
+                    io.github.johnwhitton.digitalbanking.application.port
+                            .UsdzelleChainEvidencePort.Effect.MINT,
+                    retainedWorkflow, accepted.operation().operationId()));
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM usdzelle_chain_state_observation
+                    WHERE workflow_id = :workflowId
+                      AND effect_type = 'MINT'
+                      AND child_operation_id = :operationId
+                    """)
+                    .param("workflowId", workflow.id().value())
+                    .param("operationId", accepted.operation().operationId().value())
+                    .query(Integer.class).single());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM accounting_confirmed_evidence
+                    WHERE evidence_type = 'MINT'
+                      AND settlement_network = 'SOLANA'
+                      AND operation_id = :operationId
+                    """)
+                    .param("operationId", accepted.operation().operationId().value())
+                    .query(Integer.class).single());
+        }
+    }
+
+    private static UsdzelleWorkflow completeWorkflowStep(
+            UsdzelleWorkflow workflow, long sequence, String child) {
+        Instant at = NOW.minusSeconds(20).plusSeconds(sequence);
+        UsdzelleWorkflow active = workflow.beginCurrent(
+                workflow.version(),
+                new UsdzelleWorkflow.TransitionId(new UUID(91, sequence)),
+                new EvidenceRef("internal:test:solana-workflow:begin:" + sequence), at);
+        return active.confirmCurrent(
+                active.version(), Optional.of(new UsdzelleWorkflow.ChildReference(child)),
+                new UsdzelleWorkflow.TransitionId(new UUID(91, sequence + 1)),
+                new EvidenceRef("internal:test:solana-workflow:confirmed:" + sequence),
+                at.plusSeconds(1));
+    }
+
+    @Test
     void transfersExactQuantityThroughTwoSignersAndRecoversLostResponse()
             throws Exception {
         TestKey fee = key(temporary.resolve("transfer-fee.json"),
@@ -356,6 +571,52 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
                             CLOCK::instant, Duration.ofMinutes(5));
             OperationDelivery delivery = walletDelivery(
                     accepted.operation().operationId());
+            assertEquals(1, jdbc.sql("""
+                    SELECT count(*) FROM wallet_transfer_operation
+                    WHERE operation_id = :operationId
+                      AND network = 'SOLANA'
+                      AND transfer_purpose = 'USER_TRANSFER'
+                      AND source_address = :sourceAddress
+                      AND source_key_alias = :sourceAlias
+                      AND source_registry_version = 'registry-v1'
+                      AND source_key_version = 'source-v1'
+                    """).param("operationId", accepted.operation().operationId().value())
+                    .param("sourceAddress", source.address())
+                    .param("sourceAlias", source.alias().value())
+                    .query(Integer.class).single());
+            for (String column : List.of(
+                    "source_key_alias", "source_address", "source_key_version")) {
+                String original = switch (column) {
+                    case "source_key_alias" -> source.alias().value();
+                    case "source_address" -> source.address();
+                    case "source_key_version" -> "source-v1";
+                    default -> throw new IllegalStateException("unsupported test column");
+                };
+                String wrong = switch (column) {
+                    case "source_key_alias" -> mintAuthority.alias().value();
+                    case "source_address" -> mintAuthority.address();
+                    case "source_key_version" -> "source-v2";
+                    default -> throw new IllegalStateException("unsupported test column");
+                };
+                jdbc.sql("UPDATE wallet_transfer_operation SET " + column
+                                + " = :value WHERE operation_id = :operationId")
+                        .param("value", wrong)
+                        .param("operationId", accepted.operation().operationId().value())
+                        .update();
+                assertThrows(IllegalStateException.class,
+                        () -> preparationHandler.handle(delivery),
+                        column + " must be fenced by the accepted server-side snapshot");
+                assertEquals(0, jdbc.sql("""
+                        SELECT count(*) FROM solana_mint_attempt
+                        WHERE operation_id = :operationId
+                        """).param("operationId", accepted.operation().operationId().value())
+                        .query(Integer.class).single());
+                jdbc.sql("UPDATE wallet_transfer_operation SET " + column
+                                + " = :value WHERE operation_id = :operationId")
+                        .param("value", original)
+                        .param("operationId", accepted.operation().operationId().value())
+                        .update();
+            }
             assertEquals("IN_PROGRESS", jdbc.sql("""
                     SELECT status FROM operation_outbox WHERE operation_id = :operationId
                     """).param("operationId", burn.operation().operationId().value())
@@ -574,10 +835,12 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
             SavaSolanaMintChainAdapter.Configuration configuration =
                     new SavaSolanaMintChainAdapter.Configuration(
                             rpc.endpoint(), rpc.genesis(), rpc.mint().toBase58(),
-                            source.address(), fee.address(), fee.alias().value(), "fee-v1",
+                            DESTINATION_OWNER.toBase58(), fee.address(),
+                            fee.alias().value(), "fee-v1",
                             mintAuthority.address(), mintAuthority.alias().value(), "mint-v1",
-                            TRANSFER_DESTINATION_OWNER.toBase58(), source.alias().value(),
-                            "source-v1", burnAuthority.address(),
+                            source.address(), "local-solana:user-1-unused",
+                            "user-1-unused-v1", source.alias().value(), "source-v1",
+                            burnAuthority.address(),
                             burnAuthority.alias().value(), "burn-v1",
                             "registry-v1",
                             UNIT.assetId(), UNIT.unitId(), UNIT.version(), UNIT.scale(),
@@ -826,7 +1089,7 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
     }
 
     @Test
-    void v13MigratesAnExistingV11Schema() {
+    void v14MigratesAnExistingV11Schema() {
         String schema = "phase7c_v11_" + UUID.randomUUID().toString().replace("-", "");
         Flyway v11 = Flyway.configure()
                 .dataSource(dataSource)
@@ -954,16 +1217,16 @@ class SavaSolanaMintVerticalSliceIntegrationTest {
         v12.migrate();
         assertEquals("12", v12.info().current().getVersion().getVersion());
 
-        Flyway v13 = Flyway.configure()
+        Flyway v14 = Flyway.configure()
                 .dataSource(dataSource)
                 .schemas(schema)
                 .defaultSchema(schema)
                 .createSchemas(false)
                 .cleanDisabled(true)
                 .load();
-        v13.migrate();
+        v14.migrate();
 
-        assertEquals("13", v13.info().current().getVersion().getVersion());
+        assertEquals("14", v14.info().current().getVersion().getVersion());
         assertEquals(List.of("effect_kind", "pre_source_balance",
                         "redemption_correlation_id", "source_ata",
                         "source_owner", "token_operation_id",

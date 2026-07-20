@@ -265,6 +265,22 @@ public final class PostgresReserveAccountingAdapter implements ReserveAccounting
                     .query(PostgresReserveAccountingAdapter::mapEvidence)
                     .optional();
         }
+        Optional<String> network = jdbc.sql("""
+                        SELECT settlement_network
+                        FROM accounting_confirmed_evidence
+                        WHERE evidence_id = :evidenceId
+                        """)
+                .param("evidenceId", identity.value())
+                .query(String.class).optional();
+        if (network.isEmpty()) {
+            return Optional.empty();
+        }
+        if ("SOLANA".equals(network.orElseThrow())) {
+            return findSolanaEvidence(identity, expectedType);
+        }
+        if (!"ETHEREUM".equals(network.orElseThrow())) {
+            return Optional.empty();
+        }
         String sql = switch (expectedType) {
             case MINT -> """
                     SELECT p.evidence_id, p.evidence_type,
@@ -308,6 +324,7 @@ public final class PostgresReserveAccountingAdapter implements ReserveAccounting
                     ) f ON true
                     WHERE p.evidence_id = :evidenceId
                       AND p.evidence_type = 'MINT'
+                      AND p.settlement_network = 'ETHEREUM'
                       AND p.recorded_at >= o.observed_at
                       AND NOT EXISTS (
                           SELECT 1 FROM ethereum_mint_observation later
@@ -361,6 +378,7 @@ public final class PostgresReserveAccountingAdapter implements ReserveAccounting
                     ) f ON true
                     WHERE p.evidence_id = :evidenceId
                       AND p.evidence_type = 'REDEMPTION_CUSTODY'
+                      AND p.settlement_network = 'ETHEREUM'
                       AND p.recorded_at >= o.observed_at
                       AND NOT EXISTS (
                           SELECT 1 FROM ethereum_wallet_transfer_observation later
@@ -414,11 +432,223 @@ public final class PostgresReserveAccountingAdapter implements ReserveAccounting
                     ) f ON true
                     WHERE p.evidence_id = :evidenceId
                       AND p.evidence_type = 'BURN'
+                      AND p.settlement_network = 'ETHEREUM'
                       AND p.recorded_at >= o.observed_at
                       AND NOT EXISTS (
                           SELECT 1 FROM ethereum_burn_observation later
                           WHERE later.operation_id = p.operation_id
                             AND later.operation_attempt_id = p.attempt_id
+                            AND later.observation_sequence > p.observation_sequence)
+                    """;
+            case BANK_WITHDRAWAL, BANK_DEPOSIT -> throw new IllegalStateException(
+                    "bank evidence query was not selected");
+        };
+        return jdbc.sql(sql)
+                .param("evidenceId", identity.value())
+                .query(PostgresReserveAccountingAdapter::mapEvidence)
+                .optional();
+    }
+
+    private Optional<DurableEvidence> findSolanaEvidence(
+            ReserveAccounting.EvidenceIdentity identity, EvidenceType expectedType) {
+        String sql = switch (expectedType) {
+            case MINT -> """
+                    SELECT p.evidence_id, p.evidence_type,
+                           op.operation_id::text AS correlation_id,
+                           op.tenant_id, op.participant_id,
+                           op.operation_id, a.operation_attempt_id AS attempt_id,
+                           NULL::uuid AS wallet_transfer_id,
+                           op.asset_id, a.network,
+                           a.mint_address AS contract_reference,
+                           op.quantity_atomic AS amount_cents,
+                           p.observed_supply_cents,
+                           o.observation_status AS evidence_status,
+                           (op.lifecycle_state = 'COMPLETED'
+                               AND a.effect_kind = 'MINT'
+                               AND a.attempt_status = 'CONFIRMED'
+                               AND o.observation_status = 'CONFIRMED'
+                               AND o.commitment = 'finalized'
+                               AND o.expected_instructions
+                               AND o.observed_mint_supply =
+                                   a.pre_mint_supply + a.amount_atomic
+                               AND o.observed_destination_balance =
+                                   a.pre_destination_balance + a.amount_atomic
+                               AND o.mint_delta = a.amount_atomic
+                               AND o.destination_delta = a.amount_atomic
+                               AND f.finality_status = 'REACHED'
+                               AND f.evidence_ref = o.evidence_ref) AS canonical,
+                           false AS removed,
+                           (f.finality_status = 'REACHED') AS finality_reached,
+                           a.policy_version, o.observed_at
+                    FROM accounting_confirmed_evidence p
+                    JOIN token_operation op ON op.operation_id = p.operation_id
+                        AND op.operation_kind = 'MINT'
+                    JOIN solana_mint_attempt a
+                      ON a.operation_id = p.operation_id
+                     AND a.operation_attempt_id = p.attempt_id
+                     AND a.effect_kind = 'MINT'
+                    JOIN solana_mint_observation o
+                      ON o.operation_id = p.operation_id
+                     AND o.operation_attempt_id = p.attempt_id
+                     AND o.observation_sequence = p.observation_sequence
+                     AND o.effect_kind = a.effect_kind
+                     AND o.evidence_ref = p.evidence_id
+                    JOIN LATERAL (
+                        SELECT finality_status, evidence_ref
+                        FROM operation_finality
+                        WHERE operation_id = p.operation_id
+                          AND finality_type = 'BLOCKCHAIN'
+                        ORDER BY history_order DESC LIMIT 1) f ON true
+                    WHERE p.evidence_id = :evidenceId
+                      AND p.evidence_type = 'MINT'
+                      AND p.settlement_network = 'SOLANA'
+                      AND p.recorded_at >= o.observed_at
+                      AND NOT EXISTS (
+                          SELECT 1 FROM solana_mint_observation later
+                          WHERE later.operation_id = p.operation_id
+                            AND later.operation_attempt_id = p.attempt_id
+                            AND later.effect_kind = a.effect_kind
+                            AND later.observation_sequence > p.observation_sequence)
+                    """;
+            case REDEMPTION_CUSTODY -> """
+                    SELECT p.evidence_id, p.evidence_type,
+                           w.operation_id::text AS correlation_id,
+                           w.tenant_id, w.participant_id,
+                           NULL::uuid AS operation_id, a.operation_attempt_id AS attempt_id,
+                           w.operation_id AS wallet_transfer_id,
+                           w.asset_id, a.network,
+                           a.mint_address AS contract_reference,
+                           w.quantity_atomic AS amount_cents,
+                           p.observed_supply_cents,
+                           o.observation_status AS evidence_status,
+                           (w.transfer_purpose = 'REDEMPTION_CUSTODY'
+                               AND w.operation_status = 'COMPLETED'
+                               AND w.network = 'SOLANA'
+                               AND a.effect_kind = 'TRANSFER'
+                               AND a.attempt_status = 'CONFIRMED'
+                               AND a.source_owner = w.source_address
+                               AND a.destination_owner = w.destination_address
+                               AND a.mint_address = w.contract_address
+                               AND a.amount_atomic = w.quantity_atomic
+                               AND o.observation_status = 'CONFIRMED'
+                               AND o.commitment = 'finalized'
+                               AND o.expected_instructions
+                               AND o.observed_mint_supply = a.pre_mint_supply
+                               AND o.observed_source_balance =
+                                   a.pre_source_balance - a.amount_atomic
+                               AND o.observed_destination_balance =
+                                   a.pre_destination_balance + a.amount_atomic
+                               AND o.transaction_pre_source_balance =
+                                   a.pre_source_balance
+                               AND o.transaction_post_source_balance =
+                                   a.pre_source_balance - a.amount_atomic
+                               AND o.transaction_pre_destination_balance =
+                                   a.pre_destination_balance
+                               AND o.transaction_post_destination_balance =
+                                   a.pre_destination_balance + a.amount_atomic
+                               AND o.mint_delta = 0
+                               AND o.source_delta = a.amount_atomic
+                               AND o.destination_delta = a.amount_atomic
+                               AND f.finality_status = 'REACHED'
+                               AND f.evidence_ref = o.evidence_ref) AS canonical,
+                           false AS removed,
+                           (f.finality_status = 'REACHED') AS finality_reached,
+                           a.policy_version, o.observed_at
+                    FROM accounting_confirmed_evidence p
+                    JOIN wallet_transfer_operation w ON w.operation_id = p.operation_id
+                    JOIN solana_mint_attempt a
+                      ON a.operation_id = p.operation_id
+                     AND a.operation_attempt_id = p.attempt_id
+                     AND a.effect_kind = 'TRANSFER'
+                    JOIN solana_mint_observation o
+                      ON o.operation_id = p.operation_id
+                     AND o.operation_attempt_id = p.attempt_id
+                     AND o.observation_sequence = p.observation_sequence
+                     AND o.effect_kind = a.effect_kind
+                     AND o.evidence_ref = p.evidence_id
+                    JOIN LATERAL (
+                        SELECT finality_status, evidence_ref
+                        FROM wallet_transfer_finality
+                        WHERE operation_id = p.operation_id
+                          AND finality_type = 'BLOCKCHAIN'
+                        ORDER BY history_order DESC LIMIT 1) f ON true
+                    WHERE p.evidence_id = :evidenceId
+                      AND p.evidence_type = 'REDEMPTION_CUSTODY'
+                      AND p.settlement_network = 'SOLANA'
+                      AND p.recorded_at >= o.observed_at
+                      AND NOT EXISTS (
+                          SELECT 1 FROM solana_mint_observation later
+                          WHERE later.operation_id = p.operation_id
+                            AND later.operation_attempt_id = p.attempt_id
+                            AND later.effect_kind = a.effect_kind
+                            AND later.observation_sequence > p.observation_sequence)
+                    """;
+            case BURN -> """
+                    SELECT p.evidence_id, p.evidence_type,
+                           op.operation_id::text AS correlation_id,
+                           op.tenant_id, op.participant_id,
+                           op.operation_id, a.operation_attempt_id AS attempt_id,
+                           NULL::uuid AS wallet_transfer_id,
+                           op.asset_id, a.network,
+                           a.mint_address AS contract_reference,
+                           op.quantity_atomic AS amount_cents,
+                           p.observed_supply_cents,
+                           o.observation_status AS evidence_status,
+                           (op.lifecycle_state = 'COMPLETED'
+                               AND c.correlation_status = 'CONSUMED'
+                               AND c.consumed_by_burn_attempt_id =
+                                   a.operation_attempt_id
+                               AND a.effect_kind = 'BURN'
+                               AND a.attempt_status = 'CONFIRMED'
+                               AND o.observation_status = 'CONFIRMED'
+                               AND o.commitment = 'finalized'
+                               AND o.expected_instructions
+                               AND o.observed_mint_supply =
+                                   a.pre_mint_supply - a.amount_atomic
+                               AND o.observed_source_balance =
+                                   a.pre_source_balance - a.amount_atomic
+                               AND o.transaction_pre_source_balance =
+                                   a.pre_source_balance
+                               AND o.transaction_post_source_balance =
+                                   a.pre_source_balance - a.amount_atomic
+                               AND o.mint_delta = a.amount_atomic
+                               AND o.source_delta = a.amount_atomic
+                               AND f.finality_status = 'REACHED'
+                               AND f.evidence_ref = o.evidence_ref) AS canonical,
+                           false AS removed,
+                           (f.finality_status = 'REACHED') AS finality_reached,
+                           a.policy_version, o.observed_at
+                    FROM accounting_confirmed_evidence p
+                    JOIN token_operation op ON op.operation_id = p.operation_id
+                        AND op.operation_kind = 'BURN'
+                    JOIN solana_mint_attempt a
+                      ON a.operation_id = p.operation_id
+                     AND a.operation_attempt_id = p.attempt_id
+                     AND a.effect_kind = 'BURN'
+                    JOIN ethereum_redemption_correlation c
+                      ON c.burn_operation_id = op.operation_id
+                     AND c.correlation_id = a.redemption_correlation_id
+                    JOIN solana_mint_observation o
+                      ON o.operation_id = p.operation_id
+                     AND o.operation_attempt_id = p.attempt_id
+                     AND o.observation_sequence = p.observation_sequence
+                     AND o.effect_kind = a.effect_kind
+                     AND o.evidence_ref = p.evidence_id
+                    JOIN LATERAL (
+                        SELECT finality_status, evidence_ref
+                        FROM operation_finality
+                        WHERE operation_id = p.operation_id
+                          AND finality_type = 'BLOCKCHAIN'
+                        ORDER BY history_order DESC LIMIT 1) f ON true
+                    WHERE p.evidence_id = :evidenceId
+                      AND p.evidence_type = 'BURN'
+                      AND p.settlement_network = 'SOLANA'
+                      AND p.recorded_at >= o.observed_at
+                      AND NOT EXISTS (
+                          SELECT 1 FROM solana_mint_observation later
+                          WHERE later.operation_id = p.operation_id
+                            AND later.operation_attempt_id = p.attempt_id
+                            AND later.effect_kind = a.effect_kind
                             AND later.observation_sequence > p.observation_sequence)
                     """;
             case BANK_WITHDRAWAL, BANK_DEPOSIT -> throw new IllegalStateException(
